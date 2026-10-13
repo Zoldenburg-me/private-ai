@@ -1,11 +1,23 @@
 {
-  "_comment": "REA (MIT, github.com/morluto/rea) capture_browser_scenario run against OUR OWN app on localhost only. Never point this at third-party sites. Run: npx rea-agents capture-browser-scenario tests/e2e/rea-own-app-scenario.json. Check field names against docs/browser-scenario-contract.md in the rea repo before use.",
-  "browser": { "launch": { "headless": true } },
-  "start_url": "http://localhost:3000/",
+  "browser": { "mode": "launch", "executable_path": "/usr/bin/google-chrome" },
+  "start_url": { "url": "http://127.0.0.1:3000" },
   "actions": [
-    { "type": "wait_for_selector", "selector": "input" },
-    { "type": "type", "selector": "input", "text": "hello" },
-    { "type": "click", "selector": "form button" },
-    { "type": "wait", "ms": 2000 }
-  ]
+    { "step_id": "models-loaded", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='badge-tee']" }, "state": "visible", "timeout_ms": 15000 },
+    { "step_id": "verify-enclave", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='verify']" }, "timeout_ms": 10000 },
+    { "step_id": "verified-badge", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='verified']" }, "state": "visible", "timeout_ms": 15000 },
+    { "step_id": "persona-name", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='persona-name']" }, "value": {"source":"literal","value":"Tutor"} },
+    { "step_id": "persona-prompt", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='persona-prompt']" }, "value": {"source":"literal","value":"Be a patient tutor"} },
+    { "step_id": "persona-add", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='persona-add']" } },
+    { "step_id": "type-prompt", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='prompt']" }, "value": {"source":"literal","value":"REA-CANARY-PROMPT-5521"} },
+    { "step_id": "send", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='send']" } },
+    { "step_id": "signed", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='signed']" }, "state": "visible", "timeout_ms": 20000 },
+    { "step_id": "passphrase", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='passphrase']" }, "value": {"source":"literal","value":"correct horse battery"} },
+    { "step_id": "export", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='export']" } },
+    { "step_id": "backup-ok", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='notice']" }, "state": "visible", "timeout_ms": 20000 }
+  ],
+  "capture": {
+    "at_end": ["dom", "url", "storage"],
+    "events": ["console", "page-errors", "network"],
+    "network": { "request_body": true, "response_body": false, "header_values": false }
+  }
 }

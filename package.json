@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e:rea": "npx -y rea-agents capture-browser-scenario tests/e2e/rea-own-app-scenario.json --json > /tmp/rea-capture.json && node tests/e2e/check-rea-capture.mjs /tmp/rea-capture.json"
   },
   "dependencies": {
     "@noble/curves": "^1.9.7",
