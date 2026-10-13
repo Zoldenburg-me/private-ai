@@ -26,6 +26,9 @@ export default function Home() {
   const [att, setAtt] = useState<{ ref: string; result: VerifyResult } | null>(null);
   const [notice, setNotice] = useState("");
   const [limits, setLimits] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [pName, setPName] = useState("");
+  const [pPrompt, setPPrompt] = useState("");
 
   useEffect(() => {
     setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage));
@@ -89,17 +92,17 @@ export default function Home() {
   }
 
   async function exportBackup() {
-    const pass = prompt("Backup passphrase (min 8 chars). Without it the backup cannot be opened.");
-    if (!pass) return;
+    const pass = passphrase;
     try {
       const file = await encryptBackup({ chats: loadChats(localStorage), personas: loadPersonas(localStorage) }, pass);
+      const check = await decryptBackup<{ chats: Chat[] }>(file, pass); // prove it opens before handing it out
       const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: "application/json" }));
       const a = document.createElement("a"); a.href = url; a.download = `private-ai-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
-      setNotice("Encrypted backup exported");
+      setNotice(`Encrypted backup exported and verified (${check.chats.length} chats)`);
     } catch (e) { setNotice((e as Error).message); }
   }
   async function importBackup(f: File) {
-    const pass = prompt("Backup passphrase"); if (!pass) return;
+    const pass = passphrase; if (!pass) { setNotice("Enter the backup passphrase first"); return; }
     try {
       const data = await decryptBackup<{ chats: Chat[]; personas: Persona[] }>(JSON.parse(await f.text()) as BackupFile, pass);
       replaceChats(localStorage, data.chats ?? []); replacePersonas(localStorage, data.personas ?? []);
@@ -107,9 +110,7 @@ export default function Home() {
     } catch (e) { setNotice((e as Error).message); }
   }
   function addPersona() {
-    const name = prompt("Persona name"); if (!name) return;
-    const sp = prompt("System prompt for this persona (stored only in this browser)"); if (!sp) return;
-    try { setPersonas(savePersona(localStorage, { id: crypto.randomUUID(), name, systemPrompt: sp, createdAt: Date.now() })); } catch (e) { setNotice((e as Error).message); }
+    try { setPersonas(savePersona(localStorage, { id: crypto.randomUUID(), name: pName, systemPrompt: pPrompt, createdAt: Date.now() })); setPName(""); setPPrompt(""); } catch (e) { setNotice((e as Error).message); }
   }
 
   const sel = models.find((m) => `${m.provider}:${m.id}` === modelRef);
@@ -127,8 +128,11 @@ export default function Home() {
         <hr />
         <b>Personas</b> <small>(private, local)</small>
         {personas.map((p) => <div key={p.id}>{p.name} <button aria-label="delete persona" onClick={() => setPersonas(deletePersona(localStorage, p.id))}>×</button></div>)}
-        <button onClick={addPersona}>+ Persona</button>
+        <input data-testid="persona-name" placeholder="Persona name" value={pName} onChange={(e) => setPName(e.target.value)} style={{ width: "100%" }} />
+        <textarea data-testid="persona-prompt" placeholder="System prompt (stays in this browser)" value={pPrompt} onChange={(e) => setPPrompt(e.target.value)} style={{ width: "100%" }} />
+        <button data-testid="persona-add" onClick={addPersona}>+ Persona</button>
         <hr />
+        <input data-testid="passphrase" type="password" placeholder="Backup passphrase (min 8)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} style={{ width: "100%" }} />
         <button data-testid="export" onClick={exportBackup}>Export encrypted backup</button>
         <label style={{ display: "block", marginTop: 6 }}>Import: <input data-testid="import" type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && importBackup(e.target.files[0])} /></label>
         <button style={{ marginTop: 6 }} onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all chats</button>
