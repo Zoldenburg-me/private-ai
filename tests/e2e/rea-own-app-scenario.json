@@ -1,0 +1,11 @@
+{
+  "_comment": "REA (MIT, github.com/morluto/rea) capture_browser_scenario run against OUR OWN app on localhost only. Never point this at third-party sites. Run: npx rea-agents capture-browser-scenario tests/e2e/rea-own-app-scenario.json. Check field names against docs/browser-scenario-contract.md in the rea repo before use.",
+  "browser": { "launch": { "headless": true } },
+  "start_url": "http://localhost:3000/",
+  "actions": [
+    { "type": "wait_for_selector", "selector": "input" },
+    { "type": "type", "selector": "input", "text": "hello" },
+    { "type": "click", "selector": "form button" },
+    { "type": "wait", "ms": 2000 }
+  ]
+}

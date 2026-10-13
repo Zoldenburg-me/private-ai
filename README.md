@@ -59,3 +59,6 @@ npm test && npm run typecheck
 
 ## Licenses
 Dependencies: next (MIT), react/react-dom (MIT), typescript (Apache-2.0), vitest (MIT). No third-party UI code copied.
+
+## Clean-room observation and REA
+`docs/spec-from-observation.md` is the feature spec, built only from public pages and docs. [REA](https://github.com/morluto/rea) (MIT) is a reverse-engineering MCP and CLI. Its bundle, decompile and traffic tools must **not** be used on third-party products here. We use it only as a browser-scenario harness against our own app (`tests/e2e/rea-own-app-scenario.json`). No REA code is vendored.
