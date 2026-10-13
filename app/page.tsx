@@ -1,73 +1,170 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { loadChats, saveChat, deleteChat, wipeAll, type Chat } from "@/lib/storage";
-import { parseSseChunk } from "@/lib/sse";
-import { TIERS, type TierId } from "@/lib/tiers";
+import { useEffect, useState } from "react";
+import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat } from "@/lib/storage";
+import { loadPersonas, savePersona, deletePersona, replacePersonas, type Persona } from "@/lib/personas";
+import { parseSseChunk, type Receipt } from "@/lib/sse";
+import { encryptBackup, decryptBackup, type BackupFile } from "@/lib/backup";
+import { newNonce, verifyReport, verifySignedResponse, type VerifyResult, type AttestationReport } from "@/lib/attestation";
+import type { ModelEntry } from "@/lib/catalog";
+import type { Tier } from "@/lib/tiers";
 
+type Msg = Chat["messages"][number] & { signed?: "ok" | "fail" | "n/a" };
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
+const badgeColor: Record<string, string> = { tee: "#1f7a4d", private: "#2b5ea8", anonymized: "#7a1f1f", e2ee: "#6b3fa0" };
+const Badge = ({ t }: { t: string }) => <span data-testid={`badge-${t}`} style={{ background: badgeColor[t] ?? "#444", borderRadius: 4, padding: "1px 6px", fontSize: 11, marginLeft: 4 }}>{t.toUpperCase()}</span>;
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [chat, setChat] = useState<Chat>(newChat);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [tier, setTier] = useState<TierId>("free");
-  const [providers, setProviders] = useState<{ id: string; name: string; privacy: string }[]>([]);
-  const [provider, setProvider] = useState<string>("");
-  const used = useRef(0);
+  const [tier, setTier] = useState<Tier | null>(null);
+  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [modelRef, setModelRef] = useState("");
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [personaId, setPersonaId] = useState("");
+  const [att, setAtt] = useState<{ ref: string; result: VerifyResult } | null>(null);
+  const [notice, setNotice] = useState("");
+  const [limits, setLimits] = useState("");
 
-  useEffect(() => { setChats(loadChats(localStorage)); fetch("/api/providers").then((r) => r.json()).then(setProviders).catch(() => {}); }, []);
+  useEffect(() => {
+    setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage));
+    fetch("/api/session").then((r) => r.json()).then((s) => setTier(s.tier)).catch(() => {});
+    fetch("/api/models").then((r) => r.json()).then((m: ModelEntry[]) => {
+      setModels(m); const first = m.find((x) => x.selectable); if (first) setModelRef(`${first.provider}:${first.id}`);
+    }).catch(() => {});
+  }, []);
+
+  async function verifyEnclave(ref = modelRef): Promise<VerifyResult | null> {
+    if (!ref) return null;
+    const nonce = newNonce();
+    const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
+    if (!r.ok) { setNotice("Attestation unavailable for this provider"); return null; }
+    const j = (await r.json()) as { gateway_attestation?: AttestationReport; model_attestations?: AttestationReport[] } & AttestationReport;
+    const reports = [j.gateway_attestation, ...(j.model_attestations ?? [])].filter(Boolean) as AttestationReport[];
+    if (!reports.length && j.intel_quote) reports.push(j);
+    const results = reports.map((rep) => verifyReport(rep, nonce));
+    const ok = results.length > 0 && results.every((x) => x.ok);
+    const result: VerifyResult = { ok, checks: results.flatMap((x) => x.checks), signingAddress: results[results.length - 1]?.signingAddress, chainVerified: false };
+    setAtt({ ref, result }); return result;
+  }
+
+  async function verifySignature(receipt: Receipt): Promise<"ok" | "fail" | "n/a"> {
+    const ref = `${receipt.provider}:${receipt.model}`;
+    const a = att?.ref === ref ? att.result : await verifyEnclave(ref);
+    if (!a?.ok || !a.signingAddress || !receipt.chat_id) return "n/a";
+    const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
+    if (!r.ok) return "n/a";
+    const sig = await r.json();
+    return verifySignedResponse(sig, a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok ? "ok" : "fail";
+  }
 
   async function send() {
-    if (!input.trim() || busy) return;
-    const messages = [...chat.messages, { role: "user" as const, content: input }];
+    if (!input.trim() || busy || !modelRef) return;
+    const persona = personas.find((p) => p.id === personaId);
+    const history = chat.messages.map(({ role, content }) => ({ role, content }));
+    const messages = [...history, { role: "user" as const, content: input }];
     let current: Chat = { ...chat, title: chat.messages.length ? chat.title : input.slice(0, 40), messages: [...messages, { role: "assistant", content: "" }], updatedAt: Date.now() };
-    setChat(current); setInput(""); setBusy(true);
+    setChat(current); setInput(""); setBusy(true); setNotice("");
+    let receipt: Receipt | undefined;
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages, tier, provider: provider || undefined, usedToday: used.current }) });
-      if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
-      used.current++;
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: modelRef, stream: true, messages, ...(persona ? { pai_options: { persona: { name: persona.name, system_prompt: persona.systemPrompt } } } : {}) }) });
+      setLimits(`${res.headers.get("x-usage-remaining-daily") ?? "?"} left today`);
+      if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({})))?.error?.message || `HTTP ${res.status}`);
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ""; let text = "";
       for (;;) {
         const { value, done } = await reader.read(); if (done) break;
-        const parsed = parseSseChunk(buf + dec.decode(value, { stream: true })); buf = parsed.rest;
-        text += parsed.deltas.join("");
+        const p = parseSseChunk(buf + dec.decode(value, { stream: true })); buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt;
         current = { ...current, messages: [...messages, { role: "assistant", content: text }] }; setChat(current);
       }
+      const p = parseSseChunk(buf + "\n"); if (p.receipt) receipt = p.receipt;
     } catch (e) {
       current = { ...current, messages: [...messages, { role: "assistant", content: `⚠️ ${(e as Error).message}` }] }; setChat(current);
     } finally { setBusy(false); setChats(saveChat(localStorage, current)); }
+    if (receipt) {
+      const signed = await verifySignature(receipt).catch(() => "n/a" as const);
+      const msgs = [...current.messages] as Msg[]; msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], signed };
+      current = { ...current, messages: msgs }; setChat(current); setChats(saveChat(localStorage, current));
+    }
   }
 
+  async function exportBackup() {
+    const pass = prompt("Backup passphrase (min 8 chars). Without it the backup cannot be opened.");
+    if (!pass) return;
+    try {
+      const file = await encryptBackup({ chats: loadChats(localStorage), personas: loadPersonas(localStorage) }, pass);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: "application/json" }));
+      const a = document.createElement("a"); a.href = url; a.download = `private-ai-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url);
+      setNotice("Encrypted backup exported");
+    } catch (e) { setNotice((e as Error).message); }
+  }
+  async function importBackup(f: File) {
+    const pass = prompt("Backup passphrase"); if (!pass) return;
+    try {
+      const data = await decryptBackup<{ chats: Chat[]; personas: Persona[] }>(JSON.parse(await f.text()) as BackupFile, pass);
+      replaceChats(localStorage, data.chats ?? []); replacePersonas(localStorage, data.personas ?? []);
+      setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage)); setNotice("Backup restored");
+    } catch (e) { setNotice((e as Error).message); }
+  }
+  function addPersona() {
+    const name = prompt("Persona name"); if (!name) return;
+    const sp = prompt("System prompt for this persona (stored only in this browser)"); if (!sp) return;
+    try { setPersonas(savePersona(localStorage, { id: crypto.randomUUID(), name, systemPrompt: sp, createdAt: Date.now() })); } catch (e) { setNotice((e as Error).message); }
+  }
+
+  const sel = models.find((m) => `${m.provider}:${m.id}` === modelRef);
   return (
     <main style={{ display: "flex", height: "100vh" }}>
-      <aside style={{ width: 240, borderRight: "1px solid #222", padding: 12, overflowY: "auto" }}>
+      <aside style={{ width: 260, borderRight: "1px solid #222", padding: 12, overflowY: "auto", fontSize: 14 }}>
         <button onClick={() => setChat(newChat())}>+ New chat</button>
         <p style={{ fontSize: 12, opacity: 0.7 }}>History is stored only in this browser.</p>
         {chats.map((c) => (
           <div key={c.id} style={{ display: "flex", gap: 4, margin: "6px 0" }}>
             <a style={{ flex: 1, cursor: "pointer" }} onClick={() => setChat(c)}>{c.title}</a>
-            <button aria-label="delete" onClick={() => setChats(deleteChat(localStorage, c.id))}>×</button>
+            <button aria-label="delete chat" onClick={() => setChats(deleteChat(localStorage, c.id))}>×</button>
           </div>
         ))}
-        <button onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all</button>
+        <hr />
+        <b>Personas</b> <small>(private, local)</small>
+        {personas.map((p) => <div key={p.id}>{p.name} <button aria-label="delete persona" onClick={() => setPersonas(deletePersona(localStorage, p.id))}>×</button></div>)}
+        <button onClick={addPersona}>+ Persona</button>
+        <hr />
+        <button data-testid="export" onClick={exportBackup}>Export encrypted backup</button>
+        <label style={{ display: "block", marginTop: 6 }}>Import: <input data-testid="import" type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && importBackup(e.target.files[0])} /></label>
+        <button style={{ marginTop: 6 }} onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all chats</button>
       </aside>
       <section style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
-        <header style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-            <option value="">Default provider</option>
-            {providers.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.privacy})</option>)}
+        <header style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select data-testid="model" value={modelRef} onChange={(e) => { setModelRef(e.target.value); setAtt(null); }}>
+            {models.map((m) => (
+              <option key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`} disabled={!m.selectable}>
+                {m.name} · {m.provider} · {m.privacy.toUpperCase()}{m.e2ee ? " · E2EE" : ""}{m.selectable ? "" : " (blocked by privacy policy)"}
+              </option>
+            ))}
           </select>
-          <select value={tier} onChange={(e) => setTier(e.target.value as TierId)}>
-            {Object.values(TIERS).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {sel && <><Badge t={sel.privacy} />{sel.e2ee && <Badge t="e2ee" />}</>}
+          <select value={personaId} onChange={(e) => setPersonaId(e.target.value)}>
+            <option value="">No persona</option>
+            {personas.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          <button data-testid="verify" onClick={() => verifyEnclave()}>Verify enclave</button>
+          {att?.ref === modelRef && (att.result.ok
+            ? <span data-testid="verified" title={att.result.checks.map((c) => `${c.ok ? "✓" : "✗"} ${c.name}`).join("\n") + "\n(Intel/NVIDIA certificate chain: not yet verified locally)"} style={{ color: "#4ade80" }}>✓ Verified enclave</span>
+            : <span data-testid="not-verified" title={att.result.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")} style={{ color: "#f87171" }}>✗ Enclave check failed</span>)}
+          <span style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>{tier ? `${tier.name} plan` : ""} {limits}</span>
         </header>
-        <div style={{ flex: 1, overflowY: "auto", whiteSpace: "pre-wrap" }}>
-          {chat.messages.map((m, i) => <p key={i}><b>{m.role === "user" ? "You" : "AI"}:</b> {m.content}</p>)}
+        {notice && <div data-testid="notice" style={{ fontSize: 12, color: "#facc15" }}>{notice}</div>}
+        <div style={{ flex: 1, overflowY: "auto", whiteSpace: "pre-wrap" }} data-testid="messages">
+          {(chat.messages as Msg[]).map((m, i) => (
+            <p key={i}><b>{m.role === "user" ? "You" : "AI"}:</b> {m.content}
+              {m.signed === "ok" && <span data-testid="signed" style={{ color: "#4ade80", fontSize: 11 }}> ✓ signed by enclave</span>}
+              {m.signed === "fail" && <span style={{ color: "#f87171", fontSize: 11 }}> ✗ signature mismatch</span>}
+            </p>
+          ))}
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: "flex", gap: 8 }}>
-          <input style={{ flex: 1, padding: 8 }} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask privately…" />
-          <button disabled={busy}>Send</button>
+          <input data-testid="prompt" style={{ flex: 1, padding: 8 }} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask privately…" />
+          <button data-testid="send" disabled={busy || !modelRef}>Send</button>
         </form>
       </section>
     </main>
