@@ -15,6 +15,7 @@ const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; b
   { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested" },
   { id: "privatemode", name: "Privatemode (Edgeless)", prefix: "PRIVATEMODE", privacy: "tee-attested" },
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway" },
+  { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },
   { id: "custom", name: "Custom OpenAI-compatible", prefix: "CUSTOM", privacy: "zdr-contract" },
 ];
 
@@ -24,7 +25,8 @@ type Env = Record<string, string | undefined>;
 export function loadProviders(env: Env = process.env): ProviderConfig[] {
   return DEFS.flatMap((d) => {
     const baseUrl = env[`${d.prefix}_BASE_URL`] || d.baseUrl || "";
-    const apiKey = env[`${d.prefix}_API_KEY`] || "";
+    if (d.id === "mock" && env.MOCK_PROVIDER !== "1") return [];
+    const apiKey = env[`${d.prefix}_API_KEY`] || (d.id === "mock" ? "mock" : "");
     if (!baseUrl || !apiKey) return [];
     return [{ id: d.id, name: d.name, privacy: d.privacy, baseUrl: baseUrl.replace(/\/$/, ""), apiKey, defaultModel: env[`${d.prefix}_MODEL`] || "" }];
   });
@@ -47,4 +49,11 @@ export function buildChatRequest(p: ProviderConfig, messages: ChatMessage[], mod
       body: JSON.stringify({ model: model || p.defaultModel, messages, stream: true }),
     },
   };
+}
+
+/** Model refs are "<provider>:<model id>". */
+export function parseModelRef(ref: string): { provider: string; model: string } | null {
+  const i = ref.indexOf(":");
+  if (i <= 0) return null;
+  return { provider: ref.slice(0, i), model: ref.slice(i + 1) };
 }
