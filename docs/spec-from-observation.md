@@ -34,4 +34,5 @@ Sources:
 - **T-CHT-1:** the streamed response renders incrementally; partial SSE frames are handled. *(unit: tests/storage.test.ts › sse)*
 - **T-BIL-1:** Free tier is blocked after 20 messages a day and on context over 8k. *(unit: tests/tiers.test.ts)*
 - **T-BIL-2:** the tier must come from a server-verified entitlement. *(TODO, currently a stub)*
+- See also docs/venice-docs-study.md for the API-level study.
 - **T-E2E-1:** the rea browser scenario `tests/e2e/rea-own-app-scenario.json` runs against **our own** localhost app only.
