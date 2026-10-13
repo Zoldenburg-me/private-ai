@@ -2,7 +2,9 @@ import { TIERS, type TierId } from "./tiers";
 
 /** In-memory fair-use gate. Counts only - no content. TODO: Redis for multi-instance. */
 interface State { day: string; daily: number; minuteStart: number; minute: number; failures: number[] }
-const store = new Map<string, State>();
+// Shared via globalThis: Next bundles routes separately; a module-level Map would give each route its own quota.
+const g = globalThis as unknown as { __paiRate?: Map<string, State> };
+const store = (g.__paiRate ??= new Map<string, State>());
 
 export const ERROR_BUDGET = { failures: 20, windowMs: 30_000 };
 

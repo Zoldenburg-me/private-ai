@@ -2,7 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mockReport, mockSign, mockAddress } from "./mock-tee";
 
 /** DEV/TEST ONLY mock enclave provider (enabled with MOCK_PROVIDER=1). Keeps hashes only, never content. */
-const receipts = new Map<string, string>();
+// globalThis: Next bundles each route separately, so module-level state isn't shared across routes.
+const g = globalThis as unknown as { __paiMockReceipts?: Map<string, string> };
+const receipts = (g.__paiMockReceipts ??= new Map<string, string>());
 export const mockEnabled = () => process.env.MOCK_PROVIDER === "1";
 const off = () => Response.json({ error: "mock disabled" }, { status: 404 });
 

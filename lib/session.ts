@@ -37,7 +37,8 @@ export function identityFrom(req: Request): string | null {
 }
 
 /** Entitlement store. TODO(payments): back with DB + Stripe/x402 webhooks. Env seed: ENTITLEMENTS='{"<id>":"pro"}'. */
-const entitlements = new Map<string, TierId>();
+const g = globalThis as unknown as { __paiEnt?: Map<string, TierId> };
+const entitlements = (g.__paiEnt ??= new Map<string, TierId>());
 export function setTier(id: string, tier: TierId) { entitlements.set(id, tier); }
 export function tierOf(id: string): TierId {
   if (entitlements.has(id)) return entitlements.get(id)!;
