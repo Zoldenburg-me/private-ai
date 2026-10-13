@@ -18,3 +18,9 @@ describe("sse", () => {
     expect(r.deltas.join("")).toBe("Hey"); expect(r.done).toBe(true); expect(r.rest).toBe('data: {"cho');
   });
 });
+describe("sse receipt", () => {
+  it("extracts pai_receipt", () => {
+    const r = parseSseChunk('data: [DONE]\n\nevent: pai_receipt\ndata: {"chat_id":"c","provider":"p","model":"m","req_sha256":"a","resp_sha256":"b"}\n\n');
+    expect(r.receipt?.chat_id).toBe("c"); expect(r.deltas).toEqual([]);
+  });
+});

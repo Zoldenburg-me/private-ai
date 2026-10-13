@@ -21,3 +21,4 @@ export function deleteChat(kv: KV, id: string): Chat[] {
   return next;
 }
 export function wipeAll(kv: KV) { kv.removeItem(KEY); }
+export function replaceChats(kv: KV, chats: Chat[]) { kv.setItem(KEY, JSON.stringify(chats)); }
