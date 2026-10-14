@@ -1,6 +1,6 @@
 import { appBaseUrl, BillingError, createCheckout, createPortal, handleWebhook, priceId, stripe, type Interval, type Plan } from "./billing";
 import { identityFrom } from "./session";
-import { stores, withStores } from "./store";
+import { ENTITLED_STATUSES, stores, withStores } from "./store";
 import { metaLogger } from "./log";
 
 /** HTTP glue for app/api/billing/*. */
@@ -12,7 +12,9 @@ const billing = (fn: (req: Request) => Promise<Response>) => withStores(async (r
 
 export const billingStatus = billing(async (req) => {
   const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
-  const sub = await (await stores()).accounts.latestSubscriptionFor(id);
+  // Prefer an entitled subscription, so a recently canceled older one cannot hide Manage.
+  const subs = await (await stores()).accounts.listSubscriptionsFor(id);
+  const sub = subs.find((x) => (ENTITLED_STATUSES as readonly string[]).includes(x.status)) ?? subs[0];
   const plans = (["pro", "max"] as Plan[]).flatMap((plan) => (["month", "year"] as Interval[]).map((interval) => ({ plan, interval, available: !!priceId(plan, interval) })));
   return json({
     configured: !!stripe(), plans,

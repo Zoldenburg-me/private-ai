@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import type { ConsumeLimits, ConsumeResult, CounterStore } from "./types";
+import type { ConsumeLimits, ConsumeResult, CounterStore, HitResult } from "./types";
 import { dayKey, minuteStartOf } from "./types";
 
 /**
@@ -26,12 +26,23 @@ redis.call('PEXPIRE', KEYS[2], ARGV[8])
 return {'ok', daily, minute, oldest}
 `;
 
-type WithConsume = Redis & { paiConsume(...args: (string | number)[]): Promise<[string, number, number, number]> };
+/** Fixed-window counter: INCR, set the TTL on the first hit only. KEYS: counter. ARGV: windowMs. */
+const HIT = `
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+return c
+`;
+
+type WithConsume = Redis & {
+  paiConsume(...args: (string | number)[]): Promise<[string, number, number, number]>;
+  paiHit(key: string, windowMs: number): Promise<number>;
+};
 
 export class RedisCounterStore implements CounterStore {
   private r: WithConsume;
   constructor(client: Redis, private prefix = "pai:") {
     client.defineCommand("paiConsume", { numberOfKeys: 3, lua: CONSUME });
+    client.defineCommand("paiHit", { numberOfKeys: 1, lua: HIT });
     this.r = client as WithConsume;
   }
 
@@ -57,6 +68,11 @@ export class RedisCounterStore implements CounterStore {
     await this.r.multi().zadd(key, now, `${now}:${Math.random().toString(36).slice(2)}`).pexpire(key, windowMs).exec();
   }
   async usedToday(id: string, now: number) { return Number((await this.r.get(this.k("d", id, `:${dayKey(now)}`))) ?? 0); }
+  async hit(bucket: string, limit: number, windowMs: number, now: number): Promise<HitResult> {
+    const start = Math.floor(now / windowMs) * windowMs;
+    const count = Number(await this.r.paiHit(this.k("rl", bucket, `:${start}`), windowMs));
+    return { allowed: count <= limit, count, resetAt: start + windowMs };
+  }
   async putOnce(key: string, value: string, ttlMs: number) { await this.r.set(`${this.prefix}once:${key}`, value, "PX", ttlMs); }
   async takeOnce(key: string) { return this.r.getdel(`${this.prefix}once:${key}`); }
   async ping() { await this.r.ping(); }

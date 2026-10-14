@@ -7,8 +7,8 @@ import { RETENTION_DAYS } from "./retention";
  */
 export interface DataField { store: "postgres" | "redis" | "server-log" | "browser"; container: string; field: string; en: string; de: string; retentionEn: string; retentionDe: string }
 
-const ACCOUNT_EN = `until ${RETENTION_DAYS} days after the account was last seen (no active subscription), or until you ask us to delete it`;
-const ACCOUNT_DE = `bis ${RETENTION_DAYS} Tage nach der letzten Nutzung (ohne aktives Abo) oder bis zur Löschung auf Anfrage`;
+const ACCOUNT_EN = `until ${RETENTION_DAYS} days after the account was last seen (no active subscription), or until you delete the account (Account → Delete account)`;
+const ACCOUNT_DE = `bis ${RETENTION_DAYS} Tage nach der letzten Nutzung (ohne aktives Abo) oder bis Sie das Konto löschen (Konto → Konto löschen)`;
 const acc = (container: string, field: string, en: string, de: string): DataField => ({ store: "postgres", container, field, en, de, retentionEn: ACCOUNT_EN, retentionDe: ACCOUNT_DE });
 
 export const DATA_INVENTORY: DataField[] = [
@@ -38,7 +38,9 @@ export const DATA_INVENTORY: DataField[] = [
   { store: "redis", container: "pai:m:{account}:<minute>", field: "counter", en: "Requests in the current minute (a number).", de: "Anfragen in der aktuellen Minute (eine Zahl).", retentionEn: "expires after 2 minutes", retentionDe: "läuft nach 2 Minuten ab" },
   { store: "redis", container: "pai:f:{account}", field: "timestamps", en: "Times of failed requests (error budget).", de: "Zeitpunkte fehlgeschlagener Anfragen (Fehlerbudget).", retentionEn: "30 seconds", retentionDe: "30 Sekunden" },
   { store: "redis", container: "pai:once:webauthn:reg:<challenge>", field: "account id", en: "Pending passkey registration challenge.", de: "Offene Passkey-Registrierungs-Challenge.", retentionEn: "used once or 5 minutes", retentionDe: "einmalig bzw. 5 Minuten" },
-  { store: "redis", container: "pai:once:webauthn:auth:<challenge>", field: "flag", en: "Pending passkey login challenge (no account id).", de: "Offene Passkey-Login-Challenge (ohne Konto-ID).", retentionEn: "used once or 5 minutes", retentionDe: "einmalig bzw. 5 Minuten" },
+  { store: "redis", container: "pai:once:webauthn:auth:<challenge>", field: "flag or account id", en: "Pending passkey login challenge; holds the account id only when confirming an action on the signed-in account.", de: "Offene Passkey-Login-Challenge; enthält die Konto-ID nur bei der Bestätigung einer Aktion im angemeldeten Konto.", retentionEn: "used once or 5 minutes", retentionDe: "einmalig bzw. 5 Minuten" },
+  { store: "redis", container: "pai:once:webauthn:stepup:<account>", field: "flag", en: "Marks a passkey login in the last 5 minutes, needed to add/remove a passkey or delete the account.", de: "Markiert einen Passkey-Login der letzten 5 Minuten; nötig zum Hinzufügen/Entfernen eines Passkeys oder Löschen des Kontos.", retentionEn: "used once or 5 minutes", retentionDe: "einmalig bzw. 5 Minuten" },
+  { store: "redis", container: "pai:rl:{<route or account>}:<window>", field: "counter", en: "Abuse limit: requests per window for a route (all users together) or for an account id. Never an IP address.", de: "Missbrauchsschutz: Anfragen je Zeitfenster für eine Route (alle Nutzer zusammen) oder eine Konto-ID. Nie eine IP-Adresse.", retentionEn: "expires with its window (at most 1 hour)", retentionDe: "läuft mit dem Zeitfenster ab (höchstens 1 Stunde)" },
   ...([
     ["route", "API route called", "aufgerufene API-Route"], ["provider", "inference provider id", "ID des Inferenz-Anbieters"], ["model", "model id", "Modell-ID"],
     ["status", "HTTP status", "HTTP-Status"], ["ms", "duration in ms", "Dauer in ms"], ["tier", "plan", "Tarif"], ["event", "event name, e.g. gated", "Ereignisname, z. B. gated"],

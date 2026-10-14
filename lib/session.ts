@@ -43,15 +43,20 @@ export function issueTokenFor(id: string): string {
   return `pai_${id}.${sign(id)}`;
 }
 
-/** New anonymous session, persisted (opaque id + timestamps only). */
+/**
+ * New anonymous session. Nothing is written: the account row appears on the first request that
+ * carries the token (touchSession), so minting tokens in a loop cannot grow the database.
+ */
 export async function createSession(): Promise<{ id: string; token: string }> {
-  const s = issueToken();
-  await (await stores()).accounts.touchSession(s.id);
-  return s;
+  return issueToken();
 }
 
 /** Record that the account was seen today (day granularity, nothing else). */
 export async function touchSession(id: string): Promise<void> { await (await stores()).accounts.touchSession(id); }
+
+/** Expires the session cookie (after account deletion). */
+export const clearedSessionCookie = () =>
+  `pai_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
 
 export const sessionCookie = (token: string) =>
   `pai_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
@@ -62,8 +67,8 @@ export const sessionCookie = (token: string) =>
  */
 export async function setTier(id: string, tier: TierId): Promise<void> {
   const { accounts } = await stores();
-  if (tier === "free") await accounts.clearEntitlement(id);
-  else await accounts.setEntitlement(id, { tier, source: "manual", expiresAt: null });
+  // A stored manual "free" (not just clearing) so a paid ENTITLEMENTS seed cannot win again.
+  await accounts.setEntitlement(id, { tier, source: "manual", expiresAt: null });
 }
 
 export async function tierOf(id: string, now = Date.now()): Promise<TierId> {

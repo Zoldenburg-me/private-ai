@@ -25,6 +25,7 @@ const mock = (): StripeLike => ({
   checkout: { sessions: { create: async (p) => { checkoutCalls.push(p); return { url: "https://checkout.stripe.com/c/pay/cs_test_1" }; } } },
   billingPortal: { sessions: { create: async (p) => ({ url: `https://billing.stripe.com/p/session/${p.customer}` }) } },
   subscriptions: { retrieve: async (id) => { const s = subs.get(id); if (!s) throw new Error("no such subscription"); return s; } },
+  customers: { del: async (id) => ({ id, deleted: true }) },
   webhooks: real.webhooks,
 });
 
@@ -117,6 +118,24 @@ describe("stripe webhook", () => {
     await webhookPOST(signed(evt("customer.subscription.deleted", subs.get("sub_5")!)));
     expect(await tierOf(id)).toBe("max");
   });
+  it("subscription metadata cannot move an existing subscription to another account", async () => {
+    const a = await createSession(); const b = await createSession();
+    sub("sub_8", a.id, "price_pro_m", "active");
+    await webhookPOST(signed(evt("customer.subscription.created", subs.get("sub_8")!)));
+    expect(await tierOf(a.id)).toBe("pro");
+    sub("sub_8", b.id, "price_max_m", "active"); // metadata edited to point at B
+    await webhookPOST(signed(evt("customer.subscription.updated", subs.get("sub_8")!)));
+    expect(await st.accounts.getSubscription("sub_8")).toMatchObject({ accountId: a.id, tier: "max" });
+    expect(await tierOf(a.id)).toBe("max");
+    expect(await tierOf(b.id)).toBe("free");
+  });
+  it("a manual free override does not block a later Stripe purchase", async () => {
+    const { id } = await createSession();
+    await st.accounts.setEntitlement(id, { tier: "free", source: "manual", expiresAt: null });
+    sub("sub_9", id, "price_pro_m", "active");
+    await webhookPOST(signed(evt("customer.subscription.created", subs.get("sub_9")!)));
+    expect(await tierOf(id)).toBe("pro");
+  });
   it("access lapses after period end + grace even if webhooks are missed", async () => {
     const { id } = await createSession();
     const end = Math.floor(Date.now() / 1000) + 10 * 86400;
@@ -126,6 +145,25 @@ describe("stripe webhook", () => {
     expect(await tierOf(id, end * 1000 + 4 * 86_400_000)).toBe("free");
     await recomputeEntitlement(id, end * 1000 + 4 * 86_400_000);
     expect(await st.accounts.getEntitlement(id)).toBeNull();
+  });
+});
+
+describe("billing status", () => {
+  it("reports the entitled subscription even when an older one was canceled more recently", async () => {
+    const { id, token } = await createSession();
+    sub("sub_new", id, "price_pro_m", "active");
+    await webhookPOST(signed(evt("customer.subscription.created", subs.get("sub_new")!)));
+    sub("sub_old", id, "price_pro_m", "canceled");
+    await st.accounts.upsertSubscription({ stripeSubscriptionId: "sub_old", accountId: id, stripeCustomerId: "cus_123", tier: "pro", status: "canceled", currentPeriodEnd: null });
+    const status = await (await billingGET(authed("/api/billing", token))).json();
+    expect(status.subscription).toMatchObject({ status: "active" });
+  });
+  it("lists which plans can actually be bought", async () => {
+    vi.stubEnv("STRIPE_PRICE_MAX_YEARLY", "");
+    const { token } = await createSession();
+    const { plans } = await (await billingGET(authed("/api/billing", token))).json();
+    expect(plans).toContainEqual({ plan: "max", interval: "year", available: false });
+    expect(plans).toContainEqual({ plan: "pro", interval: "month", available: true });
   });
 });
 

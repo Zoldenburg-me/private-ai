@@ -9,6 +9,7 @@ import { streamChat, toChatMessages } from "@/lib/client/chat-stream";
 import type { Receipt } from "@/lib/sse";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
+import type { ChatScope } from "@/lib/chat-scope";
 
 export type Signed = "ok" | "fail" | "n/a";
 export type StoredMsg = Chat["messages"][number] & { signed?: Signed };
@@ -18,7 +19,9 @@ export interface ThreadProps {
   modelRef: string;
   persona?: Persona;
   ghost: boolean;
-  onSaved: (chat: Chat, ghost: boolean) => void;
+  /** isCurrent=false: the user switched chats mid-stream; persist, but do not show. */
+  onSaved: (chat: Chat, ghost: boolean, isCurrent: boolean) => void;
+  scope: ChatScope;
   onUsage: (remaining: string | null) => void;
   verifySignature: (r: Receipt) => Promise<Signed>;
   suggestions?: string[];
@@ -50,21 +53,23 @@ export function ChatThread(props: ThreadProps) {
     async *run({ messages, abortSignal }) {
       const p = ref.current;
       const ghost = p.ghost; // fixed for this turn
+      const turn = p.scope.begin(); // a chat switch aborts this stream and drops later UI updates
+      const signal = AbortSignal.any([abortSignal, turn.signal]);
       const history = toChatMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       let text = ""; let receipt: Receipt | undefined;
       const save = (signed?: Signed) => {
         const msgs: StoredMsg[] = [...history, { role: "assistant", content: text, ...(signed ? { signed } : {}) }];
         const first = history.find((m) => m.role === "user")?.content ?? "New chat";
-        p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost);
+        p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost, turn.current());
       };
       try {
-        for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal: abortSignal })) {
+        for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal })) {
           text = u.text; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining);
           yield { content: [{ type: "text", text }] };
         }
       } catch (e) {
-        if ((e as Error).name === "AbortError") { save(); return; }
+        if (signal.aborted) { save(); return; } // keep what streamed so far, no error text
         text = `⚠️ ${(e as Error).message}`; save();
         yield { content: [{ type: "text", text }], status: { type: "incomplete", reason: "error", error: (e as Error).message } };
         return;

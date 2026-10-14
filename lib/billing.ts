@@ -33,6 +33,7 @@ export interface StripeLike {
   checkout: { sessions: { create(p: Stripe.Checkout.SessionCreateParams): Promise<{ url: string | null }> } };
   billingPortal: { sessions: { create(p: Stripe.BillingPortal.SessionCreateParams): Promise<{ url: string }> } };
   subscriptions: { retrieve(id: string): Promise<Stripe.Subscription> };
+  customers: { del(id: string): Promise<unknown> };
   webhooks: { constructEvent(payload: string, header: string, secret: string): Stripe.Event };
 }
 const g = globalThis as unknown as { __paiStripe?: StripeLike };
@@ -66,7 +67,8 @@ export async function createCheckout(accountId: string, plan: Plan, interval: In
 
 export async function createPortal(accountId: string, baseUrl: string): Promise<string> {
   const s = stripe(); if (!s) throw new BillingError(503, "payments not configured");
-  const sub = await (await stores()).accounts.latestSubscriptionFor(accountId);
+  const subs = await (await stores()).accounts.listSubscriptionsFor(accountId);
+  const sub = subs.find((x) => ENTITLED.has(x.status)) ?? subs[0];
   if (!sub) throw new BillingError(404, "no subscription on this account");
   return (await s.billingPortal.sessions.create({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/` })).url;
 }
@@ -77,21 +79,44 @@ const periodEnd = (sub: Stripe.Subscription): number | null => {
 };
 const idOf = (x: string | { id: string } | null | undefined) => (typeof x === "string" ? x : x?.id ?? null);
 
+/**
+ * Erasure: delete every Stripe customer of the account (this cancels its subscriptions at once).
+ * Invoices Stripe must keep for tax law stay with Stripe. Throws BillingError so the caller can
+ * refuse the local deletion instead of leaving a paying customer behind without an account.
+ */
+export async function deleteStripeCustomers(accountId: string): Promise<number> {
+  const subs = await (await stores()).accounts.listSubscriptionsFor(accountId);
+  const customers = [...new Set(subs.map((x) => x.stripeCustomerId))];
+  if (customers.length === 0) return 0;
+  const s = stripe(); if (!s) throw new BillingError(503, "payments not configured; cannot delete the billing record");
+  for (const c of customers) {
+    try { await s.customers.del(c); } catch (e) {
+      if ((e as { code?: unknown }).code === "resource_missing") continue; // already gone
+      throw new BillingError(502, "billing provider unavailable; nothing was deleted, try again later");
+    }
+  }
+  return customers.length;
+}
+
 /** Re-read the subscription from Stripe (events can arrive late or out of order), store it, recompute access. */
 export async function syncSubscription(subscriptionId: string, accountHint?: string | null): Promise<string | null> {
   const s = stripe(); if (!s) throw new BillingError(503, "payments not configured");
   const { accounts } = await stores();
   const sub = await s.subscriptions.retrieve(subscriptionId);
   const known = await accounts.getSubscription(sub.id);
-  const accountId = [sub.metadata?.pai_account, known?.accountId, accountHint].find((x) => typeof x === "string" && ACCOUNT_RE.test(x));
+  // The first owner sticks: metadata can be edited in the Stripe dashboard or API and must never
+  // move an existing subscription (and its paid entitlement) to another account.
+  const accountId = known?.accountId ?? [sub.metadata?.pai_account, accountHint].find((x) => typeof x === "string" && ACCOUNT_RE.test(x));
   if (!accountId) return null; // not ours (or missing reference): ignore, never guess
   const tier = tierForPrice(sub.items?.data?.[0]?.price?.id);
   const customer = idOf(sub.customer as string | { id: string });
   if (!customer) return null;
+  // A deleted account must not be recreated by the cancellation events its deletion triggers:
+  // only an entitling (paid) subscription may create the account row.
   await accounts.upsertSubscription({
     stripeSubscriptionId: sub.id, accountId, stripeCustomerId: customer,
     tier: tier ?? "free", status: sub.status, currentPeriodEnd: periodEnd(sub),
-  });
+  }, { onlyIfAccountExists: !ENTITLED.has(sub.status) });
   await recomputeEntitlement(accountId);
   return accountId;
 }
@@ -100,7 +125,8 @@ export async function syncSubscription(subscriptionId: string, accountHint?: str
 export async function recomputeEntitlement(accountId: string, now = Date.now()) {
   const { accounts } = await stores();
   const current = await accounts.getEntitlement(accountId);
-  if (current?.source === "manual") return;
+  // Manual paid plans (ops) win; a manual "free" is only a downgrade and must not block a purchase.
+  if (current?.source === "manual" && current.tier !== "free") return;
   const best = (await accounts.listSubscriptionsFor(accountId))
     .filter((x) => ENTITLED.has(x.status) && x.tier !== "free" && (x.currentPeriodEnd == null || x.currentPeriodEnd + GRACE_MS > now))
     .sort((a, b) => RANK[b.tier] - RANK[a.tier])[0];

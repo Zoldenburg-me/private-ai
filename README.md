@@ -54,7 +54,10 @@ Configure in `.env.local` (copy `.env.example`). Never commit keys.
 - **Personas** (`lib/personas.ts`): stored in the browser, private by default.
 - **OpenAI-compatible API**: `POST /api/v1/chat/completions` with `Authorization: Bearer <apiToken from /api/session>`, `model: "<provider>:<model>"`, and the extension `pai_options: { persona: { system_prompt }, web_search: false }`. Unknown fields are dropped.
 - **Persistence** (`lib/store/`): `AccountStore` (Postgres via `postgres` + plain SQL in `migrations/`, applied automatically under an advisory lock) and `CounterStore` (Redis via `ioredis`, one atomic Lua call per request). In-memory implementations are used when `DATABASE_URL` / `REDIS_URL` are unset (dev/test). If a backend is configured but unreachable, requests **fail closed with 503**; production refuses the memory fallback unless `PAI_ALLOW_MEMORY_STORE=1`.
-- **Passkeys** (`lib/passkey.ts`, `/api/auth/passkey/*`): optional upgrade of the anonymous account. The WebAuthn user handle is the opaque account id; logging in on another device issues a token for the same id, so the plan follows. Challenges live in Redis (5 min, single use).
+- **Passkeys** (`lib/passkey.ts`, `/api/auth/passkey/*`): optional upgrade of the anonymous account. The WebAuthn user handle is the opaque account id; logging in on another device issues a token for the same id, so the plan follows. Challenges live in Redis (5 min, single use). User verification (PIN/biometric) is required. Once an account has a passkey, adding or removing one and deleting the account need a passkey login from the last 5 minutes (step-up, bound to that account), so a copied session cookie alone cannot take the account over.
+- **Account rights** (`lib/account-routes.ts`): `GET /api/account/export` returns everything stored server-side as JSON; `DELETE /api/account` deletes the Stripe customer(s) first (fails closed if Stripe is unreachable) and then the account row, which cascades. Both are in the sidebar under Account.
+- **Abuse limits** (`lib/limits.ts`): anonymous tokens are minted without a database write (the row appears on first use); new sessions, passkey logins and per-account actions are capped with Redis counters keyed by route or account id, never by IP (`PAI_LIMIT_*` in `.env.example`). Per-client limits belong in the reverse proxy. Trade-off of not using IPs: one client can exhaust the global new-session or anonymous passkey-login bucket and briefly block those for everyone; signed-in account actions (including step-up logins) use per-account buckets and are not affected.
+- **Security headers** (`middleware.ts`): per-request nonce CSP (`script-src 'self' 'nonce-…' 'strict-dynamic'`, same-origin `connect-src`/`img-src`, `frame-ancestors 'none'`), HSTS in production. Pages therefore render dynamically.
 - **Stripe subscriptions** (`lib/billing.ts`, `/api/billing/*`): Checkout for Pro/Max monthly or yearly, signed webhook that re-reads the subscription and sets/clears the entitlement, Customer Portal for cancel/manage. Only customer/subscription ids + status are stored.
 - **Ghost chat**: toggle in the UI; `persist()` is the only source of a `Writer`, and every storage write function requires one, so ghost mode cannot write by construction (type-checked and tested).
 - **Markdown** (`components/markdown.tsx`): react-markdown + remark-gfm, no raw HTML, images rendered as links (never loaded), links `rel="noopener noreferrer"`.
@@ -77,7 +80,7 @@ cp .env.example .env         # set SESSION_SECRET (>= 32 chars), POSTGRES_PASSWO
 docker compose up -d --build # app on 127.0.0.1:${APP_PORT:-3000}, migrations run on first request
 curl localhost:3000/api/health
 ```
-Sessions, plans and today's usage survive `docker compose restart` and `down`/`up` (volumes `pgdata`, `redisdata`; Redis uses AOF). On Hetzner, put Caddy or nginx with TLS in front and do not log client IPs there.
+Sessions, plans and today's usage survive `docker compose restart` and `down`/`up` (volumes `pgdata`, `redisdata`; Redis uses AOF). On Hetzner, put Caddy or nginx with TLS in front and do not log client IPs there. Add a per-IP request limit in the proxy for `/api/session` and `/api/auth/passkey/login/*` (e.g. nginx `limit_req_zone $binary_remote_addr`, kept in memory only); the app itself never sees or stores IPs.
 
 **Integration tests against real backends** (the store and rate-limit contract tests run against both memory and the real service):
 ```
@@ -101,8 +104,11 @@ Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Event
 - [x] Ghost chat, Markdown rendering
 - [x] Legal page drafts (Impressum, Datenschutz, AGB, stored-metadata list)
 - [ ] **Lawyer review** of all `TODO` markers on the legal pages (Widerrufsrecht, Haftung, Stripe/Hetzner/provider DPAs, third-country transfers); fill in company details
-- [ ] Self-service account deletion endpoint (today: on request via account id) and a "show my account id" view
-- [ ] Rate-limit the unauthenticated passkey login-options endpoint (challenges expire after 5 min, but are unmetered)
+- [x] Self-service account export and deletion (incl. Stripe customer), passkey removal
+- [x] Abuse limits on session minting and passkey login; CSP + HSTS; passkey user verification required
+- [ ] Per-IP limits in the reverse proxy config (not in this repo yet)
+- [ ] Session revocation (tokens are deterministic per account; a leaked cookie stays valid, and after account deletion an old token can still start a new, empty account with the same id)
+- Note: passkeys are now registered and verified with user verification required; a passkey created earlier without PIN/biometric can no longer log in.
 - [ ] Payments via crypto (x402 / Zold) as an accountless alternative
 - [ ] DCAP quote chain + NVIDIA NRAS verification (dcap-qvl wasm)
 - [ ] Model picker from provider /models, image gen, doc upload

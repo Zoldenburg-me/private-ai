@@ -3,15 +3,19 @@ import { useState } from "react";
 import { TIERS, type Tier, type TierId } from "@/lib/tiers";
 import type { Usage } from "./UsageMeter";
 
-export interface Billing { configured: boolean; subscription: { tier: string; status: string } | null }
+export interface Billing { configured: boolean; plans?: { plan: string; interval: string; available: boolean }[]; subscription: { tier: string; status: string } | null }
+export interface PasskeyInfo { id: string; label: string; createdAt: number }
 
 export function SettingsView(p: {
-  tier: Tier | null; usage: Usage | null; billing: Billing | null; passkeys: number; ghost: boolean;
+  tier: Tier | null; usage: Usage | null; billing: Billing | null; passkeys: PasskeyInfo[]; ghost: boolean;
   onCheckout: (plan: "pro" | "max", interval: "month" | "year") => void; onPortal: () => void;
-  onAddPasskey: () => void; onLoginPasskey: () => void;
+  onAddPasskey: () => void; onLoginPasskey: () => void; onRemovePasskey: (id: string) => void;
+  onExportAccount: () => void; onDeleteAccount: () => void;
   onExport: (pass: string) => void; onImport: (f: File, pass: string) => void; onWipe: () => void;
 }) {
   const [pass, setPass] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const available = (plan: string, interval: string) => (p.billing?.plans ?? []).some((x) => x.plan === plan && x.interval === interval && x.available);
   const active = p.billing?.subscription && ["active", "trialing", "past_due"].includes(p.billing.subscription.status);
   return (
     <div className="page" data-testid="settings-view">
@@ -33,8 +37,8 @@ export function SettingsView(p: {
                 </ul>
                 {!cur && id !== "free" && p.billing?.configured && !active && (
                   <div className="row gap">
-                    <button type="button" className="btn primary" onClick={() => p.onCheckout(id as "pro" | "max", "month")}>Monthly</button>
-                    <button type="button" className="btn" onClick={() => p.onCheckout(id as "pro" | "max", "year")}>Yearly</button>
+                    {available(id, "month") && <button type="button" className="btn primary" onClick={() => p.onCheckout(id as "pro" | "max", "month")}>Monthly</button>}
+                    {available(id, "year") && <button type="button" className="btn" onClick={() => p.onCheckout(id as "pro" | "max", "year")}>Yearly</button>}
                   </div>
                 )}
               </div>
@@ -48,10 +52,25 @@ export function SettingsView(p: {
 
       <section className="panel">
         <h2>Account</h2>
-        <p className="small muted">No email needed. {p.passkeys ? `${p.passkeys} passkey(s) on this account.` : "Anonymous: your plan is tied to this browser."}</p>
-        <div className="row gap">
-          <button type="button" className="btn" data-testid="passkey-add" onClick={p.onAddPasskey}>Save account with a passkey</button>
+        <p className="small muted">No email needed. {p.passkeys.length ? `${p.passkeys.length} passkey(s) on this account.` : "Anonymous: your plan is tied to this browser."}</p>
+        <ul className="plain small">
+          {p.passkeys.map((k) => (
+            <li key={k.id}>🔑 {k.label}… <span className="muted">{new Date(k.createdAt).toLocaleDateString()}</span>{" "}
+              <button type="button" className="icon-btn" aria-label="Remove passkey" data-testid="passkey-remove" onClick={() => p.onRemovePasskey(k.id)}>✕</button></li>
+          ))}
+        </ul>
+        <div className="row gap wrap">
+          <button type="button" className="btn" data-testid="passkey-add" onClick={p.onAddPasskey}>{p.passkeys.length ? "Add another passkey" : "Save account with a passkey"}</button>
           <button type="button" className="btn" data-testid="passkey-login" onClick={p.onLoginPasskey}>Log in with a passkey</button>
+        </div>
+        {!p.passkeys.length && p.billing?.subscription && <p className="small" style={{ color: "var(--warn)" }}>Tip: save a passkey so you can restore your plan on other devices.</p>}
+        <h3>Your server-side data</h3>
+        <div className="row gap wrap">
+          <button type="button" className="btn" data-testid="account-export" onClick={p.onExportAccount}>Download my data</button>
+          {confirmDelete
+            ? <><button type="button" className="btn danger" data-testid="account-delete-confirm" onClick={() => { setConfirmDelete(false); p.onDeleteAccount(); }}>Really delete account</button>
+                <button type="button" className="btn ghost" onClick={() => setConfirmDelete(false)}>Cancel</button></>
+            : <button type="button" className="btn danger" data-testid="account-delete" onClick={() => setConfirmDelete(true)}>Delete account</button>}
         </div>
       </section>
 

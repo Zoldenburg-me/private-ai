@@ -19,6 +19,7 @@ import { ModelPicker } from "@/components/app/ModelPicker";
 import { PersonaGallery } from "@/components/app/PersonaGallery";
 import { SettingsView, type Billing } from "@/components/app/SettingsView";
 import { UsageMeter, type Usage } from "@/components/app/UsageMeter";
+import { ChatScope } from "@/lib/chat-scope";
 
 type View = "chat" | "personas" | "settings";
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
@@ -40,9 +41,12 @@ export default function Home() {
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
   const [drawer, setDrawer] = useState(false);
   const [notice, setNotice] = useState("");
-  const [passkeys, setPasskeys] = useState(0);
+  const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
   const [ghost, setGhost] = useState(false);
   const [billing, setBilling] = useState<Billing | null>(null);
+  const [scope] = useState(() => new ChatScope());
+  /** Every chat switch goes through here so a running reply cannot follow into the next chat. */
+  function openChat(next: Chat, nextGhost = ghost) { scope.switch(); setGhost(nextGhost); setChat(next); }
 
   // Open the encrypted local vault (non-extractable key in IndexedDB); fall back to read-nothing if unavailable.
   useEffect(() => {
@@ -60,7 +64,7 @@ export default function Home() {
       setTier(s.tier);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.tier?.dailyMessages });
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
-      return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys?.length ?? 0));
+      return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys ?? []));
     }).catch(() => {});
   }
 
@@ -90,15 +94,15 @@ export default function Home() {
     return verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok ? "ok" : "fail";
   }, [proofs, checkProof]);
 
-  const onSaved = useCallback((c: Chat, wasGhost: boolean) => {
-    setChat(c);
+  const onSaved = useCallback((c: Chat, wasGhost: boolean, isCurrent: boolean) => {
+    if (isCurrent) setChat(c);
     if (!kv) return;
     const saved = persist(kv, { ghost: wasGhost }, (w) => saveChat(w, c)); if (saved) setChats(saved);
   }, [kv]);
 
   function startChat(opts: { ghost?: boolean; personaId?: string } = {}) {
-    setGhost(!!opts.ghost); if (opts.personaId !== undefined) setPersonaId(opts.personaId);
-    setChat(newChat()); setView("chat");
+    if (opts.personaId !== undefined) setPersonaId(opts.personaId);
+    openChat(newChat(), !!opts.ghost); setView("chat");
   }
 
   function addPersona(name: string, systemPrompt: string): boolean {
@@ -135,7 +139,7 @@ export default function Home() {
   }
   function wipe() {
     if (!kv) return;
-    if (persist(kv, { ghost }, (w) => { wipeAll(w); return true; })) { setChats([]); setChat(newChat()); setNotice("All chats wiped from this browser"); }
+    if (persist(kv, { ghost }, (w) => { wipeAll(w); return true; })) { setChats([]); openChat(newChat()); setNotice("All chats wiped from this browser"); }
   }
   async function goBilling(path: string, body: object = {}) {
     try {
@@ -144,9 +148,18 @@ export default function Home() {
       window.location.href = j.url;
     } catch (e) { setNotice(`Billing: ${(e as Error).message}`); }
   }
+  const errorOf = async (r: Response) => (await r.json().catch(() => null))?.error?.message ?? `HTTP ${r.status}`;
+  /** Sensitive account actions: if the server asks for a fresh passkey login, do it and retry once. */
+  async function withStepUp(run: () => Promise<Response>): Promise<Response> {
+    const r = await run();
+    if (r.status !== 403 || (await r.clone().json().catch(() => null))?.error?.code !== "step_up_required") return r;
+    setNotice("Confirm with one of your passkeys");
+    return (await loginPasskey(true)) ? run() : r;
+  }
+  /** Passkey = optional upgrade of this anonymous account; no email or username. */
   async function addPasskey() {
     try {
-      const o = await fetch("/api/auth/passkey/register/options", { method: "POST" });
+      const o = await withStepUp(() => fetch("/api/auth/passkey/register/options", { method: "POST" }));
       if (!o.ok) throw new Error((await o.json()).error?.message ?? `HTTP ${o.status}`);
       const att = await startRegistration({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/register/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(att) });
@@ -154,15 +167,35 @@ export default function Home() {
       setNotice("Passkey saved. Use it to restore your plan on other devices."); refreshSession();
     } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
   }
-  async function loginPasskey() {
+  async function loginPasskey(stepUp = false): Promise<boolean> {
     try {
-      const o = await fetch("/api/auth/passkey/login/options", { method: "POST" });
+      const o = await fetch("/api/auth/passkey/login/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stepUp }) });
       if (!o.ok) throw new Error(`HTTP ${o.status}`);
       const asr = await startAuthentication({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/login/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(asr) });
       if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
-      setNotice("Logged in with passkey"); refreshSession();
-    } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
+      if (!stepUp) { setNotice("Logged in with passkey"); refreshSession(); }
+      return true;
+    } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); return false; }
+  }
+  async function removePasskey(id: string) {
+    const r = await withStepUp(() => fetch("/api/auth/passkey", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }));
+    if (r.ok) { setNotice("Passkey removed"); refreshSession(); } else setNotice(`Passkey: ${await errorOf(r)}`);
+  }
+  /** GDPR Art. 15/20: everything the server holds for this account, as a JSON file. */
+  async function downloadAccountData() {
+    const r = await fetch("/api/account/export");
+    if (!r.ok) { setNotice(`Export: ${await errorOf(r)}`); return; }
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a"); a.href = url; a.download = "private-ai-account.json"; a.click();
+    URL.revokeObjectURL(url);
+  }
+  /** GDPR Art. 17: deletes the server-side account and its Stripe customer. Local chats stay until wiped. */
+  async function deleteAccount() {
+    const r = await withStepUp(() => fetch("/api/account", { method: "DELETE" }));
+    if (!r.ok) { setNotice(`Delete: ${await errorOf(r)}`); return; }
+    setNotice("Account deleted on the server. Chats in this browser are kept until you wipe them.");
+    setBilling(null); setPasskeys([]); refreshSession();
   }
 
   const persona = personas.find((p) => p.id === personaId);
@@ -194,12 +227,12 @@ export default function Home() {
         <ul className="sessions" data-testid="sessions">
           {!ghost && filtered.map((c) => (
             <li key={c.id} className={c.id === chat.id ? "on" : ""}>
-              <button type="button" className="session" onClick={() => { setGhost(false); setChat(c); setView("chat"); }}>
+              <button type="button" className="session" onClick={() => { openChat(c, false); setView("chat"); }}>
                 <span className="title">{c.title}</span>
                 <span className="when">{new Date(c.updatedAt).toLocaleDateString()}</span>
               </button>
               <button type="button" className="icon-btn del" aria-label="Delete chat"
-                onClick={() => { if (!kv) return; const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) setChat(newChat()); }}>✕</button>
+                onClick={() => { if (!kv) return; const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }}>✕</button>
             </li>
           ))}
           {!ghost && !filtered.length && <li className="empty muted">No chats yet</li>}
@@ -219,7 +252,7 @@ export default function Home() {
 
         {view === "chat" && (
           kv || ghost
-            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
+            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature} suggestions={SUGGESTIONS} />
             : <div className="loading muted">Unlocking encrypted history…</div>
         )}
@@ -231,7 +264,8 @@ export default function Home() {
           <SettingsView tier={tier} usage={usage} billing={billing} passkeys={passkeys} ghost={ghost}
             onCheckout={(plan, interval) => goBilling("/api/billing/checkout", { plan, interval })}
             onPortal={() => goBilling("/api/billing/portal")}
-            onAddPasskey={addPasskey} onLoginPasskey={loginPasskey}
+            onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}
+            onExportAccount={downloadAccountData} onDeleteAccount={deleteAccount}
             onExport={exportBackup} onImport={importBackup} onWipe={wipe} />
         )}
       </main>

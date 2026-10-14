@@ -22,6 +22,17 @@ describe.each(backends)("server-side fair-use gate (%s)", (_name, make) => {
     expect(d.headers["x-ratelimit-limit-requests"]).toBe("5");
     expect(await usage("u", "free", now)).toEqual({ usedToday: 20, dailyLimit: 20, remainingToday: 0 });
   });
+  it("hit: fixed-window counter per bucket", async () => {
+    const { counters } = await (await import("../lib/store")).stores();
+    const t = Date.UTC(2026, 9, 13, 10, 0, 5);
+    expect(await counters.hit("b1", 2, 60_000, t)).toMatchObject({ allowed: true, count: 1 });
+    expect(await counters.hit("b1", 2, 60_000, t + 1)).toMatchObject({ allowed: true, count: 2 });
+    const third = await counters.hit("b1", 2, 60_000, t + 2);
+    expect(third).toMatchObject({ allowed: false, count: 3 });
+    expect(third.resetAt).toBe(Date.UTC(2026, 9, 13, 10, 1));
+    expect((await counters.hit("b2", 2, 60_000, t)).allowed).toBe(true); // other bucket independent
+    expect((await counters.hit("b1", 2, 60_000, Date.UTC(2026, 9, 13, 10, 1, 1))).allowed).toBe(true); // next window
+  });
   it("resets daily counter next day", async () => {
     const now = Date.UTC(2026, 9, 13, 23, 50);
     for (let i = 0; i < 20; i++) await gate("u", "free", 1, now + i * 13_000);

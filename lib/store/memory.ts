@@ -1,4 +1,4 @@
-import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
+import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Entitlement, EntitlementSource, HitResult, PasskeyCredential, Subscription } from "./types";
 import { dayKey, minuteStartOf, ENTITLED_STATUSES } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
@@ -16,13 +16,22 @@ export class MemoryAccountStore implements AccountStore {
   /** Create the row if missing without bumping last-seen (matches INSERT ... ON CONFLICT DO NOTHING). */
   private ensure(id: string) { if (!this.sessions.has(id)) this.sessions.set(id, { createdAt: Date.now(), lastSeenOn: dayKey(Date.now()) }); }
   async sessionExists(id: string) { return this.sessions.has(id); }
+  async getSession(id: string) { const s = this.sessions.get(id); return s ? { ...s } : null; }
+  async deleteAccount(id: string) {
+    if (!this.sessions.delete(id)) return false;
+    this.entitlements.delete(id);
+    for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
+    for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
+    return true;
+  }
   async getEntitlement(id: string) { return this.entitlements.get(id) ?? null; }
   async setEntitlement(id: string, e: Entitlement) { this.ensure(id); this.entitlements.set(id, { ...e }); }
   async clearEntitlement(id: string, source?: EntitlementSource) {
     const e = this.entitlements.get(id);
     if (e && (!source || e.source === source)) this.entitlements.delete(id);
   }
-  async upsertSubscription(s: Subscription) {
+  async upsertSubscription(s: Subscription, opts: { onlyIfAccountExists?: boolean } = {}) {
+    if (opts.onlyIfAccountExists && !this.sessions.has(s.accountId)) return;
     this.ensure(s.accountId);
     this.subscriptions.set(s.stripeSubscriptionId, { ...s, updatedAt: ++this.seq });
   }
@@ -47,14 +56,17 @@ export class MemoryAccountStore implements AccountStore {
   async getCredential(id: string) { const c = this.credentials.get(id); return c ? { ...c } : null; }
   async listCredentials(accountId: string) { return [...this.credentials.values()].filter((c) => c.accountId === accountId); }
   async updateCredentialCounter(id: string, counter: number) { const c = this.credentials.get(id); if (c) c.counter = counter; }
+  async deleteCredential(accountId: string, id: string) {
+    if (this.credentials.get(id)?.accountId !== accountId) return false;
+    return this.credentials.delete(id);
+  }
   async purgeInactive(cutoff: number) {
     const day = dayKey(cutoff); let n = 0;
     for (const [id, s] of this.sessions) {
       if (s.lastSeenOn >= day) continue;
-      if ([...this.subscriptions.values()].some((x) => x.accountId === id && (ENTITLED_STATUSES as readonly string[]).includes(x.status))) continue;
-      this.sessions.delete(id); this.entitlements.delete(id); n++;
-      for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
-      for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
+      if ([...this.subscriptions.values()].some((x) => x.accountId === id && (ENTITLED_STATUSES as readonly string[]).includes(x.status)
+        && (x.currentPeriodEnd == null || x.currentPeriodEnd >= cutoff))) continue;
+      await this.deleteAccount(id); n++;
     }
     return n;
   }
@@ -95,6 +107,11 @@ export class MemoryCounterStore implements CounterStore {
   }
   async recordFailure(id: string, windowMs: number, now: number) { this.recentFailures(id, windowMs, now).push(now); }
   async usedToday(id: string, now: number) { return this.get(`d:${id}:${dayKey(now)}`, now); }
+  async hit(bucket: string, limit: number, windowMs: number, now: number): Promise<HitResult> {
+    const start = Math.floor(now / windowMs) * windowMs;
+    const count = this.incr(`rl:${bucket}:${start}`, windowMs, now);
+    return { allowed: count <= limit, count, resetAt: start + windowMs };
+  }
   async putOnce(key: string, value: string, ttlMs: number) { this.once.set(key, { value, expiresAt: Date.now() + ttlMs }); }
   async takeOnce(key: string) {
     const v = this.once.get(key); this.once.delete(key);

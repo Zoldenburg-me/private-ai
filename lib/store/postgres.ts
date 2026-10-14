@@ -44,6 +44,16 @@ export class PgAccountStore implements AccountStore {
     const sql = await this.db();
     return (await sql`SELECT 1 FROM sessions WHERE id = ${id}`).length > 0;
   }
+  async getSession(id: string) {
+    const sql = await this.db();
+    const [r] = await sql<{ created_at: Date; last_seen_on: string }[]>`SELECT created_at, to_char(last_seen_on, 'YYYY-MM-DD') AS last_seen_on FROM sessions WHERE id = ${id}`;
+    return r ? { createdAt: r.created_at.getTime(), lastSeenOn: r.last_seen_on } : null;
+  }
+  async deleteAccount(id: string) {
+    const sql = await this.db();
+    // ON DELETE CASCADE removes entitlements, subscriptions and passkeys.
+    return (await sql`DELETE FROM sessions WHERE id = ${id}`).count > 0;
+  }
   async getEntitlement(id: string): Promise<Entitlement | null> {
     const sql = await this.db();
     const [r] = await sql<{ tier: TierId; source: EntitlementSource; expires_at: Date | null }[]>`SELECT tier, source, expires_at FROM entitlements WHERE account_id = ${id}`;
@@ -62,10 +72,12 @@ export class PgAccountStore implements AccountStore {
     if (source) await sql`DELETE FROM entitlements WHERE account_id = ${id} AND source = ${source}`;
     else await sql`DELETE FROM entitlements WHERE account_id = ${id}`;
   }
-  async upsertSubscription(s: Subscription) {
+  async upsertSubscription(s: Subscription, opts: { onlyIfAccountExists?: boolean } = {}) {
     const sql = await this.db();
     await sql.begin(async (tx) => {
-      await tx`INSERT INTO sessions (id) VALUES (${s.accountId}) ON CONFLICT (id) DO NOTHING`;
+      // FOR SHARE: a concurrent account deletion either finishes first (we write nothing) or waits for us.
+      if (opts.onlyIfAccountExists) { if ((await tx`SELECT 1 FROM sessions WHERE id = ${s.accountId} FOR SHARE`).length === 0) return; }
+      else await tx`INSERT INTO sessions (id) VALUES (${s.accountId}) ON CONFLICT (id) DO NOTHING`;
       await tx`INSERT INTO subscriptions (stripe_subscription_id, account_id, stripe_customer_id, tier, status, current_period_end)
         VALUES (${s.stripeSubscriptionId}, ${s.accountId}, ${s.stripeCustomerId}, ${s.tier}, ${s.status}, ${date(s.currentPeriodEnd)})
         ON CONFLICT (stripe_subscription_id) DO UPDATE SET account_id = EXCLUDED.account_id, stripe_customer_id = EXCLUDED.stripe_customer_id,
@@ -107,11 +119,16 @@ export class PgAccountStore implements AccountStore {
     const sql = await this.db();
     await sql`UPDATE passkey_credentials SET counter = ${counter} WHERE credential_id = ${id}`;
   }
+  async deleteCredential(accountId: string, id: string) {
+    const sql = await this.db();
+    return (await sql`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count > 0;
+  }
   async purgeInactive(cutoff: number) {
     const sql = await this.db();
     // ON DELETE CASCADE removes entitlements, subscriptions and passkeys of purged accounts.
     const r = await sql`DELETE FROM sessions s WHERE s.last_seen_on < ${dayKey(cutoff)}
-      AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]}))`;
+      AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]})
+        AND (x.current_period_end IS NULL OR x.current_period_end >= ${new Date(cutoff)}))`;
     return r.count;
   }
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
