@@ -9,6 +9,7 @@ import { newNonce, verifyReport, verifySignedResponse, type VerifyResult, type A
 import type { ModelEntry } from "@/lib/catalog";
 import type { Tier } from "@/lib/tiers";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { SafeMarkdown } from "@/components/markdown";
 
 type Msg = Chat["messages"][number] & { signed?: "ok" | "fail" | "n/a" };
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
@@ -235,12 +236,16 @@ export default function Home() {
         </header>
         {ghost && <div data-testid="ghost-badge" style={{ fontSize: 12, background: "#3b2a5a", borderRadius: 4, padding: "2px 8px", marginBottom: 6 }}>👻 Ghost chat · not saved anywhere · gone on reload</div>}
         {notice && <div data-testid="notice" style={{ fontSize: 12, color: "#facc15" }}>{notice}</div>}
-        <div style={{ flex: 1, overflowY: "auto", whiteSpace: "pre-wrap" }} data-testid="messages">
+        <div style={{ flex: 1, overflowY: "auto" }} data-testid="messages">
           {(chat.messages as Msg[]).map((m, i) => (
-            <p key={i}><b>{m.role === "user" ? "You" : "AI"}:</b> {m.content}
+            <div key={i} data-role={m.role} style={{ margin: "10px 0" }}>
+              <b>{m.role === "user" ? "You" : "AI"}:</b>
+              {m.role === "assistant"
+                ? <div className="md"><SafeMarkdown text={m.content} /></div>
+                : <span style={{ whiteSpace: "pre-wrap" }}> {m.content}</span>}
               {m.signed === "ok" && <span data-testid="signed" style={{ color: "#4ade80", fontSize: 11 }}> ✓ signed by enclave</span>}
               {m.signed === "fail" && <span style={{ color: "#f87171", fontSize: 11 }}> ✗ signature mismatch</span>}
-            </p>
+            </div>
           ))}
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(); }} style={{ display: "flex", gap: 8 }}>
