@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat } from "@/lib/storage";
+import { persist, type PersistMode } from "@/lib/persist";
 import { loadPersonas, savePersona, deletePersona, replacePersonas, type Persona } from "@/lib/personas";
 import { parseSseChunk, type Receipt } from "@/lib/sse";
 import { encryptBackup, decryptBackup, type BackupFile } from "@/lib/backup";
@@ -31,6 +32,8 @@ export default function Home() {
   const [pName, setPName] = useState("");
   const [pPrompt, setPPrompt] = useState("");
   const [passkeys, setPasskeys] = useState(0);
+  // Ghost chat: the conversation lives only in React state; persist() refuses every write.
+  const [ghost, setGhost] = useState(false);
   const [billing, setBilling] = useState<{ configured: boolean; subscription: { tier: string; status: string } | null } | null>(null);
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export default function Home() {
 
   async function send() {
     if (!input.trim() || busy || !modelRef) return;
+    const mode: PersistMode = { ghost }; // fixed for this turn, even if the toggle changes mid-stream
     const persona = personas.find((p) => p.id === personaId);
     const history = chat.messages.map(({ role, content }) => ({ role, content }));
     const messages = [...history, { role: "user" as const, content: input }];
@@ -126,11 +130,15 @@ export default function Home() {
       const p = parseSseChunk(buf + "\n"); if (p.receipt) receipt = p.receipt;
     } catch (e) {
       current = { ...current, messages: [...messages, { role: "assistant", content: `⚠️ ${(e as Error).message}` }] }; setChat(current);
-    } finally { setBusy(false); setChats(saveChat(localStorage, current)); }
+    } finally {
+      setBusy(false);
+      const saved = persist(localStorage, mode, (w) => saveChat(w, current)); if (saved) setChats(saved);
+    }
     if (receipt) {
       const signed = await verifySignature(receipt).catch(() => "n/a" as const);
       const msgs = [...current.messages] as Msg[]; msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], signed };
-      current = { ...current, messages: msgs }; setChat(current); setChats(saveChat(localStorage, current));
+      current = { ...current, messages: msgs }; setChat(current);
+      const saved = persist(localStorage, mode, (w) => saveChat(w, current)); if (saved) setChats(saved);
     }
   }
 
@@ -148,12 +156,16 @@ export default function Home() {
     const pass = passphrase; if (!pass) { setNotice("Enter the backup passphrase first"); return; }
     try {
       const data = await decryptBackup<{ chats: Chat[]; personas: Persona[] }>(JSON.parse(await f.text()) as BackupFile, pass);
-      replaceChats(localStorage, data.chats ?? []); replacePersonas(localStorage, data.personas ?? []);
+      const ok = persist(localStorage, { ghost }, (w) => { replaceChats(w, data.chats ?? []); replacePersonas(w, data.personas ?? []); return true; });
+      if (!ok) { setNotice("Leave ghost chat to restore a backup"); return; }
       setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage)); setNotice("Backup restored");
     } catch (e) { setNotice((e as Error).message); }
   }
   function addPersona() {
-    try { setPersonas(savePersona(localStorage, { id: crypto.randomUUID(), name: pName, systemPrompt: pPrompt, createdAt: Date.now() })); setPName(""); setPPrompt(""); } catch (e) { setNotice((e as Error).message); }
+    try {
+      const next = persist(localStorage, { ghost }, (w) => savePersona(w, { id: crypto.randomUUID(), name: pName, systemPrompt: pPrompt, createdAt: Date.now() }));
+      if (next) { setPersonas(next); setPName(""); setPPrompt(""); }
+    } catch (e) { setNotice((e as Error).message); }
   }
 
   const sel = models.find((m) => `${m.provider}:${m.id}` === modelRef);
@@ -161,16 +173,21 @@ export default function Home() {
     <main style={{ display: "flex", height: "100vh" }}>
       <aside style={{ width: 260, borderRight: "1px solid #222", padding: 12, overflowY: "auto", fontSize: 14 }}>
         <button onClick={() => setChat(newChat())}>+ New chat</button>
-        <p style={{ fontSize: 12, opacity: 0.7 }}>History is stored only in this browser.</p>
+        <button data-testid="ghost-toggle" aria-pressed={ghost} onClick={() => { setGhost(!ghost); setChat(newChat()); }} style={{ marginLeft: 4 }}>
+          {ghost ? "Leave ghost chat" : "👻 Ghost chat"}
+        </button>
+        {ghost
+          ? <p data-testid="ghost-note" style={{ fontSize: 12, color: "#c4b5fd" }}>Ghost chat: kept only in this tab, never saved. History, personas and backup are hidden.</p>
+          : <><p style={{ fontSize: 12, opacity: 0.7 }}>History is stored only in this browser.</p>
         {chats.map((c) => (
           <div key={c.id} style={{ display: "flex", gap: 4, margin: "6px 0" }}>
-            <a style={{ flex: 1, cursor: "pointer" }} onClick={() => setChat(c)}>{c.title}</a>
-            <button aria-label="delete chat" onClick={() => setChats(deleteChat(localStorage, c.id))}>×</button>
+            <a style={{ flex: 1, cursor: "pointer" }} onClick={() => { setGhost(false); setChat(c); }}>{c.title}</a>
+            <button aria-label="delete chat" onClick={() => { const n = persist(localStorage, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); }}>×</button>
           </div>
         ))}
         <hr />
         <b>Personas</b> <small>(private, local)</small>
-        {personas.map((p) => <div key={p.id}>{p.name} <button aria-label="delete persona" onClick={() => setPersonas(deletePersona(localStorage, p.id))}>×</button></div>)}
+        {personas.map((p) => <div key={p.id}>{p.name} <button aria-label="delete persona" onClick={() => { const n = persist(localStorage, { ghost }, (w) => deletePersona(w, p.id)); if (n) setPersonas(n); }}>×</button></div>)}
         <input data-testid="persona-name" placeholder="Persona name" value={pName} onChange={(e) => setPName(e.target.value)} style={{ width: "100%" }} />
         <textarea data-testid="persona-prompt" placeholder="System prompt (stays in this browser)" value={pPrompt} onChange={(e) => setPPrompt(e.target.value)} style={{ width: "100%" }} />
         <button data-testid="persona-add" onClick={addPersona}>+ Persona</button>
@@ -178,6 +195,7 @@ export default function Home() {
         <input data-testid="passphrase" type="password" placeholder="Backup passphrase (min 8)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} style={{ width: "100%" }} />
         <button data-testid="export" onClick={exportBackup}>Export encrypted backup</button>
         <label style={{ display: "block", marginTop: 6 }}>Import: <input data-testid="import" type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && importBackup(e.target.files[0])} /></label>
+        </>}
         <hr />
         <b>Account</b> <small>(no email needed)</small>
         <div style={{ fontSize: 12, opacity: 0.8 }}>{passkeys ? `${passkeys} passkey(s) on this account` : "Anonymous: plan is tied to this browser"}</div>
@@ -192,8 +210,8 @@ export default function Home() {
               <button onClick={() => goBilling("/api/billing/checkout", { plan: "max", interval: "year" })}>Max yearly</button>
             </div>)}
         {!passkeys && billing?.subscription && <div style={{ fontSize: 11, color: "#facc15" }}>Tip: save a passkey so you can restore your plan on other devices.</div>}
-        <hr />
-        <button style={{ marginTop: 6 }} onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all chats</button>
+        {!ghost && <><hr />
+        <button style={{ marginTop: 6 }} onClick={() => { if (persist(localStorage, { ghost }, (w) => { wipeAll(w); return true; })) { setChats([]); setChat(newChat()); } }}>Wipe all chats</button></>}
       </aside>
       <section style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
         <header style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -215,6 +233,7 @@ export default function Home() {
             : <span data-testid="not-verified" title={att.result.checks.filter((c) => !c.ok).map((c) => c.name).join(", ")} style={{ color: "#f87171" }}>✗ Enclave check failed</span>)}
           <span style={{ marginLeft: "auto", fontSize: 12, opacity: 0.8 }}>{tier ? `${tier.name} plan` : ""} {limits}</span>
         </header>
+        {ghost && <div data-testid="ghost-badge" style={{ fontSize: 12, background: "#3b2a5a", borderRadius: 4, padding: "2px 8px", marginBottom: 6 }}>👻 Ghost chat · not saved anywhere · gone on reload</div>}
         {notice && <div data-testid="notice" style={{ fontSize: 12, color: "#facc15" }}>{notice}</div>}
         <div style={{ flex: 1, overflowY: "auto", whiteSpace: "pre-wrap" }} data-testid="messages">
           {(chat.messages as Msg[]).map((m, i) => (

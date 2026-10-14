@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { encryptBackup, decryptBackup } from "../lib/backup";
 import { loadPersonas, savePersona, deletePersona } from "../lib/personas";
+import type { Writer } from "../lib/persist";
 
 describe("encrypted backup", () => {
   it("round-trips and hides plaintext", async () => {
@@ -19,7 +20,7 @@ describe("encrypted backup", () => {
 describe("personas (local only)", () => {
   it("save / delete / validate", () => {
     const m = new Map<string, string>();
-    const kv = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    const kv = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) } as Writer;
     savePersona(kv, { id: "p", name: "Tutor", systemPrompt: "Be a patient tutor", createdAt: 1 });
     expect(loadPersonas(kv)).toHaveLength(1);
     expect(() => savePersona(kv, { id: "q", name: "", systemPrompt: "x", createdAt: 1 })).toThrow();
