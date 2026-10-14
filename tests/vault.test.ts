@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Vault, PREFIX, type KeyStore } from "@/lib/client/vault";
 import type { KV } from "@/lib/storage";
-import { loadChats, saveChat } from "@/lib/storage";
+import { loadChats, saveChat, deleteChat } from "@/lib/storage";
 import { persist } from "@/lib/persist";
 
 const mem = (): KV & { m: Map<string, string> } => { const m = new Map<string, string>(); return { m, getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) }; };
@@ -93,5 +93,42 @@ describe("encrypted local vault", () => {
     back.setItem = (k, val) => { writes.push(k); setItem(k, val); };
     await Vault.open(back, ks);
     expect(writes).toEqual([]);
+  });
+  it("a failed write keeps flush() rejecting and pending() non-zero until a later write of that key succeeds", async () => {
+    const back = mem(); const v = await Vault.open(back, keys(), { onError: () => {} });
+    const setItem = back.setItem; let fail = true;
+    back.setItem = (k, val) => { if (fail) throw new Error("QuotaExceededError"); setItem(k, val); };
+    v.setItem(chatsKey, "[1]");
+    await expect(v.flush()).rejects.toThrow("QuotaExceededError");
+    await expect(v.flush()).rejects.toThrow(chatsKey); // still unsaved: a second flush must not report success
+    expect(v.pending()).toBe(1);
+    fail = false; v.setItem(chatsKey, "[2]");
+    await v.flush();
+    expect(v.pending()).toBe(0);
+  });
+
+  it("a stale tab adopts another tab's deletion instead of writing the chat back", async () => {
+    const back = mem(); const ks = keys();
+    const a = await Vault.open(back, ks);
+    persist(a, { ghost: false }, (w) => saveChat(w, { id: "keep", title: "k", messages: [], updatedAt: 1 }));
+    persist(a, { ghost: false }, (w) => saveChat(w, { id: "gone", title: "g", messages: [], updatedAt: 2 }));
+    await a.flush();
+    const b = await Vault.open(back, ks); // second tab, same history
+    persist(b, { ghost: false }, (w) => deleteChat(w, "gone")); await b.flush();
+    expect(await a.reload(chatsKey)).toBe(true); // the storage event in tab a
+    persist(a, { ghost: false }, (w) => saveChat(w, { id: "new", title: "n", messages: [], updatedAt: 3 })); await a.flush();
+    expect(loadChats(await Vault.open(back, ks)).map((c) => c.id).sort()).toEqual(["keep", "new"]);
+  });
+
+  it("reload() does not override a local change made while it was decrypting", async () => {
+    const back = mem(); const ks = keys();
+    const a = await Vault.open(back, ks); const b = await Vault.open(back, ks);
+    b.setItem(chatsKey, "[\"from-b\"]"); await b.flush();
+    const r = a.reload(chatsKey);
+    a.setItem(chatsKey, "[\"from-a\"]");
+    expect(await r).toBe(false);
+    await a.flush();
+    expect(a.getItem(chatsKey)).toBe("[\"from-a\"]");
+    expect((await Vault.open(back, ks)).getItem(chatsKey)).toBe("[\"from-a\"]");
   });
 });

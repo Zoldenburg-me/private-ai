@@ -6,7 +6,8 @@ import type { KV } from "@/lib/storage";
  * NON-EXTRACTABLE CryptoKey and kept in IndexedDB, so it never appears as bytes in JS or storage.
  * Reads are served from a decrypted in-memory copy (sync, as lib/storage.ts expects);
  * writes update memory immediately and are encrypted to storage asynchronously: flush() awaits them
- * (and rejects if one fails), pending() counts them, onError reports each failure. Removals are synchronous.
+ * (and rejects while a key's latest write failed), pending() counts them, onError reports each failure.
+ * Removals are synchronous. reload() picks up another tab's change so a stale tab cannot overwrite it.
  *
  * Honest scope: protects history from anything that reads localStorage as text (other scripts' dumps,
  * sync/backup tools, casual disk inspection). It does not protect against code running in this origin
@@ -38,6 +39,10 @@ export class Vault implements KV {
   private mem = new Map<string, string | null>();
   private tail: Promise<void> = Promise.resolve();
   private outstanding = new Set<Promise<void>>();
+  /** Keys whose latest write failed and has not been superseded by a successful write, removal or reload. */
+  private failed = new Map<string, Error>();
+  /** Per-key change counter, so an async reload() never overrides a local change made meanwhile. */
+  private gen = new Map<string, number>();
   private constructor(private backing: KV, private key: CryptoKey, private managed: string[], private onError?: (e: Error) => void) {}
 
   static async open(backing: KV, keys: KeyStore, { managed = MANAGED, onError }: VaultOptions = {}): Promise<Vault> {
@@ -62,27 +67,55 @@ export class Vault implements KV {
   }
   setItem(k: string, val: string): void {
     if (!this.managed.includes(k)) return this.backing.setItem(k, val);
-    this.mem.set(k, val);
-    this.enqueue(async () => {
+    this.mem.set(k, val); this.bump(k);
+    this.enqueue(k, async () => {
       const ct = await encryptString(this.key, val);
-      if (this.mem.get(k) === val) this.backing.setItem(k, ct); // a newer write or a removal wins
+      if (this.mem.get(k) !== val) return; // a newer write, a removal or another tab's change wins
+      this.backing.setItem(k, ct); this.failed.delete(k);
     });
   }
   removeItem(k: string): void {
-    if (this.managed.includes(k)) this.mem.set(k, null);
+    if (this.managed.includes(k)) { this.mem.set(k, null); this.bump(k); this.failed.delete(k); }
     this.backing.removeItem(k);
   }
-  /** Resolves when every write queued so far reached storage; rejects if one of them failed. */
-  async flush(): Promise<void> { await Promise.all([...this.outstanding]); }
-  /** Number of writes not yet in storage (used to warn before the page unloads). */
-  pending(): number { return this.outstanding.size; }
+  /**
+   * Another tab changed storage: re-read key k so this tab's copy (and its next write) builds on that change
+   * instead of overwriting it. Resolves true if the in-memory value changed.
+   */
+  async reload(k: string): Promise<boolean> {
+    if (!this.managed.includes(k)) return false;
+    const g = this.bump(k);
+    const raw = this.backing.getItem(k);
+    let val: string | null = null;
+    if (raw != null) {
+      if (!raw.startsWith(PREFIX)) return false;
+      try { val = await decryptString(this.key, raw); } catch { return false; }
+    }
+    if (this.gen.get(k) !== g || this.mem.get(k) === val) return false; // a local change made meanwhile wins
+    this.mem.set(k, val); this.failed.delete(k);
+    return true;
+  }
+  /** Resolves when every write queued so far reached storage; rejects while a key's latest write failed. */
+  async flush(): Promise<void> {
+    await Promise.allSettled([...this.outstanding]);
+    if (this.failed.size) {
+      const [first] = this.failed.values();
+      throw new Error(`Not saved to encrypted history (${[...this.failed.keys()].join(", ")}): ${first.message}`);
+    }
+  }
+  /** Number of writes not yet in storage, including failed ones (used to warn before the page unloads). */
+  pending(): number { return this.outstanding.size + this.failed.size; }
 
-  private enqueue(write: () => Promise<void>) {
+  private bump(k: string): number { const g = (this.gen.get(k) ?? 0) + 1; this.gen.set(k, g); return g; }
+  private enqueue(k: string, write: () => Promise<void>) {
     const op = this.tail.then(write);
     this.outstanding.add(op);
-    // A failed write is reported and must not block the writes queued after it.
+    // A failed write is reported and remembered, and must not block the writes queued after it.
     this.tail = op
-      .catch((e: unknown) => { this.onError?.(e instanceof Error ? e : new Error(String(e))); })
+      .catch((e: unknown) => {
+        const err = e instanceof Error ? e : new Error(String(e));
+        this.failed.set(k, err); this.onError?.(err);
+      })
       .finally(() => { this.outstanding.delete(op); });
   }
 }

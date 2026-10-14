@@ -9,7 +9,7 @@ import type { ModelEntry } from "@/lib/catalog";
 import type { Tier } from "@/lib/tiers";
 import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { Vault, idbKeyStore } from "@/lib/client/vault";
+import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
@@ -66,6 +66,23 @@ export default function Home() {
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [kv]);
+
+  // Another tab changed the encrypted history: adopt it, so this tab's next write cannot undo it (e.g. a deletion).
+  useEffect(() => {
+    if (!kv) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== localStorage) return;
+      const keys = e.key === null ? MANAGED : MANAGED.filter((k) => k === e.key);
+      void Promise.all(keys.map((k) => kv.reload(k))).then((changed) => {
+        if (!changed.some(Boolean)) return;
+        const cs = loadChats(kv); setChats(cs); setPersonas(loadPersonas(kv));
+        // The open chat was deleted or wiped in the other tab: close it instead of saving it back.
+        if (!ghost && chat.messages.length && !cs.some((c) => c.id === chat.id)) { scope.forget(chat.id); openChat(newChat()); }
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  });
 
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
@@ -142,8 +159,9 @@ export default function Home() {
       const data = await decryptBackup<{ chats: Chat[]; personas: Persona[] }>(JSON.parse(await f.text()) as BackupFile, pass);
       const ok = persist(kv, { ghost }, (w) => { replaceChats(w, data.chats ?? []); replacePersonas(w, data.personas ?? []); return true; });
       if (!ok) { setNotice("Leave ghost chat to restore a backup"); return; }
-      await kv.flush();
-      setChats(loadChats(kv)); setPersonas(loadPersonas(kv)); setNotice("Backup restored");
+      // Show what the vault now holds even if one of the two writes failed (flush() names the unsaved key).
+      try { await kv.flush(); setNotice("Backup restored"); }
+      finally { setChats(loadChats(kv)); setPersonas(loadPersonas(kv)); }
     } catch (e) { setNotice((e as Error).message); }
   }
   async function wipe() {
