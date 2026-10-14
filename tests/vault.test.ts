@@ -5,7 +5,8 @@ import { loadChats, saveChat } from "@/lib/storage";
 import { persist } from "@/lib/persist";
 
 const mem = (): KV & { m: Map<string, string> } => { const m = new Map<string, string>(); return { m, getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) }; };
-const keys = (): KeyStore => { let k: CryptoKey | undefined; return { get: async () => k, put: async (x) => { k = x; } }; };
+const keys = (): KeyStore => { let k: CryptoKey | undefined; return { get: async () => k, add: async (x) => (k ??= x) }; };
+const chatsKey = "pai.chats.v1";
 
 describe("encrypted local vault", () => {
   it("stores chats only as ciphertext and reads them back", async () => {
@@ -42,5 +43,55 @@ describe("encrypted local vault", () => {
     persist(v, { ghost: true }, (w) => saveChat(w, { id: "g", title: "g", messages: [], updatedAt: 1 }));
     await v.flush();
     expect(back.getItem("pai.chats.v1")).toBeNull();
+  });
+
+  it("two tabs opening a fresh profile at once end up with the same key", async () => {
+    const back = mem(); const ks = keys();
+    const [a, b] = await Promise.all([Vault.open(back, ks), Vault.open(back, ks)]); // both get() see no key
+    a.setItem(chatsKey, "[\"from-a\"]"); await a.flush();
+    expect((await Vault.open(back, ks)).getItem(chatsKey)).toBe("[\"from-a\"]");
+    b.setItem(chatsKey, "[\"from-b\"]"); await b.flush();
+    expect((await Vault.open(back, ks)).getItem(chatsKey)).toBe("[\"from-b\"]");
+  });
+
+  it("a failed write is reported, flush() rejects, and later writes still reach storage", async () => {
+    const back = mem(); const ks = keys(); const errors: string[] = [];
+    const v = await Vault.open(back, ks, { onError: (e) => errors.push(e.message) });
+    const setItem = back.setItem; let fail = true;
+    back.setItem = (k, val) => { if (fail) { fail = false; throw new Error("QuotaExceededError"); } setItem(k, val); };
+    v.setItem(chatsKey, "[1]");
+    await expect(v.flush()).rejects.toThrow("QuotaExceededError");
+    expect(errors).toEqual(["QuotaExceededError"]);
+    v.setItem(chatsKey, "[2]");
+    await v.flush();
+    expect((await Vault.open(back, ks)).getItem(chatsKey)).toBe("[2]");
+  });
+
+  it("pending() counts unsaved writes until they reach storage", async () => {
+    const back = mem(); const v = await Vault.open(back, keys());
+    v.setItem(chatsKey, "[1]"); v.setItem(chatsKey, "[2]");
+    expect(v.pending()).toBe(2);
+    await v.flush();
+    expect(v.pending()).toBe(0);
+  });
+
+  it("removal (wipe) is immediate and a queued write cannot bring the data back", async () => {
+    const back = mem(); const v = await Vault.open(back, keys());
+    v.setItem(chatsKey, "[1]"); await v.flush();
+    v.setItem(chatsKey, "[2]");
+    v.removeItem(chatsKey);
+    expect(back.getItem(chatsKey)).toBeNull();
+    await v.flush();
+    expect(back.getItem(chatsKey)).toBeNull();
+    expect(v.getItem(chatsKey)).toBeNull();
+  });
+
+  it("opening already-encrypted history writes nothing to storage", async () => {
+    const back = mem(); const ks = keys();
+    const v = await Vault.open(back, ks); v.setItem(chatsKey, "[1]"); await v.flush();
+    const writes: string[] = []; const setItem = back.setItem;
+    back.setItem = (k, val) => { writes.push(k); setItem(k, val); };
+    await Vault.open(back, ks);
+    expect(writes).toEqual([]);
   });
 });
