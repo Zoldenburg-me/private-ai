@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { loadChats, saveChat, deleteChat, wipeAll, type KV } from "../lib/storage";
+import type { Writer } from "../lib/persist";
 import { parseSseChunk } from "../lib/sse";
-const mem = (): KV => { const m = new Map<string, string>(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) }; };
+const mem = (): Writer => { const m = new Map<string, string>(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v), removeItem: (k) => void m.delete(k) } as Writer; };
 describe("local storage", () => {
   it("saves, sorts, deletes, wipes", () => {
     const kv = mem();

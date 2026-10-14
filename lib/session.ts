@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import type { TierId } from "./tiers";
+import { TIERS, type TierId } from "./tiers";
+import { stores } from "./store";
 
 /**
  * Anonymous server-issued identity. Token = "pai_<id>.<hmac>". No email, no PII.
@@ -36,15 +37,46 @@ export function identityFrom(req: Request): string | null {
   return verifyToken(c ? decodeURIComponent(c[1]) : null);
 }
 
-/** Entitlement store. TODO(payments): back with DB + Stripe/x402 webhooks. Env seed: ENTITLEMENTS='{"<id>":"pro"}'. */
-const g = globalThis as unknown as { __paiEnt?: Map<string, TierId> };
-const entitlements = (g.__paiEnt ??= new Map<string, TierId>());
-export function setTier(id: string, tier: TierId) { entitlements.set(id, tier); }
-export function tierOf(id: string): TierId {
-  if (entitlements.has(id)) return entitlements.get(id)!;
+/** Issue a token for an existing opaque account id (e.g. after passkey login on a new device). */
+export function issueTokenFor(id: string): string {
+  if (!/^[A-Za-z0-9_-]{10,64}$/.test(id)) throw new Error("invalid account id");
+  return `pai_${id}.${sign(id)}`;
+}
+
+/**
+ * New anonymous session. Nothing is written: the account row appears on the first request that
+ * carries the token (touchSession), so minting tokens in a loop cannot grow the database.
+ */
+export async function createSession(): Promise<{ id: string; token: string }> {
+  return issueToken();
+}
+
+/** Record that the account was seen today (day granularity, nothing else). */
+export async function touchSession(id: string): Promise<void> { await (await stores()).accounts.touchSession(id); }
+
+/** Expires the session cookie (after account deletion). */
+export const clearedSessionCookie = () =>
+  `pai_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
+
+export const sessionCookie = (token: string) =>
+  `pai_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
+
+/**
+ * Entitlements live in the AccountStore (Postgres in production), set by Stripe webhooks or
+ * manually. Env seed for dev/ops: ENTITLEMENTS='{"<id>":"pro"}'.
+ */
+export async function setTier(id: string, tier: TierId): Promise<void> {
+  const { accounts } = await stores();
+  // A stored manual "free" (not just clearing) so a paid ENTITLEMENTS seed cannot win again.
+  await accounts.setEntitlement(id, { tier, source: "manual", expiresAt: null });
+}
+
+export async function tierOf(id: string, now = Date.now()): Promise<TierId> {
+  const e = await (await stores()).accounts.getEntitlement(id);
+  if (e && (e.expiresAt == null || e.expiresAt > now)) return e.tier;
   try {
     const seed = JSON.parse(process.env.ENTITLEMENTS || "{}") as Record<string, TierId>;
-    if (seed[id]) return seed[id];
+    if (seed[id] && seed[id] in TIERS) return seed[id];
   } catch { /* ignore */ }
   return "free";
 }

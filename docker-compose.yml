@@ -1,0 +1,63 @@
+# Local and Hetzner deployment: app + Postgres + Redis.
+#   cp .env.example .env   # fill SESSION_SECRET, POSTGRES_PASSWORD, provider keys
+#   docker compose up -d --build
+# Only the app port is published, and only on localhost: put a TLS reverse proxy (Caddy/nginx)
+# in front on the host. Postgres and Redis stay on the internal network.
+name: private-ai
+
+services:
+  app:
+    build: .
+    image: private-ai:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://pai:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pai
+      REDIS_URL: redis://redis:6379/0
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    read_only: true
+    tmpfs: [/tmp]
+    # Metadata-only logs, rotated: at most 3 x 10 MB (stated on /privacy/metadata).
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pai
+      POSTGRES_DB: pai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # No statement logging: the schema holds no content, but keep logs minimal anyway.
+    command: ["postgres", "-c", "log_statement=none", "-c", "log_min_duration_statement=-1"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pai -d pai"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF so quotas and counters survive a Redis restart too. Counters only; no content.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:

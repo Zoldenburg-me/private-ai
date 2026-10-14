@@ -63,7 +63,7 @@ describe("relay: zero content logging", () => {
     const deps = { catalog, env, fetchImpl: upstream };
     const big = "x".repeat(40_000); // ~10k tokens > free 8k
     expect((await handleChat(req(token, { model: "mock:m", tier: "max", messages: [{ role: "user", content: big }] }), "/t", deps)).status).toBe(413);
-    setTier(id, "pro");
+    await setTier(id, "pro");
     expect((await handleChat(req(token, { model: "mock:m", messages: [{ role: "user", content: big }] }), "/t", deps)).status).toBe(200);
   });
 });
