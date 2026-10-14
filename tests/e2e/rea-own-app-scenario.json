@@ -1,23 +1,192 @@
 {
-  "browser": { "mode": "launch", "executable_path": "/usr/bin/google-chrome" },
-  "start_url": { "url": "http://127.0.0.1:3000" },
+  "browser": {
+    "mode": "launch",
+    "executable_path": "/usr/bin/google-chrome"
+  },
+  "start_url": {
+    "url": "http://127.0.0.1:3000"
+  },
   "actions": [
-    { "step_id": "models-loaded", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='badge-tee']" }, "state": "visible", "timeout_ms": 15000 },
-    { "step_id": "verify-enclave", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='verify']" }, "timeout_ms": 10000 },
-    { "step_id": "verified-badge", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='verified']" }, "state": "visible", "timeout_ms": 15000 },
-    { "step_id": "persona-name", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='persona-name']" }, "value": {"source":"literal","value":"Tutor"} },
-    { "step_id": "persona-prompt", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='persona-prompt']" }, "value": {"source":"literal","value":"Be a patient tutor"} },
-    { "step_id": "persona-add", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='persona-add']" } },
-    { "step_id": "type-prompt", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='prompt']" }, "value": {"source":"literal","value":"REA-CANARY-PROMPT-5521"} },
-    { "step_id": "send", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='send']" } },
-    { "step_id": "signed", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='signed']" }, "state": "visible", "timeout_ms": 20000 },
-    { "step_id": "passphrase", "action": "fill", "locator": { "kind": "css", "selector": "[data-testid='passphrase']" }, "value": {"source":"literal","value":"correct horse battery"} },
-    { "step_id": "export", "action": "click", "locator": { "kind": "css", "selector": "[data-testid='export']" } },
-    { "step_id": "backup-ok", "action": "wait_for", "locator": { "kind": "css", "selector": "[data-testid='notice']" }, "state": "visible", "timeout_ms": 20000 }
+    {
+      "step_id": "models-loaded",
+      "action": "wait_for",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='badge-tee']"
+      },
+      "state": "visible",
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "open-proof",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='proof-badge']"
+      },
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "verify-enclave",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='verify']"
+      },
+      "timeout_ms": 10000
+    },
+    {
+      "step_id": "checks-passed-badge",
+      "action": "wait_for",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='proof-badge'][data-level='checks-passed']"
+      },
+      "state": "visible",
+      "timeout_ms": 15000
+    },
+    {
+      "step_id": "chain-unverified",
+      "action": "wait_for",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='chain-status']"
+      },
+      "state": "visible",
+      "timeout_ms": 5000
+    },
+    {
+      "step_id": "nav-personas",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='nav-personas']"
+      }
+    },
+    {
+      "step_id": "persona-name",
+      "action": "fill",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='persona-name']"
+      },
+      "value": {
+        "source": "literal",
+        "value": "Tutor"
+      }
+    },
+    {
+      "step_id": "persona-prompt",
+      "action": "fill",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='persona-prompt']"
+      },
+      "value": {
+        "source": "literal",
+        "value": "Be a patient tutor"
+      }
+    },
+    {
+      "step_id": "persona-add",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='persona-add']"
+      }
+    },
+    {
+      "step_id": "nav-chat",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='nav-chat']"
+      }
+    },
+    {
+      "step_id": "type-prompt",
+      "action": "fill",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='prompt']"
+      },
+      "value": {
+        "source": "literal",
+        "value": "REA-CANARY-PROMPT-5521"
+      }
+    },
+    {
+      "step_id": "send",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='send']"
+      }
+    },
+    {
+      "step_id": "signed",
+      "action": "wait_for",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='signed']"
+      },
+      "state": "visible",
+      "timeout_ms": 20000
+    },
+    {
+      "step_id": "nav-settings",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='nav-settings']"
+      }
+    },
+    {
+      "step_id": "passphrase",
+      "action": "fill",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='passphrase']"
+      },
+      "value": {
+        "source": "literal",
+        "value": "correct horse battery"
+      }
+    },
+    {
+      "step_id": "export",
+      "action": "click",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='export']"
+      }
+    },
+    {
+      "step_id": "backup-ok",
+      "action": "wait_for",
+      "locator": {
+        "kind": "css",
+        "selector": "[data-testid='notice']"
+      },
+      "state": "visible",
+      "timeout_ms": 20000
+    }
   ],
   "capture": {
-    "at_end": ["dom", "url", "storage"],
-    "events": ["console", "page-errors", "network"],
-    "network": { "request_body": true, "response_body": false, "header_values": false }
+    "at_end": [
+      "dom",
+      "url",
+      "storage"
+    ],
+    "events": [
+      "console",
+      "page-errors",
+      "network"
+    ],
+    "network": {
+      "request_body": true,
+      "response_body": false,
+      "header_values": false
+    }
   }
 }
