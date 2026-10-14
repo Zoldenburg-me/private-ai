@@ -1,15 +1,30 @@
 import { parseSseChunk, type Receipt } from "@/lib/sse";
 import type { ChatMessage } from "@/lib/providers";
+import { normalizeSigned, type Signed } from "@/lib/client/proof";
 
 export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null }
 
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
-export interface UiMessage { role: string; content: readonly { type: string; text?: string }[] }
+export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
+
+export type StoredMsg = ChatMessage & { signed?: Signed };
 
 export function toChatMessages(msgs: readonly UiMessage[]): ChatMessage[] {
   return msgs
     .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "system")
     .map((m) => ({ role: m.role as ChatMessage["role"], content: m.content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("") }));
+}
+
+/** Like toChatMessages, but keeps each assistant reply's signature status for local history. */
+export function toStoredMessages(msgs: readonly UiMessage[]): StoredMsg[] {
+  const out: StoredMsg[] = [];
+  for (const m of msgs) {
+    const [chat] = toChatMessages([m]);
+    if (!chat) continue;
+    const signed = m.role === "assistant" ? normalizeSigned(m.metadata?.custom?.signed) : undefined;
+    out.push(signed ? { ...chat, signed } : chat);
+  }
+  return out;
 }
 
 export interface StreamOpts {

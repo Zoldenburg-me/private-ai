@@ -128,7 +128,7 @@
       "action": "wait_for",
       "locator": {
         "kind": "css",
-        "selector": "[data-testid='signed']"
+        "selector": "[data-testid='signed-key-match']"
       },
       "state": "visible",
       "timeout_ms": 20000

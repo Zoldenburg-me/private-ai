@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { streamChat, toChatMessages } from "@/lib/client/chat-stream";
+import { streamChat, toChatMessages, toStoredMessages } from "@/lib/client/chat-stream";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import type { ModelEntry } from "@/lib/catalog";
 
@@ -10,6 +10,23 @@ describe("client chat stream", () => {
   it("maps assistant-ui messages to OpenAI messages (text parts only)", () => {
     expect(toChatMessages([{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image" }] }, { role: "tool", content: [] }]))
       .toEqual([{ role: "user", content: "hi" }]);
+  });
+
+  it("keeps earlier replies' signature status for history, but never sends it to the server", () => {
+    const ui = [
+      { role: "user", content: [{ type: "text", text: "q1" }] },
+      { role: "assistant", content: [{ type: "text", text: "a1" }], metadata: { custom: { signed: "key-match" } } },
+      { role: "assistant", content: [{ type: "text", text: "a0" }], metadata: { custom: { signed: "ok" } } },
+      { role: "user", content: [{ type: "text", text: "q2" }], metadata: { custom: { signed: "enclave" } } },
+      { role: "tool", content: [] },
+    ];
+    expect(toStoredMessages(ui)).toEqual([
+      { role: "user", content: "q1" },
+      { role: "assistant", content: "a1", signed: "key-match" },
+      { role: "assistant", content: "a0", signed: "key-match" },
+      { role: "user", content: "q2" },
+    ]);
+    expect(toChatMessages(ui).some((m) => "signed" in m)).toBe(false);
   });
 
   it("streams deltas, usage header and the relay receipt", async () => {

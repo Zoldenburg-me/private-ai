@@ -2,17 +2,17 @@
 import { useMemo, useRef } from "react";
 import {
   AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
-  type ChatModelAdapter, type ThreadMessageLike,
+  type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { SafeMarkdown } from "@/components/markdown";
-import { streamChat, toChatMessages } from "@/lib/client/chat-stream";
+import { streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
+import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt } from "@/lib/sse";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
 
-export type Signed = "ok" | "fail" | "n/a";
-export type StoredMsg = Chat["messages"][number] & { signed?: Signed };
+export type { Signed, StoredMsg };
 
 export interface ThreadProps {
   chat: Chat;
@@ -37,7 +37,8 @@ function Message({ role, content, signed }: { role: string; content: string; sig
       <div className="avatar" aria-hidden>{role === "user" ? "You" : "AI"}</div>
       <div className="bubble">
         {role === "assistant" ? <div className="md"><SafeMarkdown text={content || "…"} /></div> : <span className="pre">{content}</span>}
-        {signed === "ok" && <div className="sig ok" data-testid="signed">✓ signed by enclave</div>}
+        {signed === "enclave" && <div className="sig ok" data-testid="signed">✓ signed by enclave</div>}
+        {signed === "key-match" && <div className="sig warn" data-testid="signed-key-match">✓ signature matches the enclave&apos;s reported key · chain not verified</div>}
         {signed === "fail" && <div className="sig bad" data-testid="signed-fail">✗ signature mismatch</div>}
         {signed === "n/a" && <div className="sig muted">signature not available</div>}
       </div>
@@ -53,38 +54,43 @@ export function ChatThread(props: ThreadProps) {
     async *run({ messages, abortSignal }) {
       const p = ref.current;
       const ghost = p.ghost; // fixed for this turn
-      const turn = p.scope.begin(); // a chat switch aborts this stream and drops later UI updates
+      const turn = p.scope.begin(p.chat.id); // a chat switch aborts this stream and drops later UI updates
       const signal = AbortSignal.any([abortSignal, turn.signal]);
       const history = toChatMessages(messages as never);
+      const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       let text = ""; let receipt: Receipt | undefined;
       const save = (signed?: Signed) => {
-        const msgs: StoredMsg[] = [...history, { role: "assistant", content: text, ...(signed ? { signed } : {}) }];
+        if (turn.discarded()) return; // chat was deleted or wiped meanwhile
+        const msgs: StoredMsg[] = [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}) }];
         const first = history.find((m) => m.role === "user")?.content ?? "New chat";
         p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost, turn.current());
       };
-      try {
-        for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal })) {
-          text = u.text; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining);
-          yield { content: [{ type: "text", text }] };
+      const reply = async function* (): AsyncGenerator<ChatModelRunResult, void> {
+        try {
+          for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal })) {
+            text = u.text; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining);
+            yield { content: [{ type: "text", text }] };
+          }
+        } catch (e) {
+          if (signal.aborted) { save(); return; } // keep what streamed so far, no error text
+          text = `⚠️ ${(e as Error).message}`; save();
+          yield { content: [{ type: "text", text }], status: { type: "incomplete", reason: "error", error: (e as Error).message } };
+          return;
         }
-      } catch (e) {
-        if (signal.aborted) { save(); return; } // keep what streamed so far, no error text
-        text = `⚠️ ${(e as Error).message}`; save();
-        yield { content: [{ type: "text", text }], status: { type: "incomplete", reason: "error", error: (e as Error).message } };
-        return;
-      }
-      save();
-      if (receipt) {
-        const signed = await p.verifySignature(receipt).catch(() => "n/a" as const);
-        save(signed);
-        yield { content: [{ type: "text", text }], metadata: { custom: { signed } } };
-      }
+        save();
+        if (receipt) {
+          const signed = await p.verifySignature(receipt).catch(() => "n/a" as const);
+          save(signed);
+          yield { content: [{ type: "text", text }], metadata: { custom: { signed } } };
+        }
+      };
+      try { yield* reply(); } finally { turn.end(); }
     },
   }), []);
 
   const initialMessages = useMemo<ThreadMessageLike[]>(() => (props.chat.messages as StoredMsg[]).map((m) => ({
-    role: m.role, content: m.content, ...(m.role === "assistant" && m.signed ? { metadata: { custom: { signed: m.signed } } } : {}),
+    role: m.role, content: m.content, ...(m.role === "assistant" && normalizeSigned(m.signed) ? { metadata: { custom: { signed: normalizeSigned(m.signed) } } } : {}),
   })), [props.chat.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runtime = useLocalRuntime(adapter, { initialMessages });
@@ -108,7 +114,7 @@ export function ChatThread(props: ThreadProps) {
           <ThreadPrimitive.Messages>
             {({ message }) => (
               <Message role={message.role} content={textOf(message.content as never)}
-                signed={(message.metadata?.custom as { signed?: Signed } | undefined)?.signed} />
+                signed={normalizeSigned((message.metadata?.custom as { signed?: unknown } | undefined)?.signed)} />
             )}
           </ThreadPrimitive.Messages>
         </ThreadPrimitive.Viewport>

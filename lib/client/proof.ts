@@ -142,3 +142,20 @@ export function proofFromResponse(modelRef: string, body: unknown, nonce: string
   if (!reports.length && j.intel_quote) reports.push(buildReportProof(j as NearReport, "model", nonce));
   return summarise(modelRef, reports, false);
 }
+
+/**
+ * Per-reply signature status. "enclave" needs a chain-verified quote; while the chain is unchecked the
+ * signing key comes from an unverified quote, so a matching signature is only "key-match".
+ */
+export type Signed = "enclave" | "key-match" | "fail" | "n/a";
+
+export function signatureLevel(proof: Pick<Proof, "chainVerified">, signatureOk: boolean): Signed {
+  if (!signatureOk) return "fail";
+  return proof.chainVerified ? "enclave" : "key-match";
+}
+
+/** Reads a stored status; legacy "ok" was written without chain verification, so it is a key match. */
+export function normalizeSigned(s: unknown): Signed | undefined {
+  if (s === "ok") return "key-match";
+  return s === "enclave" || s === "key-match" || s === "fail" || s === "n/a" ? s : undefined;
+}

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat, type KV } from "@/lib/storage";
+import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat } from "@/lib/storage";
 import { persist } from "@/lib/persist";
 import { loadPersonas, savePersona, deletePersona, replacePersonas, type Persona } from "@/lib/personas";
 import { encryptBackup, decryptBackup, type BackupFile } from "@/lib/backup";
@@ -10,7 +10,7 @@ import type { Tier } from "@/lib/tiers";
 import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore } from "@/lib/client/vault";
-import { proofFromResponse, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
@@ -26,7 +26,7 @@ const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messa
 const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
 
 export default function Home() {
-  const [kv, setKv] = useState<KV | null>(null);
+  const [kv, setKv] = useState<Vault | null>(null);
   const [vaultError, setVaultError] = useState("");
   const [view, setView] = useState<View>("chat");
   const [chats, setChats] = useState<Chat[]>([]);
@@ -50,7 +50,7 @@ export default function Home() {
 
   // Open the encrypted local vault (non-extractable key in IndexedDB); fall back to read-nothing if unavailable.
   useEffect(() => {
-    Vault.open(localStorage, idbKeyStore()).then((v) => {
+    Vault.open(localStorage, idbKeyStore(), { onError: (e) => setNotice(`Not saved to encrypted history: ${e.message}`) }).then((v) => {
       setKv(v); setChats(loadChats(v)); setPersonas(loadPersonas(v));
     }).catch((e) => setVaultError(`Encrypted storage unavailable (${(e as Error).message}). Use ghost chat.`));
     refreshSession();
@@ -58,6 +58,14 @@ export default function Home() {
       const m = visibleModels(all); setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
     }).catch(() => setNotice("Could not load models"));
   }, []);
+
+  // Vault writes finish asynchronously; warn before a reload or close would drop one.
+  useEffect(() => {
+    if (!kv) return;
+    const onUnload = (e: BeforeUnloadEvent) => { if (kv.pending()) e.preventDefault(); };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [kv]);
 
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
@@ -91,7 +99,7 @@ export default function Home() {
     if (!a || a.level === "failed" || a.level === "unavailable" || !a.signingAddress || !receipt.chat_id) return "n/a";
     const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
     if (!r.ok) return "n/a";
-    return verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok ? "ok" : "fail";
+    return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok);
   }, [proofs, checkProof]);
 
   const onSaved = useCallback((c: Chat, wasGhost: boolean, isCurrent: boolean) => {
@@ -134,12 +142,16 @@ export default function Home() {
       const data = await decryptBackup<{ chats: Chat[]; personas: Persona[] }>(JSON.parse(await f.text()) as BackupFile, pass);
       const ok = persist(kv, { ghost }, (w) => { replaceChats(w, data.chats ?? []); replacePersonas(w, data.personas ?? []); return true; });
       if (!ok) { setNotice("Leave ghost chat to restore a backup"); return; }
+      await kv.flush();
       setChats(loadChats(kv)); setPersonas(loadPersonas(kv)); setNotice("Backup restored");
     } catch (e) { setNotice((e as Error).message); }
   }
-  function wipe() {
-    if (!kv) return;
-    if (persist(kv, { ghost }, (w) => { wipeAll(w); return true; })) { setChats([]); openChat(newChat()); setNotice("All chats wiped from this browser"); }
+  async function wipe() {
+    if (!kv || ghost) return;
+    scope.discardAll(); // a reply still streaming or finishing must not write a wiped chat back
+    persist(kv, { ghost }, (w) => wipeAll(w));
+    setChats([]); openChat(newChat());
+    try { await kv.flush(); setNotice("All chats wiped from this browser"); } catch (e) { setNotice((e as Error).message); }
   }
   async function goBilling(path: string, body: object = {}) {
     try {
@@ -232,7 +244,7 @@ export default function Home() {
                 <span className="when">{new Date(c.updatedAt).toLocaleDateString()}</span>
               </button>
               <button type="button" className="icon-btn del" aria-label="Delete chat"
-                onClick={() => { if (!kv) return; const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }}>✕</button>
+                onClick={() => { if (!kv) return; scope.forget(c.id); const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }}>✕</button>
             </li>
           ))}
           {!ghost && !filtered.length && <li className="empty muted">No chats yet</li>}
