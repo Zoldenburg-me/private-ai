@@ -57,12 +57,21 @@ describe("ghost chat: one persistence gate", () => {
     for (const f of [...walk(join(root, "app")), ...walk(join(root, "lib"))]) {
       const rel = relative(root, f).split("\\").join("/");
       const src = readFileSync(f, "utf8");
-      // lib/client/vault.ts is the encrypted KV *underneath* the gate (it only writes what a Writer
-      // hands it, plus re-encrypting existing data on migration); its key lives in IndexedDB.
-      if (rel === "lib/client/vault.ts") continue;
-      // Only the gated writer modules may call setItem/removeItem, and only on a Writer.
-      if (/\.(setItem|removeItem|clear)\s*\(/.test(src) && !["lib/storage.ts", "lib/personas.ts"].includes(rel)) offenders.push(`${rel}: direct storage write`);
-      if (/\b(sessionStorage|indexedDB|document\.cookie\s*=)/.test(src)) offenders.push(`${rel}: other browser storage`);
+      if (rel === "lib/client/vault.ts") {
+        // The encrypted KV *underneath* the gate: it may only write to the KV it wraps (`backing`, which
+        // receives what a Writer hands the vault, plus the plaintext->ciphertext migration) and may only
+        // open IndexedDB for its key. Anything else is checked like every other file.
+        for (const m of src.matchAll(/([\w.]+)\.(setItem|removeItem|clear)\s*\(/g)) {
+          if (!["backing", "this.backing"].includes(m[1])) offenders.push(`${rel}: storage write outside the wrapped KV (${m[0]})`);
+        }
+        if (/\.clear\s*\(/.test(src)) offenders.push(`${rel}: clears storage`);
+        if (/\b(sessionStorage|document\.cookie\s*=)/.test(src) || /\bindexedDB\b(?!\.open\()/.test(src)) offenders.push(`${rel}: other browser storage`);
+        if (/\blocalStorage\s*[.[]/.test(src)) offenders.push(`${rel}: uses localStorage directly`);
+      } else {
+        // Only the gated writer modules may call setItem/removeItem, and only on a Writer.
+        if (/\.(setItem|removeItem|clear)\s*\(/.test(src) && !["lib/storage.ts", "lib/personas.ts"].includes(rel)) offenders.push(`${rel}: direct storage write`);
+        if (/\b(sessionStorage|indexedDB|document\.cookie\s*=)/.test(src)) offenders.push(`${rel}: other browser storage`);
+      }
       if (rel === "lib/persist.ts") continue;
       if (/as\s+Writer\b/.test(src)) offenders.push(`${rel}: forges a Writer`);
     }
