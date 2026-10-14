@@ -7,6 +7,7 @@ import { encryptBackup, decryptBackup, type BackupFile } from "@/lib/backup";
 import { newNonce, verifyReport, verifySignedResponse, type VerifyResult, type AttestationReport } from "@/lib/attestation";
 import type { ModelEntry } from "@/lib/catalog";
 import type { Tier } from "@/lib/tiers";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 type Msg = Chat["messages"][number] & { signed?: "ok" | "fail" | "n/a" };
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
@@ -29,14 +30,44 @@ export default function Home() {
   const [passphrase, setPassphrase] = useState("");
   const [pName, setPName] = useState("");
   const [pPrompt, setPPrompt] = useState("");
+  const [passkeys, setPasskeys] = useState(0);
 
   useEffect(() => {
     setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage));
-    fetch("/api/session").then((r) => r.json()).then((s) => setTier(s.tier)).catch(() => {});
+    refreshSession();
     fetch("/api/models").then((r) => r.json()).then((m: ModelEntry[]) => {
       setModels(m); const first = m.find((x) => x.selectable); if (first) setModelRef(`${first.provider}:${first.id}`);
     }).catch(() => {});
   }, []);
+
+  function refreshSession() {
+    fetch("/api/session").then((r) => r.json()).then((s) => {
+      setTier(s.tier); if (s.usage) setLimits(`${s.usage.remainingToday} left today`);
+      return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys?.length ?? 0));
+    }).catch(() => {});
+  }
+
+  /** Passkey = optional upgrade of this anonymous account; no email or username. */
+  async function addPasskey() {
+    try {
+      const o = await fetch("/api/auth/passkey/register/options", { method: "POST" });
+      if (!o.ok) throw new Error((await o.json()).error?.message ?? `HTTP ${o.status}`);
+      const att = await startRegistration({ optionsJSON: await o.json() });
+      const v = await fetch("/api/auth/passkey/register/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(att) });
+      if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
+      setNotice("Passkey saved. Use it to restore your plan on other devices."); refreshSession();
+    } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
+  }
+  async function loginPasskey() {
+    try {
+      const o = await fetch("/api/auth/passkey/login/options", { method: "POST" });
+      if (!o.ok) throw new Error(`HTTP ${o.status}`);
+      const asr = await startAuthentication({ optionsJSON: await o.json() });
+      const v = await fetch("/api/auth/passkey/login/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(asr) });
+      if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
+      setNotice("Logged in with passkey"); refreshSession();
+    } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
+  }
 
   async function verifyEnclave(ref = modelRef): Promise<VerifyResult | null> {
     if (!ref) return null;
@@ -135,6 +166,12 @@ export default function Home() {
         <input data-testid="passphrase" type="password" placeholder="Backup passphrase (min 8)" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} style={{ width: "100%" }} />
         <button data-testid="export" onClick={exportBackup}>Export encrypted backup</button>
         <label style={{ display: "block", marginTop: 6 }}>Import: <input data-testid="import" type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && importBackup(e.target.files[0])} /></label>
+        <hr />
+        <b>Account</b> <small>(no email needed)</small>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>{passkeys ? `${passkeys} passkey(s) on this account` : "Anonymous: plan is tied to this browser"}</div>
+        <button data-testid="passkey-add" onClick={addPasskey}>Save account with a passkey</button>
+        <button data-testid="passkey-login" onClick={loginPasskey}>Log in with a passkey</button>
+        <hr />
         <button style={{ marginTop: 6 }} onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all chats</button>
       </aside>
       <section style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
