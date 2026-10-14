@@ -1,0 +1,106 @@
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import postgres from "postgres";
+import { MemoryAccountStore } from "../lib/store/memory";
+import { PgAccountStore } from "../lib/store/postgres";
+import { migrate } from "../lib/store/migrate";
+import { createStores, _setStores, type AccountStore } from "../lib/store";
+import { createSession, issueToken, issueTokenFor, setTier, tierOf, verifyToken } from "../lib/session";
+import { handleChat } from "../lib/handler";
+import { GET as sessionGET } from "../app/api/session/route";
+
+// Contract tests: memory always; Postgres when TEST_DATABASE_URL is set (CI / docker-compose).
+const pgUrl = process.env.TEST_DATABASE_URL;
+const pg = pgUrl ? new PgAccountStore(postgres(pgUrl, { max: 2, onnotice: () => {} }), false) : null;
+const backends: [string, () => Promise<AccountStore>][] = [["memory", async () => new MemoryAccountStore()]];
+if (pg) backends.push(["postgres", async () => {
+  await pg.sql.unsafe("DROP TABLE IF EXISTS passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
+  await migrate(pg.sql); return pg;
+}]);
+afterAll(async () => { await pg?.close(); });
+
+describe.each(backends)("account store contract (%s)", (_name, make) => {
+  let s: AccountStore;
+  beforeEach(async () => { s = await make(); });
+
+  it("sessions: touch creates, exists", async () => {
+    expect(await s.sessionExists("acct_aaaaaaaaaa")).toBe(false);
+    await s.touchSession("acct_aaaaaaaaaa"); await s.touchSession("acct_aaaaaaaaaa");
+    expect(await s.sessionExists("acct_aaaaaaaaaa")).toBe(true);
+  });
+  it("entitlements: set, overwrite, clear by source", async () => {
+    await s.setEntitlement("acct_b", { tier: "pro", source: "stripe", expiresAt: null });
+    expect(await s.getEntitlement("acct_b")).toEqual({ tier: "pro", source: "stripe", expiresAt: null });
+    await s.setEntitlement("acct_b", { tier: "max", source: "stripe", expiresAt: 4_102_444_800_000 });
+    expect((await s.getEntitlement("acct_b"))?.tier).toBe("max");
+    await s.clearEntitlement("acct_b", "manual");
+    expect(await s.getEntitlement("acct_b")).not.toBeNull();
+    await s.clearEntitlement("acct_b", "stripe");
+    expect(await s.getEntitlement("acct_b")).toBeNull();
+  });
+  it("subscriptions: upsert and latest per account", async () => {
+    const base = { accountId: "acct_c", stripeCustomerId: "cus_1", tier: "pro" as const, status: "active", currentPeriodEnd: 4_102_444_800_000 };
+    await s.upsertSubscription({ ...base, stripeSubscriptionId: "sub_1" });
+    await s.upsertSubscription({ ...base, stripeSubscriptionId: "sub_2", tier: "max" });
+    expect((await s.latestSubscriptionFor("acct_c"))?.stripeSubscriptionId).toBe("sub_2");
+    await s.upsertSubscription({ ...base, stripeSubscriptionId: "sub_1", status: "canceled" });
+    expect(await s.getSubscription("sub_1")).toMatchObject({ status: "canceled", stripeCustomerId: "cus_1" });
+    expect((await s.latestSubscriptionFor("acct_c"))?.stripeSubscriptionId).toBe("sub_1");
+  });
+  it("passkey credentials: add, get, list, counter, duplicate rejected", async () => {
+    const c = { credentialId: "cred1", accountId: "acct_d", publicKey: new Uint8Array([1, 2, 3]), counter: 0, transports: ["internal"], createdAt: Date.now() };
+    await s.addCredential(c);
+    expect(await s.getCredential("cred1")).toMatchObject({ accountId: "acct_d", counter: 0, transports: ["internal"] });
+    expect(Array.from((await s.getCredential("cred1"))!.publicKey)).toEqual([1, 2, 3]);
+    await s.updateCredentialCounter("cred1", 7);
+    expect((await s.listCredentials("acct_d")).map((x) => x.counter)).toEqual([7]);
+    await expect(s.addCredential(c)).rejects.toThrow();
+  });
+});
+
+describe("session + entitlements over the store", () => {
+  beforeEach(() => { _setStores(); });
+  it("createSession persists the opaque id; tokens for an id verify", async () => {
+    const { id, token } = await createSession();
+    expect(verifyToken(token)).toBe(id);
+    expect(verifyToken(issueTokenFor(id))).toBe(id);
+    const { accounts } = await (await import("../lib/store")).stores();
+    expect(await accounts.sessionExists(id)).toBe(true);
+  });
+  it("tier: store wins, expired falls back, free clears", async () => {
+    const { id } = issueToken();
+    expect(await tierOf(id)).toBe("free");
+    await setTier(id, "pro"); expect(await tierOf(id)).toBe("pro");
+    await setTier(id, "free"); expect(await tierOf(id)).toBe("free");
+    const { accounts } = _setStores();
+    await accounts.setEntitlement(id, { tier: "max", source: "stripe", expiresAt: 1000 });
+    expect(await tierOf(id, 999)).toBe("max");
+    expect(await tierOf(id, 1001)).toBe("free");
+  });
+  it("/api/session reports tier and usage", async () => {
+    const res = await sessionGET(new Request("http://app/api/session"));
+    const body = await res.json();
+    expect(body).toMatchObject({ tier: { id: "free" }, usage: { usedToday: 0, dailyLimit: 20 } });
+    expect(res.headers.get("set-cookie")).toMatch(/^pai_session=pai_/);
+  });
+});
+
+describe("fail closed", () => {
+  const down = { DATABASE_URL: "postgres://x:y@127.0.0.1:1/none", REDIS_URL: "redis://127.0.0.1:1" };
+  it("configured but unreachable backends give 503, not a memory fallback", async () => {
+    const s = await createStores({ ...down, NODE_ENV: "test" });
+    expect(s.kind).toEqual({ accounts: "postgres", counters: "redis" });
+    _setStores(s);
+    expect((await sessionGET(new Request("http://app/api/session"))).status).toBe(503);
+    const { token } = issueToken();
+    const res = await handleChat(new Request("http://app/x", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ model: "mock:m", messages: [] }) }), "/t",
+      { catalog: async () => [], log: () => {} });
+    // invalid model is rejected after recordFailure() hits the down Redis -> 503
+    expect(res.status).toBe(503);
+  }, 20_000);
+  it("production without URLs refuses to use memory unless explicitly allowed", async () => {
+    const s = await createStores({ NODE_ENV: "production" });
+    expect(s.kind).toEqual({ accounts: "unconfigured", counters: "unconfigured" });
+    await expect(s.accounts.ping()).rejects.toThrow(/not configured/);
+    expect((await createStores({ NODE_ENV: "production", PAI_ALLOW_MEMORY_STORE: "1" })).kind.accounts).toBe("memory");
+  });
+});
