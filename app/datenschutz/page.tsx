@@ -69,7 +69,7 @@ export default function Datenschutz() {
         <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. Details: <a href="/privacy/metadata">/privacy/metadata</a>.</p>
         <h3>9. Your rights</h3>
         <p>You have the rights of access, rectification, erasure, restriction, portability and objection (Art. 15–21 GDPR) and may complain to a supervisory authority (Art. 77 GDPR).
-          Access and portability: in the sidebar under "Account", "Download my data" gives you everything we store for your account as a JSON file. Erasure: "Delete account" immediately deletes your account, plan, passkeys and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
+          Access and portability: in the sidebar under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
       </Lang>
     </LegalPage>
   );

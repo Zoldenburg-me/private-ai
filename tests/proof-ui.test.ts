@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { newNonce } from "@/lib/attestation";
 import { mockReport, mockQuote } from "@/lib/mock-tee";
-import { proofFromResponse, summarise, readMeasurements, expectedMrConfigId, TD_FIELDS, LEVEL_LABEL } from "@/lib/client/proof";
+import { proofFromResponse, summarise, readMeasurements, expectedMrConfigId, TD_FIELDS, LEVEL_LABEL, signatureLevel, normalizeSigned } from "@/lib/client/proof";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 
 describe("proof model (honest badge)", () => {
@@ -51,5 +51,16 @@ describe("proof model (honest badge)", () => {
     expect(p.reports[0].items.find((i) => i.id === "compose")?.state).toBe("pass");
     const bad = proofFromResponse("m", { model_attestations: [{ ...rep, info: { tcb_info: { app_compose: "tampered" } } }] }, n);
     expect(bad.level).toBe("failed");
+  });
+
+  it("a matching signature is 'signed by enclave' only when the quote chain is verified", () => {
+    const n = newNonce();
+    const p = proofFromResponse("m", { model_attestations: [mockReport(n)] }, n);
+    expect(signatureLevel(p, true)).toBe("key-match");
+    expect(signatureLevel(p, false)).toBe("fail");
+    expect(signatureLevel({ chainVerified: true }, true)).toBe("enclave");
+    expect(normalizeSigned("ok")).toBe("key-match"); // legacy entries were never chain-verified
+    expect(normalizeSigned("enclave")).toBe("enclave");
+    expect(normalizeSigned("bogus")).toBeUndefined();
   });
 });
