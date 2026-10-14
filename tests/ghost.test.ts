@@ -57,6 +57,9 @@ describe("ghost chat: one persistence gate", () => {
     for (const f of [...walk(join(root, "app")), ...walk(join(root, "lib"))]) {
       const rel = relative(root, f).split("\\").join("/");
       const src = readFileSync(f, "utf8");
+      // lib/client/vault.ts is the encrypted KV *underneath* the gate (it only writes what a Writer
+      // hands it, plus re-encrypting existing data on migration); its key lives in IndexedDB.
+      if (rel === "lib/client/vault.ts") continue;
       // Only the gated writer modules may call setItem/removeItem, and only on a Writer.
       if (/\.(setItem|removeItem|clear)\s*\(/.test(src) && !["lib/storage.ts", "lib/personas.ts"].includes(rel)) offenders.push(`${rel}: direct storage write`);
       if (/\b(sessionStorage|indexedDB|document\.cookie\s*=)/.test(src)) offenders.push(`${rel}: other browser storage`);

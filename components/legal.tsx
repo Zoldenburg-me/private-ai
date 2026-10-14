@@ -1,10 +1,11 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 /** Shared shell for legal pages. Both languages on one page: German (binding) first, then English. */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main style={{ maxWidth: 820, margin: "0 auto", padding: "24px 16px", lineHeight: 1.55 }}>
-      <p><a href="/" style={{ color: "#93c5fd" }}>← Private AI</a></p>
+      <p><Link href="/" style={{ color: "#93c5fd" }}>← Private AI</Link></p>
       <h1>{title}</h1>
       <p style={{ fontSize: 13, opacity: 0.8 }}>
         <a href="#de" style={{ color: "#93c5fd" }}>Deutsch</a> · <a href="#en" style={{ color: "#93c5fd" }}>English</a> ·
