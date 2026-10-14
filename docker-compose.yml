@@ -23,6 +23,10 @@ services:
       redis: { condition: service_healthy }
     read_only: true
     tmpfs: [/tmp]
+    # Metadata-only logs, rotated: at most 3 x 10 MB (stated on /privacy/metadata).
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 

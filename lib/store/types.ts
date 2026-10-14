@@ -35,8 +35,13 @@ export interface AccountStore {
   getCredential(credentialId: string): Promise<PasskeyCredential | null>;
   listCredentials(accountId: string): Promise<PasskeyCredential[]>;
   updateCredentialCounter(credentialId: string, counter: number): Promise<void>;
+  /** Delete accounts last seen before `cutoff` that have no entitled subscription. Returns count. */
+  purgeInactive(cutoff: number): Promise<number>;
   ping(): Promise<void>;
 }
+
+/** Subscription states that grant access (Stripe retries failed renewals while past_due). */
+export const ENTITLED_STATUSES = ["active", "trialing", "past_due"] as const;
 
 export interface ConsumeLimits { daily: number; perMinute: number; budgetFailures: number; budgetWindowMs: number }
 export type ConsumeOutcome = "ok" | "budget" | "rejected" | "daily" | "minute";

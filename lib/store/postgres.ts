@@ -1,7 +1,7 @@
 import postgres, { type Sql } from "postgres";
 import type { TierId } from "../tiers";
 import type { AccountStore, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
-import { dayKey } from "./types";
+import { dayKey, ENTITLED_STATUSES } from "./types";
 import { migrate } from "./migrate";
 
 const ms = (d: Date | null) => (d ? d.getTime() : null);
@@ -106,6 +106,13 @@ export class PgAccountStore implements AccountStore {
   async updateCredentialCounter(id: string, counter: number) {
     const sql = await this.db();
     await sql`UPDATE passkey_credentials SET counter = ${counter} WHERE credential_id = ${id}`;
+  }
+  async purgeInactive(cutoff: number) {
+    const sql = await this.db();
+    // ON DELETE CASCADE removes entitlements, subscriptions and passkeys of purged accounts.
+    const r = await sql`DELETE FROM sessions s WHERE s.last_seen_on < ${dayKey(cutoff)}
+      AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]}))`;
+    return r.count;
   }
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
   async close() { await this.sql.end({ timeout: 2 }); }

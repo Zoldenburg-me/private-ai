@@ -2,6 +2,7 @@ import type { AccountStore, CounterStore } from "./types";
 import { MemoryAccountStore, MemoryCounterStore } from "./memory";
 
 export type * from "./types";
+export { ENTITLED_STATUSES } from "./types";
 
 /** Thrown when a configured backend is unreachable. Routes turn it into 503 (fail closed). */
 export class StoreUnavailableError extends Error {

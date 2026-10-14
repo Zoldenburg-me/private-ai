@@ -6,7 +6,7 @@ export interface LogMeta {
   route?: string; provider?: string; model?: string; status?: number; ms?: number;
   tier?: string; event?: string; inputChars?: number; outputBytes?: number;
 }
-const ALLOWED: (keyof LogMeta)[] = ["route", "provider", "model", "status", "ms", "tier", "event", "inputChars", "outputBytes"];
+export const ALLOWED: (keyof LogMeta)[] = ["route", "provider", "model", "status", "ms", "tier", "event", "inputChars", "outputBytes"];
 
 export type Logger = (meta: LogMeta) => void;
 

@@ -1,5 +1,5 @@
 import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
-import { dayKey, minuteStartOf } from "./types";
+import { dayKey, minuteStartOf, ENTITLED_STATUSES } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
 export class MemoryAccountStore implements AccountStore {
@@ -13,15 +13,17 @@ export class MemoryAccountStore implements AccountStore {
     const s = this.sessions.get(id);
     if (s) s.lastSeenOn = dayKey(now); else this.sessions.set(id, { createdAt: now, lastSeenOn: dayKey(now) });
   }
+  /** Create the row if missing without bumping last-seen (matches INSERT ... ON CONFLICT DO NOTHING). */
+  private ensure(id: string) { if (!this.sessions.has(id)) this.sessions.set(id, { createdAt: Date.now(), lastSeenOn: dayKey(Date.now()) }); }
   async sessionExists(id: string) { return this.sessions.has(id); }
   async getEntitlement(id: string) { return this.entitlements.get(id) ?? null; }
-  async setEntitlement(id: string, e: Entitlement) { await this.touchSession(id); this.entitlements.set(id, { ...e }); }
+  async setEntitlement(id: string, e: Entitlement) { this.ensure(id); this.entitlements.set(id, { ...e }); }
   async clearEntitlement(id: string, source?: EntitlementSource) {
     const e = this.entitlements.get(id);
     if (e && (!source || e.source === source)) this.entitlements.delete(id);
   }
   async upsertSubscription(s: Subscription) {
-    await this.touchSession(s.accountId);
+    this.ensure(s.accountId);
     this.subscriptions.set(s.stripeSubscriptionId, { ...s, updatedAt: ++this.seq });
   }
   async getSubscription(id: string) {
@@ -39,12 +41,23 @@ export class MemoryAccountStore implements AccountStore {
   }
   async addCredential(c: PasskeyCredential) {
     if (this.credentials.has(c.credentialId)) throw new Error("credential exists");
-    await this.touchSession(c.accountId);
+    this.ensure(c.accountId);
     this.credentials.set(c.credentialId, { ...c, transports: [...c.transports] });
   }
   async getCredential(id: string) { const c = this.credentials.get(id); return c ? { ...c } : null; }
   async listCredentials(accountId: string) { return [...this.credentials.values()].filter((c) => c.accountId === accountId); }
   async updateCredentialCounter(id: string, counter: number) { const c = this.credentials.get(id); if (c) c.counter = counter; }
+  async purgeInactive(cutoff: number) {
+    const day = dayKey(cutoff); let n = 0;
+    for (const [id, s] of this.sessions) {
+      if (s.lastSeenOn >= day) continue;
+      if ([...this.subscriptions.values()].some((x) => x.accountId === id && (ENTITLED_STATUSES as readonly string[]).includes(x.status))) continue;
+      this.sessions.delete(id); this.entitlements.delete(id); n++;
+      for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
+      for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
+    }
+    return n;
+  }
   async ping() {}
 }
 

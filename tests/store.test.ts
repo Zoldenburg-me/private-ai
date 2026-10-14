@@ -47,6 +47,16 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect((await s.latestSubscriptionFor("acct_c"))?.stripeSubscriptionId).toBe("sub_1");
     expect((await s.listSubscriptionsFor("acct_c")).map((x) => x.stripeSubscriptionId)).toEqual(["sub_1", "sub_2"]);
   });
+  it("purgeInactive removes old accounts (cascading) unless subscribed", async () => {
+    const old = Date.UTC(2020, 0, 1);
+    await s.touchSession("acct_old_1", old); await s.touchSession("acct_old_2", old);
+    await s.setEntitlement("acct_old_1", { tier: "pro", source: "manual", expiresAt: null });
+    await s.upsertSubscription({ stripeSubscriptionId: "sub_keep", accountId: "acct_old_2", stripeCustomerId: "cus", tier: "pro", status: "active", currentPeriodEnd: null });
+    expect(await s.purgeInactive(Date.UTC(2021, 0, 1))).toBe(1);
+    expect(await s.sessionExists("acct_old_1")).toBe(false);
+    expect(await s.getEntitlement("acct_old_1")).toBeNull();
+    expect(await s.sessionExists("acct_old_2")).toBe(true);
+  });
   it("passkey credentials: add, get, list, counter, duplicate rejected", async () => {
     const c = { credentialId: "cred1", accountId: "acct_d", publicKey: new Uint8Array([1, 2, 3]), counter: 0, transports: ["internal"], createdAt: Date.now() };
     await s.addCredential(c);

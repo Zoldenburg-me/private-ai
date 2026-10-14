@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { stores } from "./store";
+import { stores, ENTITLED_STATUSES } from "./store";
 import type { TierId } from "./tiers";
 
 /**
@@ -14,7 +14,7 @@ const ENV_KEYS: Record<`${Plan}:${Interval}`, string> = {
   "max:month": "STRIPE_PRICE_MAX_MONTHLY", "max:year": "STRIPE_PRICE_MAX_YEARLY",
 };
 /** Stripe retries failed renewals; keep access while it does. */
-const ENTITLED = new Set(["active", "trialing", "past_due"]);
+const ENTITLED = new Set<string>(ENTITLED_STATUSES);
 /** Grace after period end in case a renewal webhook is late; afterwards access lapses on its own. */
 export const GRACE_MS = 3 * 86_400_000;
 const RANK: Record<TierId, number> = { free: 0, pro: 1, max: 2 };
