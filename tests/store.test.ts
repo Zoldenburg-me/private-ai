@@ -45,6 +45,7 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     await s.upsertSubscription({ ...base, stripeSubscriptionId: "sub_1", status: "canceled" });
     expect(await s.getSubscription("sub_1")).toMatchObject({ status: "canceled", stripeCustomerId: "cus_1" });
     expect((await s.latestSubscriptionFor("acct_c"))?.stripeSubscriptionId).toBe("sub_1");
+    expect((await s.listSubscriptionsFor("acct_c")).map((x) => x.stripeSubscriptionId)).toEqual(["sub_1", "sub_2"]);
   });
   it("passkey credentials: add, get, list, counter, duplicate rejected", async () => {
     const c = { credentialId: "cred1", accountId: "acct_d", publicKey: new Uint8Array([1, 2, 3]), counter: 0, transports: ["internal"], createdAt: Date.now() };

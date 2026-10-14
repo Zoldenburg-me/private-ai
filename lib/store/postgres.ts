@@ -82,6 +82,10 @@ export class PgAccountStore implements AccountStore {
     const [r] = await sql<SubRow[]>`SELECT * FROM subscriptions WHERE account_id = ${accountId} ORDER BY updated_at DESC LIMIT 1`;
     return r ? toSub(r) : null;
   }
+  async listSubscriptionsFor(accountId: string) {
+    const sql = await this.db();
+    return (await sql<SubRow[]>`SELECT * FROM subscriptions WHERE account_id = ${accountId} ORDER BY updated_at DESC`).map(toSub);
+  }
   async addCredential(c: PasskeyCredential) {
     const sql = await this.db();
     await sql.begin(async (tx) => {

@@ -30,6 +30,7 @@ export interface AccountStore {
   upsertSubscription(s: Subscription): Promise<void>;
   getSubscription(stripeSubscriptionId: string): Promise<Subscription | null>;
   latestSubscriptionFor(accountId: string): Promise<Subscription | null>;
+  listSubscriptionsFor(accountId: string): Promise<Subscription[]>;
   addCredential(c: PasskeyCredential): Promise<void>;
   getCredential(credentialId: string): Promise<PasskeyCredential | null>;
   listCredentials(accountId: string): Promise<PasskeyCredential[]>;

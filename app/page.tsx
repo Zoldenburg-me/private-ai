@@ -31,6 +31,7 @@ export default function Home() {
   const [pName, setPName] = useState("");
   const [pPrompt, setPPrompt] = useState("");
   const [passkeys, setPasskeys] = useState(0);
+  const [billing, setBilling] = useState<{ configured: boolean; subscription: { tier: string; status: string } | null } | null>(null);
 
   useEffect(() => {
     setChats(loadChats(localStorage)); setPersonas(loadPersonas(localStorage));
@@ -43,8 +44,19 @@ export default function Home() {
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
       setTier(s.tier); if (s.usage) setLimits(`${s.usage.remainingToday} left today`);
+      fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
       return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys?.length ?? 0));
     }).catch(() => {});
+  }
+
+  /** Stripe-hosted checkout / portal; we never see card data. */
+  async function goBilling(path: string, body: object = {}) {
+    try {
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+      window.location.href = j.url;
+    } catch (e) { setNotice(`Billing: ${(e as Error).message}`); }
   }
 
   /** Passkey = optional upgrade of this anonymous account; no email or username. */
@@ -171,6 +183,15 @@ export default function Home() {
         <div style={{ fontSize: 12, opacity: 0.8 }}>{passkeys ? `${passkeys} passkey(s) on this account` : "Anonymous: plan is tied to this browser"}</div>
         <button data-testid="passkey-add" onClick={addPasskey}>Save account with a passkey</button>
         <button data-testid="passkey-login" onClick={loginPasskey}>Log in with a passkey</button>
+        {billing?.configured && (billing.subscription && ["active", "trialing", "past_due"].includes(billing.subscription.status)
+          ? <div><button data-testid="billing-portal" onClick={() => goBilling("/api/billing/portal")}>Manage subscription</button></div>
+          : <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+              <button onClick={() => goBilling("/api/billing/checkout", { plan: "pro", interval: "month" })}>Pro €15/mo</button>
+              <button onClick={() => goBilling("/api/billing/checkout", { plan: "pro", interval: "year" })}>Pro yearly</button>
+              <button onClick={() => goBilling("/api/billing/checkout", { plan: "max", interval: "month" })}>Max €49/mo</button>
+              <button onClick={() => goBilling("/api/billing/checkout", { plan: "max", interval: "year" })}>Max yearly</button>
+            </div>)}
+        {!passkeys && billing?.subscription && <div style={{ fontSize: 11, color: "#facc15" }}>Tip: save a passkey so you can restore your plan on other devices.</div>}
         <hr />
         <button style={{ marginTop: 6 }} onClick={() => { wipeAll(localStorage); setChats([]); setChat(newChat()); }}>Wipe all chats</button>
       </aside>

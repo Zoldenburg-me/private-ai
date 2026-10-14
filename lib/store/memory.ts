@@ -33,6 +33,10 @@ export class MemoryAccountStore implements AccountStore {
     if (!all[0]) return null;
     const { updatedAt: _u, ...rest } = all[0]; return rest;
   }
+  async listSubscriptionsFor(accountId: string) {
+    return [...this.subscriptions.values()].filter((s) => s.accountId === accountId).sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(({ updatedAt: _u, ...rest }) => rest);
+  }
   async addCredential(c: PasskeyCredential) {
     if (this.credentials.has(c.credentialId)) throw new Error("credential exists");
     await this.touchSession(c.accountId);
