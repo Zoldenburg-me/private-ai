@@ -1,6 +1,6 @@
 # private-ai (working title)
 
-Clean-room private AI chat by Zoldenburg UG. Feature goals are drawn from public descriptions of private-AI chat products. **No third-party proprietary code, assets or branding is used.** All code is original (MIT-compatible deps only; see Licenses).
+Clean-room private AI chat by Zoldenburg UG. Feature goals are drawn from public descriptions of private-AI chat products. **.** All code is original (MIT-compatible deps only; see Licenses).
 
 ## Architecture
 ```
