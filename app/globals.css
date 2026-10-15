@@ -92,7 +92,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .pre { white-space: pre-wrap; }
 .md p:first-child { margin-top: 0; } .md p:last-child { margin-bottom: 0; }
 .md pre { background: #0a0c10; padding: 12px; border-radius: 10px; overflow-x: auto; }
-.sig { font-size: 11px; margin-top: 6px; } .sig.ok { color: var(--ok); } .sig.bad { color: var(--bad); }
+.sig { font-size: 11px; margin-top: 6px; } .sig.ok { color: var(--ok); } .sig.bad { color: var(--bad); } .sig.warn { color: var(--warn); }
 .composer { display: flex; align-items: flex-end; gap: 8px; max-width: 820px; width: calc(100% - 32px); margin: 0 auto 18px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
 .composer:focus-within { border-color: var(--accent); }
 .composer-input { flex: 1; resize: none; border: 0; outline: 0; background: transparent; padding: 6px; max-height: 200px; }

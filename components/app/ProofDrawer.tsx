@@ -66,7 +66,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
           <section className="report">
             <h3>Per message</h3>
-            <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. Look for “signed by enclave” under a reply.</p>
+            <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>
           </section>
 
           <div className="row gap">

@@ -40,7 +40,7 @@ export default function Datenschutz() {
           <Todo>handels- und steuerrechtliche Aufbewahrungspflichten (Rechnungen bei Stripe) ergänzen</Todo></p>
         <h3>9. Ihre Rechte</h3>
         <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO),
-          z. B. <Todo>zuständige Landesdatenschutzbehörde</Todo>. Auskunft und Datenübertragbarkeit: In der Seitenleiste unter „Konto“ laden Sie mit „Meine Daten herunterladen“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Konto löschen“ löscht Ihr Konto, Tarif, Passkeys und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
+          z. B. <Todo>zuständige Landesdatenschutzbehörde</Todo>. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
           Eine automatisierte Entscheidungsfindung oder Profilbildung findet nicht statt.</p>
       </Lang>
       <Lang id="en">
@@ -69,7 +69,7 @@ export default function Datenschutz() {
         <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. Details: <a href="/privacy/metadata">/privacy/metadata</a>.</p>
         <h3>9. Your rights</h3>
         <p>You have the rights of access, rectification, erasure, restriction, portability and objection (Art. 15–21 GDPR) and may complain to a supervisory authority (Art. 77 GDPR).
-          Access and portability: in the sidebar under "Account", "Download my data" gives you everything we store for your account as a JSON file. Erasure: "Delete account" immediately deletes your account, plan, passkeys and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
+          Access and portability: in Settings (⚙︎) under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
       </Lang>
     </LegalPage>
   );

@@ -11,7 +11,7 @@ node tests/e2e/check-rea-capture.mjs /tmp/rea-capture.json
 Set `executable_path` in the scenario to your Chrome/Chromium.
 
 What the checker asserts:
-- every step completed: TEE badge, Verify enclave → "Verified enclave", persona, chat, "signed by enclave", encrypted backup export and verify
+- every step completed: TEE badge, Verify enclave → "Verified enclave", persona, chat, "signature matches the enclave's reported key · chain not verified" (never "signed by enclave" while the chain is unverified), encrypted backup export and verify
 - the browser contacted only our origin
 - the canary prompt appears only in the request body of `POST /api/chat`
 - localStorage holds only `pai.*` keys
