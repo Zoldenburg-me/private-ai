@@ -16,6 +16,7 @@ export function SettingsView(p: {
 }) {
   const [pass, setPass] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmWipe, setConfirmWipe] = useState(false);
   const available = (plan: string, interval: string) => (p.billing?.plans ?? []).some((x) => x.plan === plan && x.interval === interval && x.available);
   const active = p.billing?.subscription && ["active", "trialing", "past_due"].includes(p.billing.subscription.status);
   return (
@@ -69,7 +70,7 @@ export function SettingsView(p: {
         <div className="row gap wrap">
           <button type="button" className="btn" data-testid="account-export" onClick={p.onExportAccount}><DownloadSimple aria-hidden />Download my data</button>
           {confirmDelete
-            ? <><button type="button" className="btn danger" data-testid="account-delete-confirm" onClick={() => { setConfirmDelete(false); p.onDeleteAccount(); }}>Really delete account</button>
+            ? <><button type="button" className="btn danger" data-testid="account-delete-confirm" autoFocus onClick={() => { setConfirmDelete(false); p.onDeleteAccount(); }}>Really delete account</button>
                 <button type="button" className="btn ghost" onClick={() => setConfirmDelete(false)}>Cancel</button></>
             : <button type="button" className="btn danger" data-testid="account-delete" onClick={() => setConfirmDelete(true)}>Delete account</button>}
         </div>
@@ -87,10 +88,15 @@ export function SettingsView(p: {
           <div className="row gap wrap">
             <label className="field"><span>Backup passphrase</span><input data-testid="passphrase" type="password" minLength={8} autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} /><small>At least 8 characters. Without it the backup cannot be opened.</small></label>
             <button type="button" className="btn" data-testid="export" onClick={() => p.onExport(pass)}><DownloadSimple aria-hidden />Export</button>
-            <label className="btn"><UploadSimple aria-hidden />Import<input data-testid="import" type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && p.onImport(e.target.files[0], pass)} /></label>
+            <label className="btn"><UploadSimple aria-hidden />Import<input data-testid="import" type="file" accept="application/json" className="sr-only" onChange={(e) => e.target.files?.[0] && p.onImport(e.target.files[0], pass)} /></label>
           </div>
           <h3 className="danger-h"><WarningCircle aria-hidden />Danger zone</h3>
-          <button type="button" className="btn danger" data-testid="wipe" onClick={p.onWipe}><Trash aria-hidden />Wipe all chats from this browser</button>
+          {confirmWipe
+            ? <div className="row gap wrap">
+                <button type="button" className="btn danger" data-testid="wipe-confirm" autoFocus onClick={() => { setConfirmWipe(false); p.onWipe(); }}><Trash aria-hidden />Really wipe all chats</button>
+                <button type="button" className="btn ghost" onClick={() => setConfirmWipe(false)}>Cancel</button>
+              </div>
+            : <button type="button" className="btn danger" data-testid="wipe" onClick={() => setConfirmWipe(true)}><Trash aria-hidden />Wipe all chats from this browser</button>}
         </>)}
       </section>
     </div>

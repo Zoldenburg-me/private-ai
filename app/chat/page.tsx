@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat } from "@/lib/storage";
@@ -239,6 +239,25 @@ export default function Home() {
   const onUsage = useCallback((rem: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: u?.limit })); }, []);
 
   const go = (v: View) => { setView(v); setNavOpen(false); };
+
+  // Below 820px the nav is an off-canvas sheet and the proof drawer a bottom sheet: keep focus out of
+  // whatever is hidden or covered, move it into the sheet on open and back to the menu button on close.
+  const sheetRef = useRef<HTMLDivElement>(null); const mainRef = useRef<HTMLElement>(null); const menuRef = useRef<HTMLButtonElement>(null);
+  const navWasOpen = useRef(false);
+  useEffect(() => {
+    const mq = matchMedia("(max-width: 820px)");
+    const apply = () => {
+      if (sheetRef.current) sheetRef.current.inert = mq.matches && !navOpen;
+      if (mainRef.current) mainRef.current.inert = mq.matches && (navOpen || drawer);
+    };
+    apply(); mq.addEventListener("change", apply);
+    if (navOpen && mq.matches) sheetRef.current?.querySelector<HTMLElement>(".rail-btn")?.focus();
+    if (!navOpen && navWasOpen.current && mq.matches) menuRef.current?.focus();
+    navWasOpen.current = navOpen;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && navOpen) setNavOpen(false); };
+    addEventListener("keydown", onKey);
+    return () => { mq.removeEventListener("change", apply); removeEventListener("keydown", onKey); };
+  }, [navOpen, drawer]);
   const NAV = [
     { v: "chat" as const, label: "Chats", Icon: ChatsCircle },
     { v: "personas" as const, label: "Personas", Icon: UserFocus },
@@ -250,7 +269,7 @@ export default function Home() {
 
   return (
     <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""}`}>
-      <div className="nav-sheet">
+      <div className="nav-sheet" ref={sheetRef}>
         <nav className="rail" aria-label="Main">
           <Link href="/" className="brand" aria-label="Private AI home"><Image src="/brand/narwhal.svg" alt="" width={28} height={15} unoptimized /></Link>
           {NAV.map(navBtn)}
@@ -266,21 +285,24 @@ export default function Home() {
       </div>
       <button type="button" className="nav-scrim" aria-label="Close menu" tabIndex={navOpen ? 0 : -1} onClick={() => setNavOpen(false)} />
 
-      <main className="main">
+      <main className="main" ref={mainRef}>
         <header className="topbar">
-          <button type="button" className="icon-btn menu-btn" aria-label="Open menu" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><List aria-hidden /></button>
+          <button type="button" className="icon-btn menu-btn" ref={menuRef} aria-label="Open menu" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><List aria-hidden /></button>
           <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} />
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
           {ghost && <span className="chip ghost-chip"><Ghost aria-hidden />Ghost chat</span>}
           <div className="grow" />
           <ProofBadge proof={proof} onOpen={() => setDrawer(true)} />
         </header>
-        {notice && (
-          <div className="notice" data-testid="notice" role="status">
-            <span>{notice}</span>
-            <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setNotice("")}><X aria-hidden /></button>
-          </div>
-        )}
+        {/* The live region stays mounted so screen readers announce text added to it. */}
+        <div role="status" className="notice-slot">
+          {notice && (
+            <div className="notice" data-testid="notice">
+              <span>{notice}</span>
+              <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setNotice("")}><X aria-hidden /></button>
+            </div>
+          )}
+        </div>
 
         {view === "chat" && (
           kv || ghost

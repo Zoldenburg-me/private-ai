@@ -34,7 +34,7 @@ export function Hero() {
         <span className="hero-mark" aria-hidden><Mark size={44} /></span>
         <h1 id="hero-h">How can I help,<em>privately?</em></h1>
         <p className="lead">Open models run inside hardware enclaves. Your history stays encrypted in your browser.</p>
-        <Link href="/chat" className="composer-preview" aria-label={START}>
+        <Link href="/chat" className="composer-preview" aria-label={`Ask anything privately… ${START}`}>
           <span className="cp-input">Ask anything privately…</span>
           <span className="cp-row">
             <span className="demo-model">Open model <span className="tag-ok">TEE</span></span>

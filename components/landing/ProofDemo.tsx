@@ -46,7 +46,7 @@ export function ProofDemo({ labels }: { labels: Record<DemoLevel, string> }) {
           <button key={l} type="button" aria-pressed={l === level} onClick={() => setLevel(l)}>{TAB[l]}</button>
         ))}
       </div>
-      <div className="demo-card" aria-live="polite">
+      <div className="demo-card">
         <div className="demo-top">
           <span className="demo-model">Open model <span className="tag-ok">TEE</span></span>
           <span className={`badge tone-${tone}`}>
@@ -58,7 +58,7 @@ export function ProofDemo({ labels }: { labels: Record<DemoLevel, string> }) {
         <p className="demo-reply">Here is a plain-language summary of clause 4.2 and the two terms that differ from your template.</p>
         <p className={`l-sig tone-${tone}`}><SigIcon level={level} />{SIGNATURE[level]}</p>
       </div>
-      <p className="demo-meaning">{MEANING[level]}</p>
+      <p className="demo-meaning" aria-live="polite">{MEANING[level]}</p>
     </div>
   );
 }

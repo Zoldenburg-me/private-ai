@@ -1,5 +1,6 @@
 "use client";
-import { Ghost, LockSimple, MagnifyingGlass, Plus, Trash, WarningCircle } from "@phosphor-icons/react";
+import { useState } from "react";
+import { Check, Ghost, LockSimple, MagnifyingGlass, Plus, Trash, WarningCircle } from "@phosphor-icons/react";
 import type { Chat } from "@/lib/storage";
 import type { Tier } from "@/lib/tiers";
 import { UsageMeter, type Usage } from "./UsageMeter";
@@ -13,6 +14,7 @@ interface SidebarProps {
 
 /** Chat list column. In ghost chat the list is hidden: nothing from this tab is ever saved. */
 export function Sidebar(p: SidebarProps) {
+  const [armed, setArmed] = useState(""); // chat id whose delete awaits a second click
   return (
     <aside className="sidebar" aria-label="Chats">
       <div className="side-head">
@@ -37,7 +39,10 @@ export function Sidebar(p: SidebarProps) {
               <span className="title">{c.title}</span>
               <span className="when">{new Date(c.updatedAt).toLocaleDateString()}</span>
             </button>
-            <button type="button" className="icon-btn del" aria-label={`Delete chat ${c.title}`} onClick={() => p.onDelete(c)}><Trash aria-hidden /></button>
+            {armed === c.id
+              ? <button type="button" className="icon-btn del armed" aria-label={`Confirm delete chat ${c.title}`} autoFocus onBlur={() => setArmed("")}
+                  onClick={() => { setArmed(""); p.onDelete(c); }}><Check weight="bold" aria-hidden /></button>
+              : <button type="button" className="icon-btn del" aria-label={`Delete chat ${c.title}`} onClick={() => setArmed(c.id)}><Trash aria-hidden /></button>}
           </li>
         ))}
         {!p.ghost && !p.chats.length && <li className="empty">{p.query ? "No matching chats" : "No chats yet"}</li>}

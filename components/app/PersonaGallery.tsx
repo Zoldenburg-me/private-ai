@@ -15,7 +15,7 @@ export function PersonaGallery({ personas, disabled, onAdd, onDelete, onUse }: {
   personas: Persona[]; disabled: boolean;
   onAdd: (name: string, prompt: string) => boolean; onDelete: (id: string) => void; onUse: (id: string) => void;
 }) {
-  const [name, setName] = useState(""); const [prompt, setPrompt] = useState("");
+  const [name, setName] = useState(""); const [prompt, setPrompt] = useState(""); const [armed, setArmed] = useState("");
   return (
     <div className="page" data-testid="personas-view">
       <h1>Personas</h1>
@@ -28,8 +28,11 @@ export function PersonaGallery({ personas, disabled, onAdd, onDelete, onUse }: {
             <div className="card-title"><UserFocus aria-hidden />{p.name}</div>
             <p className="small muted clamp">{p.systemPrompt}</p>
             <div className="row gap card-actions">
-              <button type="button" className="btn primary" onClick={() => onUse(p.id)}><ChatCircle aria-hidden />Chat</button>
-              <button type="button" className="btn ghost" onClick={() => onDelete(p.id)} disabled={disabled}><Trash aria-hidden />Delete</button>
+              <button type="button" className="btn primary" onClick={() => onUse(p.id)} aria-label={`Chat with ${p.name}`}><ChatCircle aria-hidden />Chat</button>
+              {armed === p.id
+                ? <button type="button" className="btn danger" autoFocus onBlur={() => setArmed("")} onClick={() => { setArmed(""); onDelete(p.id); }}
+                    aria-label={`Really delete ${p.name}`}><Trash aria-hidden />Really delete</button>
+                : <button type="button" className="btn ghost" onClick={() => setArmed(p.id)} disabled={disabled} aria-label={`Delete ${p.name}`}><Trash aria-hidden />Delete</button>}
             </div>
           </div>
         ))}

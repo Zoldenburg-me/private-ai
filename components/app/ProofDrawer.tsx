@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, CheckCircle, Circle, Code, MinusCircle, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
 import type { Proof, ProofItem } from "@/lib/client/proof";
 import { CopyHash } from "./CopyHash";
@@ -35,18 +35,22 @@ function SummaryIcon({ level }: { level: Proof["level"] }) {
  */
 export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof | null; open: boolean; onClose: () => void; onRecheck: () => void }) {
   const [showRaw, setShowRaw] = useState(false);
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  // Move focus into the drawer on open and back to whatever opened it on close.
   useEffect(() => {
     if (!open) return;
+    const back = document.activeElement as HTMLElement | null;
+    closeBtn.current?.focus();
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
+    return () => { removeEventListener("keydown", onKey); setTimeout(() => { if (back?.isConnected) back.focus(); }); }; // after this commit: <main> may still be inert on mobile
   }, [open, onClose]);
   if (!open) return null;
   return (
     <aside className="drawer" data-testid="proof-drawer" aria-label="Enclave proof">
       <header className="drawer-head">
         <h2>Enclave proof</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close enclave proof"><X aria-hidden /></button>
+        <button type="button" className="icon-btn" ref={closeBtn} onClick={onClose} aria-label="Close enclave proof"><X aria-hidden /></button>
       </header>
       {!proof ? <p className="drawer-body muted">Checking…</p> : (
         <div className="drawer-body">

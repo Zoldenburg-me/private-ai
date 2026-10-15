@@ -7,7 +7,11 @@ import { useEffect, useRef } from "react";
  * a radial glow when WebGL is unavailable. Purely decorative, so it is hidden from assistive tech.
  */
 const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform vec2 res; uniform float t;
 uniform vec3 cA, cB, cC, cD, cR;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -60,10 +64,13 @@ export function HeroSilk() {
       return s;
     };
     const prog = gl.createProgram()!;
-    try { gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog); }
-    catch { fallback(); return; }
+    try {
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) ?? "link");
+    } catch { gl.deleteProgram(prog); fallback(); return; }
     gl.useProgram(prog);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     UNIFORMS.forEach(([u, t]) => gl.uniform3fv(gl.getUniformLocation(prog, u), hexToRgb(token(t))));
@@ -77,11 +84,13 @@ export function HeroSilk() {
     };
     const draw = (ms: number) => { gl.uniform2f(uRes, canvas.width, canvas.height); gl.uniform1f(uT, ms / 1000); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
     size();
+    // StrictMode and hot reload reuse the same context, so free what this run created.
+    const release = () => { gl.deleteBuffer(buf); gl.deleteProgram(prog); };
 
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
       const still = () => { size(); draw(12000); };
       still(); addEventListener("resize", still);
-      return () => removeEventListener("resize", still);
+      return () => { removeEventListener("resize", still); release(); };
     }
     let raf = 0;
     const loop = (ms: number) => { draw(ms); raf = requestAnimationFrame(loop); };
@@ -89,9 +98,11 @@ export function HeroSilk() {
       if (e.isIntersecting && !raf) raf = requestAnimationFrame(loop);
       if (!e.isIntersecting) { cancelAnimationFrame(raf); raf = 0; }
     });
+    const lost = (e: Event) => { e.preventDefault(); io.disconnect(); cancelAnimationFrame(raf); fallback(); };
     io.observe(canvas);
     addEventListener("resize", size);
-    return () => { io.disconnect(); cancelAnimationFrame(raf); removeEventListener("resize", size); };
+    canvas.addEventListener("webglcontextlost", lost);
+    return () => { io.disconnect(); cancelAnimationFrame(raf); removeEventListener("resize", size); canvas.removeEventListener("webglcontextlost", lost); release(); };
   }, []);
 
   return <canvas ref={ref} className="silk" aria-hidden />;

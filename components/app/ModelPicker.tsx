@@ -18,26 +18,31 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
     if (!open) return;
     const onDown = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", onDown);
-    const opts = root.current?.querySelectorAll<HTMLButtonElement>("[role=option]:not(:disabled)");
-    (root.current?.querySelector<HTMLButtonElement>("[role=option][aria-selected=true]:not(:disabled)") ?? opts?.[0])?.focus();
+    const opts = root.current?.querySelectorAll<HTMLButtonElement>("[role=option]");
+    (root.current?.querySelector<HTMLButtonElement>("[role=option][aria-selected=true]") ?? opts?.[0])?.focus();
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
+  const focusTrigger = () => root.current?.querySelector<HTMLButtonElement>(".picker-btn")?.focus();
   const onMenuKey = (e: KeyboardEvent) => {
-    const opts = [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=option]:not(:disabled)") ?? [])];
+    const opts = [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=option]") ?? [])];
     const i = opts.indexOf(document.activeElement as HTMLButtonElement);
-    const move = (n: number) => { e.preventDefault(); opts[(i + n + opts.length) % opts.length]?.focus(); };
+    // Focus outside the options: down goes to the first, up to the last.
+    const move = (n: number) => { e.preventDefault(); opts[i < 0 ? (n > 0 ? 0 : opts.length - 1) : (i + n + opts.length) % opts.length]?.focus(); };
     if (e.key === "ArrowDown") move(1);
     else if (e.key === "ArrowUp") move(-1);
     else if (e.key === "Home") { e.preventDefault(); opts[0]?.focus(); }
     else if (e.key === "End") { e.preventDefault(); opts[opts.length - 1]?.focus(); }
-    else if (e.key === "Escape" || e.key === "Tab") { setOpen(false); root.current?.querySelector<HTMLButtonElement>(".picker-btn")?.focus(); }
+    else if (e.key === "Escape" || e.key === "Tab") { e.stopPropagation(); setOpen(false); focusTrigger(); }
   };
 
   return (
     <div className="picker" ref={root}>
       <button type="button" className="picker-btn" data-testid="model-picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}>
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); }
+          else if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); }
+        }}>
         <span className="picker-name">{sel ? sel.name : "Select a model"}</span>
         {sel && <span className={`tag t-${sel.privacy}`} data-testid={`badge-${sel.privacy}`}>{sel.privacy.toUpperCase()}</span>}
         <CaretDown aria-hidden />
@@ -48,8 +53,8 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
             <div key={g} role="group" aria-label={PROVIDER_LABEL[g] ?? g}>
               <div className="picker-group" aria-hidden>{PROVIDER_LABEL[g] ?? g}</div>
               {models.filter((m) => m.provider === g).map((m) => (
-                <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} disabled={!m.selectable}
-                  className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { onChange(ref(m)); setOpen(false); }}>
+                <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} aria-disabled={!m.selectable || undefined}
+                  className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { if (!m.selectable) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
                   <span className="pi-name">{ref(m) === value && <Check weight="bold" aria-hidden />}{m.name}</span>
                   <span className="tags">
                     <span className={`tag t-${m.privacy}`}>{m.privacy.toUpperCase()}</span>

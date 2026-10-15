@@ -121,8 +121,12 @@ export function ChatThread(props: ThreadProps) {
             )}
           </ThreadPrimitive.Messages>
         </ThreadPrimitive.Viewport>
+        <div className="sr-only" role="status">
+          <ThreadPrimitive.If running>Assistant is responding</ThreadPrimitive.If>
+          <ThreadPrimitive.If running={false} empty={false}>Reply ready</ThreadPrimitive.If>
+        </div>
         <ComposerPrimitive.Root className="composer">
-          <ComposerPrimitive.Input className="composer-input" data-testid="prompt" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
+          <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
           <ThreadPrimitive.If running={false}>
             <ComposerPrimitive.Send className="send-btn" data-testid="send" disabled={!props.modelRef} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></ComposerPrimitive.Send>
           </ThreadPrimitive.If>
