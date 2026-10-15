@@ -14,7 +14,7 @@ export function UsageMeter({ tier, usage, onUpgrade }: { tier: Tier | null; usag
         <span className={`plan plan-${tier?.id ?? "free"}`} data-testid="plan">{tier ? tier.name : "…"}</span>
         {tier?.id !== "max" && <button type="button" className="link" onClick={onUpgrade}>Upgrade</button>}
       </div>
-      <div className="bar"><div style={{ width: `${pct}%` }} /></div>
+      <div className="bar" role="progressbar" aria-label="Messages used today" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><div style={{ width: `${pct}%` }} /></div>
       <div className="small muted">{usage ? `${usage.remaining} of ${limit ?? "?"} messages left today` : "Loading usage…"}</div>
     </div>
   );

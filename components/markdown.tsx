@@ -17,10 +17,7 @@ const components: Components = {
     const label = `🖼 ${alt || "image"}`;
     return typeof src === "string" && src ? <a href={src} {...linkProps} data-md-image="">{label}</a> : <span>{label}</span>;
   },
-  table: ({ children }) => <div style={{ overflowX: "auto" }}><table style={{ borderCollapse: "collapse" }}>{children}</table></div>,
-  th: ({ children }) => <th style={{ border: "1px solid #333", padding: "2px 6px" }}>{children}</th>,
-  td: ({ children }) => <td style={{ border: "1px solid #333", padding: "2px 6px" }}>{children}</td>,
-  pre: ({ children }) => <pre style={{ background: "#1a1d24", padding: 8, borderRadius: 4, overflowX: "auto", whiteSpace: "pre" }}>{children}</pre>,
+  table: ({ children }) => <div className="md-table"><table>{children}</table></div>,
 };
 
 export function SafeMarkdown({ text }: { text: string }) {
