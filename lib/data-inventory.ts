@@ -7,8 +7,8 @@ import { RETENTION_DAYS } from "./retention";
  */
 export interface DataField { store: "postgres" | "redis" | "server-log" | "browser"; container: string; field: string; en: string; de: string; retentionEn: string; retentionDe: string }
 
-const ACCOUNT_EN = `until ${RETENTION_DAYS} days after the account was last seen (no active subscription), or until you delete the account (Account → Delete account)`;
-const ACCOUNT_DE = `bis ${RETENTION_DAYS} Tage nach der letzten Nutzung (ohne aktives Abo) oder bis Sie das Konto löschen (Konto → Konto löschen)`;
+const ACCOUNT_EN = `until ${RETENTION_DAYS} days after the account was last seen (no active subscription), or until you delete the account (Settings → Account → Delete account)`;
+const ACCOUNT_DE = `bis ${RETENTION_DAYS} Tage nach der letzten Nutzung (ohne aktives Abo) oder bis Sie das Konto löschen (Einstellungen → Account → Delete account)`;
 const acc = (container: string, field: string, en: string, de: string): DataField => ({ store: "postgres", container, field, en, de, retentionEn: ACCOUNT_EN, retentionDe: ACCOUNT_DE });
 
 export const DATA_INVENTORY: DataField[] = [
