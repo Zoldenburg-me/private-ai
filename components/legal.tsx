@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main style={{ maxWidth: 820, margin: "0 auto", padding: "24px 16px", lineHeight: 1.55 }}>
-      <p><Link href="/" style={{ color: "#93c5fd" }}>← Private AI</Link></p>
+      <p><Link href="/chat" style={{ color: "#93c5fd" }}>← Back to chat</Link> · <Link href="/" style={{ color: "#93c5fd" }}>Private AI home</Link></p>
       <h1>{title}</h1>
       <p style={{ fontSize: 13, opacity: 0.8 }}>
         <a href="#de" style={{ color: "#93c5fd" }}>Deutsch</a> · <a href="#en" style={{ color: "#93c5fd" }}>English</a> ·

@@ -4,6 +4,8 @@ import {
   AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
 } from "@assistant-ui/react";
+import Image from "next/image";
+import { ArrowUp, CheckCircle, MinusCircle, Stop, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
 import { streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
@@ -34,13 +36,14 @@ function textOf(content: readonly { type: string; text?: string }[]) {
 function Message({ role, content, signed }: { role: string; content: string; signed?: Signed }) {
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
-      <div className="avatar" aria-hidden>{role === "user" ? "You" : "AI"}</div>
+      {role === "assistant" && <div className="avatar" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={20} height={11} unoptimized /></div>}
       <div className="bubble">
+        <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {role === "assistant" ? <div className="md"><SafeMarkdown text={content || "…"} /></div> : <span className="pre">{content}</span>}
-        {signed === "enclave" && <div className="sig ok" data-testid="signed">✓ signed by enclave</div>}
-        {signed === "key-match" && <div className="sig warn" data-testid="signed-key-match">✓ signature matches the enclave&apos;s reported key · chain not verified</div>}
-        {signed === "fail" && <div className="sig bad" data-testid="signed-fail">✗ signature mismatch</div>}
-        {signed === "n/a" && <div className="sig muted">signature not available</div>}
+        {signed === "enclave" && <div className="sig ok" data-testid="signed"><CheckCircle weight="fill" aria-hidden />signed by enclave</div>}
+        {signed === "key-match" && <div className="sig warn" data-testid="signed-key-match"><CheckCircle aria-hidden />signature matches the enclave&apos;s reported key · chain not verified</div>}
+        {signed === "fail" && <div className="sig bad" data-testid="signed-fail"><XCircle aria-hidden />signature mismatch</div>}
+        {signed === "n/a" && <div className="sig muted"><MinusCircle aria-hidden />signature not available</div>}
       </div>
     </div>
   );
@@ -101,7 +104,7 @@ export function ChatThread(props: ThreadProps) {
         <ThreadPrimitive.Viewport className="viewport">
           <ThreadPrimitive.Empty>
             <div className="welcome" data-testid="welcome">
-              <div className="logo-mark" aria-hidden>◆</div>
+              <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
               <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
               <p className="muted">Runs inside an attested enclave on NEAR AI Cloud. Your history stays encrypted in this browser.</p>
               <div className="suggestions">
@@ -118,13 +121,17 @@ export function ChatThread(props: ThreadProps) {
             )}
           </ThreadPrimitive.Messages>
         </ThreadPrimitive.Viewport>
+        <div className="sr-only" role="status">
+          <ThreadPrimitive.If running>Assistant is responding</ThreadPrimitive.If>
+          <ThreadPrimitive.If running={false} empty={false}>Reply ready</ThreadPrimitive.If>
+        </div>
         <ComposerPrimitive.Root className="composer">
-          <ComposerPrimitive.Input className="composer-input" data-testid="prompt" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
+          <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
           <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send className="send-btn" data-testid="send" disabled={!props.modelRef}>↑</ComposerPrimitive.Send>
+            <ComposerPrimitive.Send className="send-btn" data-testid="send" disabled={!props.modelRef} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></ComposerPrimitive.Send>
           </ThreadPrimitive.If>
           <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel className="send-btn" data-testid="stop">■</ComposerPrimitive.Cancel>
+            <ComposerPrimitive.Cancel className="send-btn stop" data-testid="stop" aria-label="Stop"><Stop weight="fill" aria-hidden /></ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>
         </ComposerPrimitive.Root>
       </ThreadPrimitive.Root>
