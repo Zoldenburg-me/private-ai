@@ -18,6 +18,9 @@ export interface PasskeyCredential {
   transports: string[]; createdAt: number;
 }
 
+/** A signed-in browser. Deleting it revokes that browser's token. */
+export interface Device { id: string; accountId: string; createdAt: number; lastSeenOn: string }
+
 /** Durable account data (Postgres in production). */
 export interface AccountStore {
   /** Create the session row if missing and bump last-seen (day granularity). */
@@ -42,6 +45,15 @@ export interface AccountStore {
   updateCredentialCounter(credentialId: string, counter: number): Promise<void>;
   /** Delete a passkey only if it belongs to `accountId`. False if not found for that account. */
   deleteCredential(accountId: string, credentialId: string): Promise<boolean>;
+  /** Creates the account row if missing. */
+  addDevice(d: { id: string; accountId: string; createdAt: number }): Promise<void>;
+  /** True if the device exists for that account; bumps its last-seen day. */
+  touchDevice(accountId: string, id: string, now?: number): Promise<boolean>;
+  listDevices(accountId: string): Promise<Device[]>;
+  /** Delete a device only if it belongs to `accountId`. False if not found for that account. */
+  deleteDevice(accountId: string, id: string): Promise<boolean>;
+  /** True once the account has a passkey or a signed-in device (account-only tokens stop working). */
+  hasSignIn(accountId: string): Promise<boolean>;
   /**
    * Delete accounts last seen before `cutoff` that have no entitled subscription. A subscription
    * still marked active whose period ended before `cutoff` (missed renewal webhooks) does not

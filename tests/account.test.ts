@@ -40,11 +40,13 @@ async function subscribed() {
   await st.accounts.setEntitlement(id, { tier: "pro", source: "stripe", expiresAt: null });
   return { id, token };
 }
+/** Saves the account with a passkey; the browser now holds the returned device token. */
 async function withPasskey(token: string) {
   const auth = new SoftAuthenticator();
   const opts = await (await regOptions(req("/r", "POST", token, {}))).json();
-  expect((await regVerify(req("/r", "POST", token, auth.create(opts, ORIGIN)))).status).toBe(200);
-  return auth;
+  const r = await regVerify(req("/r", "POST", token, auth.create(opts, ORIGIN)));
+  expect(r.status).toBe(200);
+  return { auth, token: (await r.json()).apiToken as string };
 }
 async function passkeyLogin(auth: SoftAuthenticator) {
   const opts = await (await loginOptions(req("/l", "POST", undefined, {}))).json();
@@ -63,8 +65,8 @@ describe("GET /api/account/export (Art. 15 / 20)", () => {
     expect((await exportGET(req("/api/account/export", "GET"))).status).toBe(401);
   });
   it("returns everything stored server-side for the account, as a download", async () => {
-    const { id, token } = await subscribed();
-    await withPasskey(token);
+    const { id, token: anon } = await subscribed();
+    const { token } = await withPasskey(anon);
     const r = await exportGET(req("/api/account/export", "GET", token));
     expect(r.status).toBe(200);
     expect(r.headers.get("content-disposition")).toMatch(/^attachment; filename="private-ai-account-/);
@@ -124,8 +126,8 @@ describe("DELETE /api/account (Art. 17)", () => {
     expect(await st.accounts.sessionExists(id)).toBe(true);
   });
   it("a failed Stripe deletion gives the step-up back, so the retry needs no second passkey prompt", async () => {
-    const { id, token } = await subscribed();
-    const auth = await withPasskey(token);
+    const { id, token: anon } = await subscribed();
+    const { auth, token } = await withPasskey(anon);
     await passkeyLogin(auth);
     failDelete = new Error("stripe down");
     expect((await accountDELETE(req("/a", "DELETE", token))).status).toBe(502);
@@ -134,9 +136,9 @@ describe("DELETE /api/account (Art. 17)", () => {
     expect(await st.accounts.sessionExists(id)).toBe(false);
   });
   it("with a passkey, needs a fresh passkey login (a stolen cookie cannot delete the account)", async () => {
-    const { id, token } = await createSession();
+    const { id, token: anon } = await createSession();
     await setTier(id, "pro");
-    const auth = await withPasskey(token);
+    const { auth, token } = await withPasskey(anon);
     const denied = await accountDELETE(req("/a", "DELETE", token));
     expect(denied.status).toBe(403);
     expect((await denied.json()).error.code).toBe("step_up_required");

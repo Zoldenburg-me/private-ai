@@ -25,7 +25,7 @@ export default function Datenschutz() {
           Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
         <h3>5. Passkeys (optional)</h3>
-        <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht.
+        <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
         <h3>6. Zahlungen über Stripe</h3>
         <p>Bezahlte Tarife werden über Stripe abgewickelt (<Todo>Stripe Payments Europe, Ltd., Irland – Rolle als eigener Verantwortlicher/Auftragsverarbeiter prüfen</Todo>).
@@ -58,7 +58,7 @@ export default function Datenschutz() {
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
           Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
         <h3>5. Passkeys (optional)</h3>
-        <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Legal basis: Art. 6(1)(b) GDPR.</p>
+        <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>
         <p>Paid plans are processed by Stripe (<Todo>Stripe Payments Europe, Ltd., Ireland – confirm role</Todo>). You enter payment and contact details directly with Stripe; we never receive card data.
           We store only Stripe customer and subscription ids, plan, status and period end. Events sent by Stripe can contain further details (e.g. email); we neither store nor log them.

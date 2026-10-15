@@ -1,4 +1,4 @@
-import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Entitlement, EntitlementSource, HitResult, PasskeyCredential, Subscription } from "./types";
+import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Device, Entitlement, EntitlementSource, HitResult, PasskeyCredential, Subscription } from "./types";
 import { dayKey, minuteStartOf, ENTITLED_STATUSES } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
@@ -7,6 +7,7 @@ export class MemoryAccountStore implements AccountStore {
   entitlements = new Map<string, Entitlement>();
   subscriptions = new Map<string, Subscription & { updatedAt: number }>();
   credentials = new Map<string, PasskeyCredential>();
+  devices = new Map<string, Device>();
   private seq = 0;
 
   async touchSession(id: string, now = Date.now()) {
@@ -22,6 +23,7 @@ export class MemoryAccountStore implements AccountStore {
     this.entitlements.delete(id);
     for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
     for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
+    for (const [k, d] of this.devices) if (d.accountId === id) this.devices.delete(k);
     return true;
   }
   async getEntitlement(id: string) { return this.entitlements.get(id) ?? null; }
@@ -59,6 +61,25 @@ export class MemoryAccountStore implements AccountStore {
   async deleteCredential(accountId: string, id: string) {
     if (this.credentials.get(id)?.accountId !== accountId) return false;
     return this.credentials.delete(id);
+  }
+  async addDevice(d: { id: string; accountId: string; createdAt: number }) {
+    if (this.devices.has(d.id)) throw new Error("device exists");
+    this.ensure(d.accountId);
+    this.devices.set(d.id, { ...d, lastSeenOn: dayKey(d.createdAt) });
+  }
+  async touchDevice(accountId: string, id: string, now = Date.now()) {
+    const d = this.devices.get(id);
+    if (d?.accountId !== accountId) return false;
+    if (d.lastSeenOn < dayKey(now)) this.devices.set(id, { ...d, lastSeenOn: dayKey(now) });
+    return true;
+  }
+  async listDevices(accountId: string) { return [...this.devices.values()].filter((d) => d.accountId === accountId).map((d) => ({ ...d })); }
+  async deleteDevice(accountId: string, id: string) {
+    if (this.devices.get(id)?.accountId !== accountId) return false;
+    return this.devices.delete(id);
+  }
+  async hasSignIn(accountId: string) {
+    return [...this.credentials.values(), ...this.devices.values()].some((x) => x.accountId === accountId);
   }
   async purgeInactive(cutoff: number) {
     const day = dayKey(cutoff); let n = 0;

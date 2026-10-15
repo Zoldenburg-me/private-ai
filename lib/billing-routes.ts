@@ -11,7 +11,7 @@ const billing = (fn: (req: Request) => Promise<Response>) => withStores(async (r
 });
 
 export const billingStatus = billing(async (req) => {
-  const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
   // Prefer an entitled subscription, so a recently canceled older one cannot hide Manage.
   const subs = await (await stores()).accounts.listSubscriptionsFor(id);
   const sub = subs.find((x) => (ENTITLED_STATUSES as readonly string[]).includes(x.status)) ?? subs[0];
@@ -23,7 +23,7 @@ export const billingStatus = billing(async (req) => {
 });
 
 export const checkout = billing(async (req) => {
-  const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
   const b = (await req.json().catch(() => null)) as { plan?: unknown; interval?: unknown } | null;
   const plan = b?.plan; const interval = b?.interval ?? "month";
   if ((plan !== "pro" && plan !== "max") || (interval !== "month" && interval !== "year")) return fail(400, "plan must be pro|max, interval month|year");
@@ -31,7 +31,7 @@ export const checkout = billing(async (req) => {
 });
 
 export const portal = billing(async (req) => {
-  const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
   return json({ url: await createPortal(id, appBaseUrl(req)) });
 });
 

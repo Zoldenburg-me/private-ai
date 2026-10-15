@@ -21,6 +21,12 @@ async function register(auth: SoftAuthenticator, token: string) {
   const opts = await (await regOptions(post("/api/auth/passkey/register/options", {}, token))).json();
   return regVerify(post("/api/auth/passkey/register/verify", auth.create(opts, ORIGIN), token));
 }
+/** The first passkey signs this browser in: it now holds a device token instead of the anonymous one. */
+async function save(auth: SoftAuthenticator, token: string) {
+  const r = await register(auth, token);
+  expect(r.status).toBe(200);
+  return decodeURIComponent(/^pai_session=([^;]*)/.exec(r.headers.get("set-cookie") ?? "")![1]);
+}
 async function login(auth: SoftAuthenticator, origin = ORIGIN) {
   const opts = await (await loginOptions(post("/api/auth/passkey/login/options", {}))).json();
   return loginVerify(post("/api/auth/passkey/login/verify", auth.get(opts, origin)));
@@ -35,8 +41,9 @@ describe("passkey login", () => {
     const auth = new SoftAuthenticator();
     const r = await register(auth, token);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ registered: true });
-    expect((await (await listPasskeys(new Request(`${ORIGIN}/api/auth/passkey`, { headers: { Cookie: `pai_session=${token}` } }))).json()).passkeys).toHaveLength(1);
+    const device = (await r.json()).apiToken as string;
+    expect(verifyToken(device)).toBe(id);
+    expect(await list(device)).toHaveLength(1);
 
     const res = await login(auth); // no cookie: a fresh browser
     expect(res.status).toBe(200);
@@ -104,9 +111,9 @@ describe("passkey hardening", () => {
   });
 
   it("a second passkey needs a fresh passkey login (step-up); a stolen cookie alone cannot add one", async () => {
-    const { token } = await createSession();
+    const { token: anon } = await createSession();
     const mine = new SoftAuthenticator();
-    expect((await register(mine, token)).status).toBe(200);
+    const token = await save(mine, anon);
     const attacker = new SoftAuthenticator();
     const denied = await regOptions(post("/x", {}, token));
     expect(denied.status).toBe(403);
@@ -119,9 +126,8 @@ describe("passkey hardening", () => {
   });
 
   it("removing a passkey needs a session, ownership and step-up", async () => {
-    const a = await createSession(); const b = await createSession();
     const auth = new SoftAuthenticator();
-    await register(auth, a.token);
+    const a = { token: await save(auth, (await createSession()).token) }; const b = await createSession();
     const [{ id, label }] = await list(a.token);
     expect(label).toBe(id.slice(0, 8));
     expect((await deletePasskey(del({ id }))).status).toBe(401);
@@ -137,9 +143,9 @@ describe("passkey hardening", () => {
   });
 
   it("a step-up login only accepts passkeys of the signed-in account", async () => {
-    const a = await createSession(); const b = await createSession();
     const authA = new SoftAuthenticator(); const authB = new SoftAuthenticator();
-    await register(authA, a.token); await register(authB, b.token);
+    const a = { token: await save(authA, (await createSession()).token) };
+    const b = { token: await save(authB, (await createSession()).token) };
     expect((await loginOptions(post("/x", { stepUp: true }))).status).toBe(401); // step-up needs a session
     const opts = await (await loginOptions(post("/x", { stepUp: true }, a.token))).json();
     expect(opts.allowCredentials.map((c: { id: string }) => c.id)).toEqual((await list(a.token)).map((p) => p.id));
@@ -159,9 +165,8 @@ describe("passkey hardening", () => {
   });
 
   it("a flood of anonymous logins does not block step-up for signed-in accounts", async () => {
-    const { token } = await createSession();
     const auth = new SoftAuthenticator();
-    await register(auth, token);
+    const token = await save(auth, (await createSession()).token);
     vi.stubEnv("PAI_LIMIT_PASSKEY_LOGINS_PER_MIN", "1");
     await loginOptions(post("/x", {})); // the anonymous bucket is now full
     expect((await loginOptions(post("/x", {}))).status).toBe(429);

@@ -89,7 +89,7 @@ export async function authenticationOptions(rp: RpConfig, stepUpFor?: string) {
   return options;
 }
 
-export async function verifyAuthentication(response: AuthenticationResponseJSON, rp: RpConfig): Promise<Result<{ accountId: string }>> {
+export async function verifyAuthentication(response: AuthenticationResponseJSON, rp: RpConfig): Promise<Result<{ accountId: string; stepUp: boolean }>> {
   const challenge = signedChallenge(response?.response?.clientDataJSON);
   if (!challenge || typeof response.id !== "string" || response.id.length > 1024) return { ok: false, status: 400, message: "malformed response" };
   const { accounts, counters } = await stores();
@@ -111,7 +111,7 @@ export async function verifyAuthentication(response: AuthenticationResponseJSON,
   if (handle && Buffer.from(handle, "base64url").toString("utf8") !== cred.accountId) return { ok: false, status: 401, message: "passkey owner mismatch" };
   await accounts.updateCredentialCounter(cred.credentialId, v.authenticationInfo.newCounter);
   await counters.putOnce(`webauthn:stepup:${cred.accountId}`, "1", STEP_UP_TTL_MS);
-  return { ok: true, accountId: cred.accountId };
+  return { ok: true, accountId: cred.accountId, stepUp: pending !== "1" };
 }
 
 /**

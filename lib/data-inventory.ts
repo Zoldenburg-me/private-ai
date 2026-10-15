@@ -33,6 +33,10 @@ export const DATA_INVENTORY: DataField[] = [
   acc("passkey_credentials", "counter", "Signature counter (detects cloned authenticators).", "Signaturzähler (erkennt geklonte Authenticatoren)."),
   acc("passkey_credentials", "transports", "How the device talks to the passkey, e.g. internal, usb.", "Verbindungsart, z. B. internal, usb."),
   acc("passkey_credentials", "created_at", "When the passkey was added.", "Zeitpunkt des Hinzufügens."),
+  acc("devices", "id", "Random id of a signed-in browser (128 bit). No device name, model or user agent.", "Zufällige ID eines angemeldeten Browsers (128 Bit). Kein Gerätename, Modell oder User-Agent."),
+  acc("devices", "account_id", "Opaque account id the browser is signed in to.", "Konto-ID, bei der der Browser angemeldet ist."),
+  acc("devices", "created_at", "When you signed in on that browser.", "Zeitpunkt der Anmeldung in diesem Browser."),
+  acc("devices", "last_seen_on", "Day (not time) the browser was last used. Signing out or removing the device deletes the row.", "Tag (keine Uhrzeit) der letzten Nutzung. Abmelden oder Entfernen des Geräts löscht die Zeile."),
   { store: "postgres", container: "schema_migrations", field: "name, applied_at", en: "Database schema version. No personal data.", de: "Version des Datenbankschemas. Keine personenbezogenen Daten.", retentionEn: "permanent", retentionDe: "dauerhaft" },
   { store: "redis", container: "pai:d:{account}:<day>", field: "counter", en: "Messages sent today (a number).", de: "Heute gesendete Nachrichten (eine Zahl).", retentionEn: "expires after 2 days", retentionDe: "läuft nach 2 Tagen ab" },
   { store: "redis", container: "pai:m:{account}:<minute>", field: "counter", en: "Requests in the current minute (a number).", de: "Anfragen in der aktuellen Minute (eine Zahl).", retentionEn: "expires after 2 minutes", retentionDe: "läuft nach 2 Minuten ab" },
@@ -49,7 +53,7 @@ export const DATA_INVENTORY: DataField[] = [
     store: "server-log", container: "stdout (metadata log)", field, en: `${en}; never the content`, de: `${de}; nie der Inhalt`,
     retentionEn: "rotated, at most 30 MB per container (TODO: confirm host log retention)", retentionDe: "rotierend, höchstens 30 MB je Container (TODO: Log-Aufbewahrung des Hosts bestätigen)",
   })),
-  { store: "browser", container: "cookie pai_session", field: "session token", en: "Signed opaque account id. HttpOnly, strictly necessary.", de: "Signierte Konto-ID. HttpOnly, technisch notwendig.", retentionEn: "1 year or until you clear it", retentionDe: "1 Jahr oder bis Sie es löschen" },
+  { store: "browser", container: "cookie pai_session", field: "session token", en: "Signed opaque account id, plus the device id once you are signed in. HttpOnly, strictly necessary.", de: "Signierte Konto-ID, nach der Anmeldung zusätzlich die Geräte-ID. HttpOnly, technisch notwendig.", retentionEn: "1 year or until you clear it", retentionDe: "1 Jahr oder bis Sie es löschen" },
   { store: "browser", container: "localStorage pai.chats.v1 / pai.personas.v1", field: "chats, personas", en: "Your chat history and personas, only in your browser; never sent to us for storage. Not written in ghost chat.", de: "Ihr Chatverlauf und Ihre Personas, nur in Ihrem Browser; nie bei uns gespeichert. Im Ghost-Chat nicht geschrieben.", retentionEn: "until you delete them", retentionDe: "bis Sie sie löschen" },
 ];
 

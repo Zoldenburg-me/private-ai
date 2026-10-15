@@ -25,7 +25,7 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
 
 async function handle(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
   const log = deps.log ?? metaLogger;
-  const id = identityFrom(req);
+  const id = await identityFrom(req);
   if (!id) return err(401, "missing or invalid session token");
   let input: Record<string, unknown>;
   try { input = (await req.json()) as Record<string, unknown>; } catch { await recordFailure(id); return err(400, "invalid JSON"); }
