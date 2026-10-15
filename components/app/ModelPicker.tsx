@@ -33,6 +33,7 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
     else if (e.key === "ArrowUp") move(-1);
     else if (e.key === "Home") { e.preventDefault(); opts[0]?.focus(); }
     else if (e.key === "End") { e.preventDefault(); opts[opts.length - 1]?.focus(); }
+    // Tab: the menu unmounts before the browser moves focus, so Tab/Shift+Tab continue from the trigger.
     else if (e.key === "Escape" || e.key === "Tab") { e.stopPropagation(); setOpen(false); focusTrigger(); }
   };
 

@@ -38,6 +38,7 @@ void main(){
   c *= 1. - smoothstep(.42, .72, uv.y);
   gl_FragColor = vec4(c, 1.);
 }`;
+const FRAME_MS = 1000 / 30; // the silk moves slowly; 30 fps looks the same and halves GPU work
 const VERT = "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
 const UNIFORMS = [["cA", "art-a"], ["cB", "art-b"], ["cC", "art-c"], ["cD", "art-d"], ["cR", "art-ridge"]] as const;
 
@@ -60,14 +61,20 @@ export function HeroSilk() {
 
     const compile = (type: number, src: string) => {
       const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? "shader");
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); gl.deleteShader(s); throw new Error(log ?? "shader"); }
       return s;
     };
     const prog = gl.createProgram()!;
+    const shaders: WebGLShader[] = [];
+    const freeShaders = () => shaders.forEach((s) => { gl.detachShader(prog, s); gl.deleteShader(s); });
     try {
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(prog);
+      for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]] as const) {
+        const s = compile(type, src); shaders.push(s); gl.attachShader(prog, s);
+      }
+      gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) ?? "link");
-    } catch { gl.deleteProgram(prog); fallback(); return; }
+    } catch { freeShaders(); gl.deleteProgram(prog); fallback(); return; }
+    freeShaders(); // the linked program keeps what it needs
     gl.useProgram(prog);
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -93,7 +100,8 @@ export function HeroSilk() {
       return () => { removeEventListener("resize", still); release(); };
     }
     let raf = 0;
-    const loop = (ms: number) => { draw(ms); raf = requestAnimationFrame(loop); };
+    let last = 0;
+    const loop = (ms: number) => { if (ms - last >= FRAME_MS) { last = ms; draw(ms); } raf = requestAnimationFrame(loop); };
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting && !raf) raf = requestAnimationFrame(loop);
       if (!e.isIntersecting) { cancelAnimationFrame(raf); raf = 0; }

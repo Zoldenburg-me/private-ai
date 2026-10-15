@@ -36,15 +36,17 @@ function SummaryIcon({ level }: { level: Proof["level"] }) {
 export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof | null; open: boolean; onClose: () => void; onRecheck: () => void }) {
   const [showRaw, setShowRaw] = useState(false);
   const closeBtn = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; });
   // Move focus into the drawer on open and back to whatever opened it on close.
   useEffect(() => {
     if (!open) return;
     const back = document.activeElement as HTMLElement | null;
     closeBtn.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
     addEventListener("keydown", onKey);
     return () => { removeEventListener("keydown", onKey); setTimeout(() => { if (back?.isConnected) back.focus(); }); }; // after this commit: <main> may still be inert on mobile
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
     <aside className="drawer" data-testid="proof-drawer" aria-label="Enclave proof">
