@@ -4,6 +4,7 @@ import { stores, withStores } from "./store";
 import { TIERS } from "./tiers";
 import { LIMITS, overLimit } from "./limits";
 import { metaLogger } from "./log";
+import { inviteOk } from "./invite";
 
 /** HTTP glue for app/api/auth/passkey/*. Bodies are WebAuthn JSON only; nothing is logged. */
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -50,6 +51,16 @@ export const registerOptions = withStores(async (req: Request) => {
   const id = me.accountId;
   const r = rp(req); if (r instanceof Response) return r;
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
+  // Only the first passkey creates an account; verify needs this route's challenge, so one check suffices.
+  if (!me.deviceId) {
+    const invite = (await body<{ invite?: unknown }>(req))?.invite;
+    if (!inviteOk(invite)) {
+      // No code is the UI asking whether to prompt, not a guess: only wrong codes count.
+      if (invite === undefined) return json({ error: { message: "invite code required", code: "invite_required" } }, 403);
+      const capped = await overLimit(LIMITS.inviteFail, "invite-fail"); if (capped) return capped;
+      return json({ error: { message: "invalid invite code", code: "invite_required" } }, 403);
+    }
+  }
   if (!(await consumeStepUp(me))) return stepUpRequired();
   const o = await registrationOptions(id, r);
   if (o.ok) return json(o.options);

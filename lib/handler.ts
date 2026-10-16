@@ -1,7 +1,8 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { gate, recordFailure } from "./ratelimit";
-import { identityFrom, tierOf } from "./session";
+import { resolveIdentity, tierOf } from "./session";
+import { inviteCodes } from "./invite";
 import { loadProviders, parseModelRef } from "./providers";
 import { estimateTokens } from "./tiers";
 import { relay } from "./relay";
@@ -25,8 +26,12 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
 
 async function handle(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
   const log = deps.log ?? metaLogger;
-  const id = await identityFrom(req);
-  if (!id) return err(401, "missing or invalid session token");
+  const me = await resolveIdentity(req);
+  if (!me) return err(401, "missing or invalid session token");
+  // Invite-only: anonymous sessions would otherwise spend the shared provider key without an invite.
+  if (!me.deviceId && inviteCodes().length > 0)
+    return Response.json({ error: { message: "Create a passkey with your invite code (Account) to start chatting.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  const id = me.accountId;
   let input: Record<string, unknown>;
   try { input = (await req.json()) as Record<string, unknown>; } catch { await recordFailure(id); return err(400, "invalid JSON"); }
 

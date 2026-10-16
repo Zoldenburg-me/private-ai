@@ -201,7 +201,13 @@ export default function Home() {
   /** The first passkey creates the account (this browser becomes a signed-in device); no email or username. */
   async function addPasskey() {
     try {
-      const o = await withStepUp(() => fetch("/api/auth/passkey/register/options", { method: "POST" }));
+      const options = (invite?: string) => fetch("/api/auth/passkey/register/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invite }) });
+      let o = await withStepUp(() => options());
+      if (o.status === 403 && (await o.clone().json().catch(() => null))?.error?.code === "invite_required") {
+        const code = window.prompt("Invite code");
+        if (code === null) { setNotice("Invite code required"); return; }
+        o = await options(code);
+      }
       if (!o.ok) throw new Error((await o.json()).error?.message ?? `HTTP ${o.status}`);
       const att = await startRegistration({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/register/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(att) });

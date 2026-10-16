@@ -93,6 +93,15 @@ The Postgres/Redis ports are not published by the compose file; expose them loca
 `stripe listen --forward-to localhost:3000/api/billing/webhook` and copy the printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`.
 Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Events used: `checkout.session.completed`, `customer.subscription.{created,updated,deleted,paused,resumed}`.
 
+**Invite-only signup:** set `INVITE_CODES=code1,code2` (long random strings, e.g. `openssl rand -hex 12`). The first
+passkey (account creation) asks for a code; logins and extra passkeys do not. Codes are shared and reusable; remove one
+from INVITE_CODES and restart to revoke it (a signup already started with it can still finish within 5 minutes). While the gate is on, anonymous chat is off: chatting needs a signed-in
+passkey account. Failed codes are capped instance-wide (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
+
+**Pro for testers:** run Stripe in test mode (above) and let testers check out with card `4242 4242 4242 4242`; the
+webhook grants Pro like a real payment. To comp one account without Checkout, add its full id (Settings → Account →
+Export, `account.id`) to `ENTITLEMENTS='{"<account id>":"pro"}'` and restart.
+
 **Passkeys locally:** `http://localhost` is a secure context, so passkeys work in dev without TLS. In production `WEBAUTHN_RP_ID` (e.g. `chat.example.com`) and `WEBAUTHN_ORIGIN` (`https://chat.example.com`) are required.
 
 ## TODO

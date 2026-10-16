@@ -230,3 +230,38 @@ describe("passkey hardening", () => {
     expect((await regOptions(post("/x", {}, token))).status).toBe(200);
   });
 });
+
+describe("invite gate", () => {
+  beforeEach(() => { _setStores(); vi.stubEnv("INVITE_CODES", " alpha-123 , beta-456 "); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+  const reg = async (auth: SoftAuthenticator, token: string, invite?: string) => {
+    const o = await regOptions(post("/x", invite === undefined ? {} : { invite }, token));
+    return o.ok ? regVerify(post("/x", auth.create(await o.json(), ORIGIN), token)) : o;
+  };
+
+  it("the first passkey (signup) needs a listed code", async () => {
+    const { token } = await createSession();
+    for (const bad of [undefined, "", "alpha", "alpha-1234", "ALPHA-123"]) {
+      const r = await regOptions(post("/x", bad === undefined ? {} : { invite: bad }, token));
+      expect(r.status).toBe(403);
+      expect((await r.json()).error.code).toBe("invite_required");
+    }
+    expect((await reg(new SoftAuthenticator(), token, " beta-456 ")).status).toBe(200);
+  });
+
+  it("existing accounts log in and add passkeys without a code", async () => {
+    const { token: anon } = await createSession();
+    const mine = new SoftAuthenticator();
+    const r = await reg(mine, anon, "alpha-123");
+    const token = (await r.json()).apiToken as string;
+    expect((await login(mine)).status).toBe(200);
+    expect((await stepUp(mine, token)).status).toBe(200);
+    expect((await reg(new SoftAuthenticator(), token)).status).toBe(200);
+  });
+
+  it("no INVITE_CODES: signup is open", async () => {
+    vi.stubEnv("INVITE_CODES", " , ");
+    const { token } = await createSession();
+    expect((await reg(new SoftAuthenticator(), token)).status).toBe(200);
+  });
+});

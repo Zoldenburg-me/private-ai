@@ -13,6 +13,8 @@ export const LIMITS = {
   newSession: { env: "PAI_LIMIT_NEW_SESSIONS_PER_MIN", fallback: 600, windowMs: 60_000 },
   /** Anonymous passkey login options per minute, whole instance (bounds stored challenges). */
   passkeyLogin: { env: "PAI_LIMIT_PASSKEY_LOGINS_PER_MIN", fallback: 300, windowMs: 60_000 },
+  /** Failed invite codes per minute, whole instance (caps guessing across fresh sessions). */
+  inviteFail: { env: "PAI_LIMIT_INVITE_FAILS_PER_MIN", fallback: 30, windowMs: 60_000 },
   /** Export, delete, passkey add/remove per account per hour. */
   accountAction: { env: "PAI_LIMIT_ACCOUNT_ACTIONS_PER_HOUR", fallback: 20, windowMs: 3_600_000 },
   /** Attestation / signature fetches per account per minute (each spends the shared provider key). */
