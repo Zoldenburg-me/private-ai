@@ -1,8 +1,9 @@
-# Local and Hetzner deployment: app + Postgres + Redis.
+# Local and Hetzner deployment: app + Postgres + Redis (+ Caddy in production).
 #   cp .env.example .env   # fill SESSION_SECRET, POSTGRES_PASSWORD, provider keys
 #   docker compose up -d --build
-# Only the app port is published, and only on localhost: put a TLS reverse proxy (Caddy/nginx)
-# in front on the host. Postgres and Redis stay on the internal network.
+# Production adds Caddy (deploy/caddy, profile "proxy"): the only public entry, TLS for DOMAIN,
+# per-IP limits, no IP logs. The app port is published on localhost only; Postgres and Redis stay
+# on the internal network.
 name: private-ai
 
 services:
@@ -29,6 +30,32 @@ services:
       options: { max-size: "10m", max-file: "3" }
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+
+  # Production only: docker compose --profile proxy up -d
+  caddy:
+    profiles: [proxy]
+    build: deploy/caddy
+    image: private-ai-caddy:latest
+    restart: unless-stopped
+    # Host network: Caddy must see real client IPs for its per-IP limits (docker-proxy would hide them).
+    # It listens on 80/443 (TCP, UDP for HTTP/3) and reaches the app on 127.0.0.1:APP_PORT.
+    network_mode: host
+    environment:
+      DOMAIN: ${DOMAIN:-} # required; the caddy image exits if it is empty
+      APP_PORT: ${APP_PORT:-3000}
+    volumes:
+      - caddydata:/data # TLS certificates and ACME account
+      - caddyconfig:/config
+    depends_on:
+      app: { condition: service_healthy }
+    read_only: true
+    tmpfs: [/tmp]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
 
   postgres:
     image: postgres:16-alpine
@@ -61,3 +88,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  caddydata:
+  caddyconfig:

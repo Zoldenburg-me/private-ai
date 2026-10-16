@@ -80,7 +80,20 @@ cp .env.example .env         # set SESSION_SECRET (>= 32 chars), POSTGRES_PASSWO
 docker compose up -d --build # app on 127.0.0.1:${APP_PORT:-3000}, migrations run on first request
 curl localhost:3000/api/health
 ```
-Sessions, plans and today's usage survive `docker compose restart` and `down`/`up` (volumes `pgdata`, `redisdata`; Redis uses AOF). On Hetzner, put Caddy or nginx with TLS in front and do not log client IPs there. Add a per-IP request limit in the proxy for `/api/session` and `/api/auth/passkey/login/*` (e.g. nginx `limit_req_zone $binary_remote_addr`, kept in memory only); the app itself never sees or stores IPs.
+Sessions, plans and today's usage survive `docker compose restart` and `down`/`up` (volumes `pgdata`, `redisdata`; Redis uses AOF).
+
+**Production (Hetzner):** the `caddy` service (`deploy/caddy/`, compose profile `proxy`) is the only public entry. Point DNS at the box and set in `.env`:
+```
+DOMAIN=chat.example.com
+WEBAUTHN_RP_ID=chat.example.com
+WEBAUTHN_ORIGIN=https://chat.example.com
+APP_URL=https://chat.example.com
+```
+Open TCP 80 and 443, and UDP 443 (HTTP/3; no other UDP port is needed), then `docker compose --profile proxy up -d --build`. Caddy gets the certificate automatically (volume `caddydata`). It runs on the host network, so it sees the real client IP, and proxies to the app on `127.0.0.1:${APP_PORT:-3000}`; the app is never published on a public interface. Its admin API is off: after editing the Caddyfile, rebuild and restart the container.
+- **No client IPs in logs:** Caddy writes no access log; IPs, ports and request headers are stripped from its error lines, and `X-Forwarded-For`, `X-Real-IP` and `Forwarded` are not passed to the app, so the app never sees an IP.
+- **Per-client limits** (in Caddy's memory only, reset on restart): `/api/session` 60/min, `/api/auth/passkey/login/*` 60/min, answered with 429. IPv4 is limited per address, IPv6 per /64 (a host can rotate through its whole /64; `tests/caddy-ratelimit-key.test.ts` checks the key). Users behind one NAT, CGNAT or Tor exit share a limit. These sit in front of the app's global limits (`PAI_LIMIT_*`); change them in `deploy/caddy/Caddyfile` and rebuild.
+- **Check the config:** `docker compose --profile proxy build caddy && docker compose --profile proxy run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile` (CI runs the same).
+- **After the first deploy, check that Caddy sees real IPs and logs none:** temporarily add `respond /whoami "{remote_host}"` at the top of the site block, rebuild, and run `curl -4 https://chat.example.com/whoami` and `curl -6 https://chat.example.com/whoami` from outside (IPv6 if the box has an AAAA record). Each must print your own public address, not a `172.x` or `fe80::` Docker address. Remove the line again and rebuild. Then `docker compose logs caddy | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-f]{0,4}::[0-9a-f:]+|([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}' | sort -u` must print nothing but `127.0.0.1` (the upstream app); look at any other hit by eye.
 
 **Integration tests against real backends** (the store and rate-limit contract tests run against both memory and the real service):
 ```
@@ -115,7 +128,7 @@ Export, `account.id`) to `ENTITLEMENTS='{"<account id>":"pro"}'` and restart.
 - [ ] **Lawyer review** of all `TODO` markers on the legal pages (Widerrufsrecht, Haftung, Stripe/Hetzner/provider DPAs, third-country transfers); fill in company details
 - [x] Self-service account export and deletion (incl. Stripe customer), passkey removal, sign-out and device removal
 - [x] Abuse limits on session minting and passkey login; CSP + HSTS; passkey user verification required
-- [ ] Per-IP limits in the reverse proxy config (not in this repo yet)
+- [x] Reverse proxy config (Caddy, auto TLS, per-IP limits in memory, no IP logs)
 - [ ] Session revocation (tokens are deterministic per account; a leaked cookie stays valid, and after account deletion an old token can still start a new, empty account with the same id)
 - Note: passkeys are now registered and verified with user verification required; a passkey created earlier without PIN/biometric can no longer log in.
 - [ ] Payments via crypto (x402 / Zold) as an accountless alternative

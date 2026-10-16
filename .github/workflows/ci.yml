@@ -39,3 +39,26 @@ jobs:
       - run: npm run build
       # Uses the package.json defaults (pai:pai@127.0.0.1:5432/pai_test, redis db 1); the store applies migrations/*.sql itself.
       - run: npm run test:integration
+
+  proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t pai-caddy deploy/caddy
+      - run: docker run --rm -e DOMAIN=chat.example.com pai-caddy caddy validate --config /etc/caddy/Caddyfile
+      - name: Caddy refuses to start without DOMAIN
+        run: "! docker run --rm pai-caddy"
+      - name: Per-IP limit answers 429 on the 61st /api/session request
+        run: |
+          python3 -m http.server 3000 --bind 127.0.0.1 >/dev/null 2>&1 &
+          docker run -d --name caddy --network host -e DOMAIN=localhost pai-caddy
+          for i in $(seq 30); do curl -sk -o /dev/null https://localhost/ && break; sleep 1; done
+          codes=$(for i in $(seq 61); do curl -sk -o /dev/null -w '%{http_code}\n' https://localhost/api/session; done)
+          echo "$codes" | sort | uniq -c
+          test "$(echo "$codes" | head -60 | grep -c 429)" = 0 && test "$(echo "$codes" | tail -1)" = 429
+      # The app service needs an .env file; the local quickstart must not need DOMAIN.
+      - run: touch .env
+      - run: docker compose --profile proxy config -q
+        env: { DOMAIN: chat.example.com, POSTGRES_PASSWORD: ci, SESSION_SECRET: ci }
+      - run: docker compose config -q
+        env: { POSTGRES_PASSWORD: ci, SESSION_SECRET: ci }
