@@ -51,20 +51,22 @@ export function isSelectable(p: Privacy): boolean {
   return p === "tee" || p === "private";
 }
 
+export const UPSTREAM_TIMEOUT_MS = 10_000;
+
+/** One provider's /models, normalised. Throws when the provider fails or times out. */
+export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = fetch): Promise<ModelEntry[]> {
+  const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+  if (!r.ok) throw new Error(String(r.status));
+  const j = (await r.json()) as { data?: Raw[] } | Raw[];
+  const arr = Array.isArray(j) ? j : j.data ?? [];
+  return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id);
+}
+
+/** What a provider offers when its /models call fails: only its configured default model. */
+export const fallbackModels = (p: ProviderConfig): ModelEntry[] => (p.defaultModel ? [normaliseModel(p, { id: p.defaultModel })] : []);
+
 export async function fetchCatalog(providers: ProviderConfig[], fetchImpl: typeof fetch = fetch): Promise<ModelEntry[]> {
-  const lists = await Promise.all(
-    providers.map(async (p) => {
-      try {
-        const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store" });
-        if (!r.ok) throw new Error(String(r.status));
-        const j = (await r.json()) as { data?: Raw[] } | Raw[];
-        const arr = Array.isArray(j) ? j : j.data ?? [];
-        return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id);
-      } catch {
-        return p.defaultModel ? [normaliseModel(p, { id: p.defaultModel })] : [];
-      }
-    }),
-  );
+  const lists = await Promise.all(providers.map((p) => fetchProviderModels(p, fetchImpl).catch(() => fallbackModels(p))));
   return lists.flat();
 }
 

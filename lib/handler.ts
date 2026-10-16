@@ -4,13 +4,16 @@ import { gate, recordFailure } from "./ratelimit";
 import { resolveIdentity, tierOf } from "./session";
 import { inviteCodes } from "./invite";
 import { loadProviders, parseModelRef } from "./providers";
-import { estimateTokens } from "./tiers";
+import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS } from "./tiers";
 import { relay } from "./relay";
 import { metaLogger, type Logger } from "./log";
 import { isUnavailable, unavailableResponse } from "./store";
-import type { ChatMessage } from "./providers";
 
 export interface HandlerDeps { catalog: () => Promise<ModelEntry[]>; log?: Logger; fetchImpl?: typeof fetch; env?: Record<string, string | undefined> }
+
+/** Raw request body cap. Bounds message bytes too; the per-tier token limit is checked after parsing. */
+export const MAX_BODY_BYTES = 4 * 1024 * 1024;
+export const BODY_READ_TIMEOUT_MS = 20_000;
 
 const err = (status: number, message: string, headers: Record<string, string> = {}) =>
   Response.json({ error: { message } }, { status, headers: { "Cache-Control": "no-store", ...headers } });
@@ -33,7 +36,9 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
     return Response.json({ error: { message: "Create a passkey with your invite code (Account) to start chatting.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   const id = me.accountId;
   let input: Record<string, unknown>;
-  try { input = (await req.json()) as Record<string, unknown>; } catch { await recordFailure(id); return err(400, "invalid JSON"); }
+  const raw = await readCapped(req, MAX_BODY_BYTES);
+  if (raw instanceof Response) { await recordFailure(id); return raw; }
+  try { input = JSON.parse(raw) as Record<string, unknown>; } catch { await recordFailure(id); return err(400, "invalid JSON"); }
 
   const parsed = applyExtensions(input);
   if (parsed.error) { await recordFailure(id); return err(400, parsed.error); }
@@ -46,12 +51,41 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   if (!provider) return err(503, "provider not configured");
 
   const tier = await tierOf(id);
-  const ctx = estimateTokens((parsed.messages as ChatMessage[]).map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join("\n"));
-  const g = await gate(id, tier, ctx);
+  const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
+  const cap = TIERS[tier].maxOutputTokens;
+  const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
+  // Forward the field the client used: some models accept only max_completion_tokens.
+  const field = max_completion_tokens != null ? "max_completion_tokens" : "max_tokens";
+  const body = { ...rest, model: ref.model, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
+  const g = await gate(id, tier, estimateTokens(JSON.stringify(body)));
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
 
-  const body = { ...parsed.body, model: ref.model };
   const res = await relay({ provider, body, log, route, fetchImpl: deps.fetchImpl, extraHeaders: g.headers });
   if (res.status >= 500) await recordFailure(id);
   return res;
+}
+
+/** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */
+async function readCapped(req: Request, max: number): Promise<string | Response> {
+  if (Number(req.headers.get("content-length") ?? 0) > max) return err(413, "request body too large");
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; reader.cancel().catch(() => {}); }, BODY_READ_TIMEOUT_MS);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (timedOut) return err(408, "request body too slow");
+      if (done) return Buffer.concat(chunks).toString("utf8");
+      size += value.length;
+      if (size > max) { reader.cancel().catch(() => {}); return err(413, "request body too large"); }
+      chunks.push(value);
+    }
+  } catch {
+    return err(timedOut ? 408 : 400, timedOut ? "request body too slow" : "request body could not be read");
+  } finally {
+    clearTimeout(timer);
+  }
 }

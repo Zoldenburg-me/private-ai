@@ -1,4 +1,5 @@
 import { loadProviders, parseModelRef } from "./providers";
+import { UPSTREAM_TIMEOUT_MS } from "./catalog";
 import { getCatalog } from "./catalog-cache";
 import { identityFrom } from "./session";
 import { withStores } from "./store";
@@ -30,7 +31,13 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(chatId)) return fail(400, "chat_id required");
     target = `${p.baseUrl}/signature/${chatId}?model=${encodeURIComponent(ref.model)}&signing_algo=ecdsa`;
   }
-  const r = await fetchImpl(target, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store" });
+  let r: Response, text: string;
+  try {
+    r = await fetchImpl(target, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+    text = await r.text();
+  } catch {
+    return fail(502, "evidence unavailable"); // unreachable or timed out
+  }
   if (!r.ok) return fail(502, "evidence unavailable");
-  return new Response(await r.text(), { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return new Response(text, { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 });

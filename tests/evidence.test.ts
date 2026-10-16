@@ -27,6 +27,14 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); _clearCatalog(); });
 
 describe("evidence endpoints (spend the shared provider key)", () => {
+  it("time out: the provider fetch carries a timeout signal, and a failure is a masked 502", async () => {
+    const token = await session();
+    const failing = vi.fn(async (_u: string, init: RequestInit) => { expect(init.signal).toBeInstanceOf(AbortSignal); throw new Error("timeout"); }) as unknown as typeof fetch;
+    const r = await proxyEvidence("signature", failing)(get("model=mock:m1&chat_id=c1", token));
+    expect(r.status).toBe(502);
+    expect(await r.text()).not.toContain("timeout");
+    expect(failing).toHaveBeenCalledOnce();
+  });
   it("are wired into the Node.js routes, which need a session", async () => {
     for (const route of [attestationRoute, signatureRoute]) {
       expect(route.runtime).toBe("nodejs");
