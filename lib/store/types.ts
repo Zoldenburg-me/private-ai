@@ -60,8 +60,6 @@ export interface AccountStore {
    * protect the account. Returns count.
    */
   purgeInactive(cutoff: number): Promise<number>;
-  /** Sign out devices last seen before `cutoff` (the account and its passkeys stay). Returns count. */
-  purgeStaleDevices(cutoff: number): Promise<number>;
   ping(): Promise<void>;
 }
 

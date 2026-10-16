@@ -163,10 +163,6 @@ export class PgAccountStore implements AccountStore {
         AND (x.current_period_end IS NULL OR x.current_period_end >= ${new Date(cutoff)}))`;
     return r.count;
   }
-  async purgeStaleDevices(cutoff: number) {
-    const sql = await this.db();
-    return (await sql`DELETE FROM devices WHERE last_seen_on < ${dayKey(cutoff)}`).count;
-  }
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
   async close() { await this.sql.end({ timeout: 2 }); }
 }
