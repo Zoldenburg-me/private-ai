@@ -20,21 +20,53 @@ export function issueToken(): { id: string; token: string } {
   return { id, token: `pai_${id}.${sign(id)}` };
 }
 
-export function verifyToken(token: string | undefined | null): string | null {
+/**
+ * Two token shapes: "pai_<account>.<hmac>" (anonymous, stateless) and
+ * "pai_<account>.<device>.<hmac>" (signed in; valid only while the device row exists).
+ */
+export function parseToken(token: string | undefined | null): { accountId: string; deviceId: string | null } | null {
   if (!token) return null;
-  const m = /^pai_([A-Za-z0-9_-]{10,64})\.([A-Za-z0-9_-]{32})$/.exec(token.trim());
+  const m = /^pai_([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]{16,64}))?\.([A-Za-z0-9_-]{32})$/.exec(token.trim());
   if (!m) return null;
-  const a = Buffer.from(m[2]); const b = Buffer.from(sign(m[1]));
-  return a.length === b.length && timingSafeEqual(a, b) ? m[1] : null;
+  const a = Buffer.from(m[3]); const b = Buffer.from(sign(m[2] ? `${m[1]}.${m[2]}` : m[1]));
+  return a.length === b.length && timingSafeEqual(a, b) ? { accountId: m[1], deviceId: m[2] ?? null } : null;
 }
 
-/** Read identity from Bearer header (API) or cookie (web app). */
-export function identityFrom(req: Request): string | null {
+/** Signature check only (no store lookup): the account id, or null. */
+export const verifyToken = (token: string | undefined | null): string | null => parseToken(token)?.accountId ?? null;
+
+export function issueDeviceToken(accountId: string, deviceId: string): string {
+  if (!/^[A-Za-z0-9_-]{10,64}$/.test(accountId) || !/^[A-Za-z0-9_-]{16,64}$/.test(deviceId)) throw new Error("invalid id");
+  return `pai_${accountId}.${deviceId}.${sign(`${accountId}.${deviceId}`)}`;
+}
+
+function tokenFrom(req: Request): string | null {
   const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return verifyToken(auth.slice(7));
-  const cookie = req.headers.get("cookie") ?? "";
-  const c = /(?:^|;\s*)pai_session=([^;]+)/.exec(cookie);
-  return verifyToken(c ? decodeURIComponent(c[1]) : null);
+  if (auth?.startsWith("Bearer ")) return auth.slice(7);
+  const c = /(?:^|;\s*)pai_session=([^;]+)/.exec(req.headers.get("cookie") ?? "");
+  return c ? decodeURIComponent(c[1]) : null;
+}
+
+/**
+ * Identity from Bearer header (API) or cookie (web app). A device token needs its device row
+ * (sign-out and device removal revoke it); an anonymous token stops working once the account
+ * has a passkey or a device, so a copied pre-sign-in token cannot outlive a sign-out.
+ */
+export async function resolveIdentity(req: Request): Promise<{ accountId: string; deviceId: string | null } | null> {
+  const t = parseToken(tokenFrom(req));
+  if (!t) return null;
+  const { accounts } = await stores();
+  if (t.deviceId) return (await accounts.touchDevice(t.accountId, t.deviceId)) ? t : null;
+  return (await accounts.hasSignIn(t.accountId)) ? null : t;
+}
+
+export const identityFrom = async (req: Request): Promise<string | null> => (await resolveIdentity(req))?.accountId ?? null;
+
+/** Sign this browser in to `accountId`: a new device row and its token. */
+export async function signInDevice(accountId: string): Promise<string> {
+  const id = randomBytes(16).toString("base64url");
+  await (await stores()).accounts.addDevice({ id, accountId, createdAt: Date.now() });
+  return issueDeviceToken(accountId, id);
 }
 
 /** Issue a token for an existing opaque account id (e.g. after passkey login on a new device). */

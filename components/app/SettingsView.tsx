@@ -2,13 +2,16 @@
 import { useState } from "react";
 import { TIERS, type Tier, type TierId } from "@/lib/tiers";
 import type { Usage } from "./UsageMeter";
-import { CreditCard, DownloadSimple, Fingerprint, LockSimple, SignIn, Trash, UploadSimple, WarningCircle } from "@phosphor-icons/react";
+import { CreditCard, Devices, DownloadSimple, Fingerprint, LockSimple, SignIn, SignOut, Trash, UploadSimple, UserCirclePlus, WarningCircle } from "@phosphor-icons/react";
 
 export interface Billing { configured: boolean; plans?: { plan: string; interval: string; available: boolean }[]; subscription: { tier: string; status: string } | null }
 export interface PasskeyInfo { id: string; label: string; createdAt: number }
+export interface AccountInfo { signedIn: boolean; id: string }
+export interface DeviceInfo { id: string; createdAt: number; lastSeenOn: string; current: boolean }
 
 export function SettingsView(p: {
   tier: Tier | null; usage: Usage | null; billing: Billing | null; passkeys: PasskeyInfo[]; ghost: boolean;
+  account: AccountInfo | null; devices: DeviceInfo[]; onSignOut: () => void; onRemoveDevice: (id: string) => void;
   onCheckout: (plan: "pro" | "max", interval: "month" | "year") => void; onPortal: () => void;
   onAddPasskey: () => void; onLoginPasskey: () => void; onRemovePasskey: (id: string) => void;
   onExportAccount: () => void; onDeleteAccount: () => void;
@@ -54,18 +57,43 @@ export function SettingsView(p: {
 
       <section className="panel">
         <h2><Fingerprint aria-hidden />Account</h2>
-        <p className="small muted">No email needed. {p.passkeys.length ? `${p.passkeys.length} passkey(s) on this account.` : "Anonymous: your plan is tied to this browser."}</p>
-        <ul className="plain small">
-          {p.passkeys.map((k) => (
-            <li key={k.id} className="passkey"><Fingerprint aria-hidden />{k.label}… <span className="muted">{new Date(k.createdAt).toLocaleDateString()}</span>{" "}
-              <button type="button" className="icon-btn" aria-label="Remove passkey" data-testid="passkey-remove" onClick={() => p.onRemovePasskey(k.id)}><Trash aria-hidden /></button></li>
-          ))}
-        </ul>
-        <div className="row gap wrap">
-          <button type="button" className="btn" data-testid="passkey-add" onClick={p.onAddPasskey}>{p.passkeys.length ? "Add another passkey" : "Save account with a passkey"}</button>
-          <button type="button" className="btn" data-testid="passkey-login" onClick={p.onLoginPasskey}><SignIn aria-hidden />Log in with a passkey</button>
-        </div>
-        {!p.passkeys.length && p.billing?.subscription && <p className="tip"><WarningCircle aria-hidden />Tip: save a passkey so you can restore your plan on other devices.</p>}
+        {p.account?.signedIn ? (<>
+          <div className="row between wrap gap">
+            <p className="account-status" data-testid="account-status"><span className="tag tone-ok">Signed in</span><span className="muted">Account <code>{p.account.id}</code></span></p>
+            <button type="button" className="btn" data-testid="sign-out" onClick={p.onSignOut}><SignOut aria-hidden />Sign out</button>
+          </div>
+          <p className="small muted">Your plan, usage and passkeys belong to this account on every device you sign in to. No email needed. Signing out keeps your chats in this browser.</p>
+
+          <h3>Passkeys</h3>
+          <ul className="plain small">
+            {p.passkeys.map((k) => (
+              <li key={k.id} className="passkey"><Fingerprint aria-hidden />{k.label}… <span className="muted">added {new Date(k.createdAt).toLocaleDateString()}</span>{" "}
+                <button type="button" className="icon-btn" aria-label="Remove passkey" data-testid="passkey-remove" onClick={() => p.onRemovePasskey(k.id)}><Trash aria-hidden /></button></li>
+            ))}
+          </ul>
+          {!p.passkeys.length && <p className="tip"><WarningCircle aria-hidden />No passkey left: add one, or you cannot sign in again after signing out.</p>}
+          <button type="button" className="btn" data-testid="passkey-add" onClick={p.onAddPasskey}><Fingerprint aria-hidden />Add another passkey</button>
+
+          <h3>Signed-in devices</h3>
+          <ul className="plain small" data-testid="devices">
+            {p.devices.map((d) => (
+              <li key={d.id} className="passkey"><Devices aria-hidden />Device {d.id.slice(0, 6)}…
+                <span className="muted">added {new Date(d.createdAt).toLocaleDateString()} · last used {new Date(`${d.lastSeenOn}T00:00:00`).toLocaleDateString()}</span>
+                {d.current && <span className="tag t-current">this device</span>}
+                <button type="button" className="icon-btn" aria-label={d.current ? "Sign out this device" : `Sign out device ${d.id.slice(0, 6)}`} data-testid="device-remove"
+                  onClick={() => p.onRemoveDevice(d.id)}><Trash aria-hidden /></button></li>
+            ))}
+          </ul>
+          <p className="small muted">Devices have no names: we never store your browser, model or location.</p>
+        </>) : (<>
+          <p className="account-status" data-testid="account-status"><span className="tag tone-muted">Not signed in</span></p>
+          <p className="small muted">Your plan and usage are tied to this browser. Create an account with a passkey to keep them on every device. No email, no password.</p>
+          <div className="row gap wrap">
+            <button type="button" className="btn primary" data-testid="passkey-add" onClick={p.onAddPasskey}><UserCirclePlus aria-hidden />Create account</button>
+            <button type="button" className="btn" data-testid="passkey-login" onClick={p.onLoginPasskey}><SignIn aria-hidden />Sign in with a passkey</button>
+          </div>
+          {p.billing?.subscription && <p className="tip"><WarningCircle aria-hidden />Tip: create an account so you can restore your plan on other devices.</p>}
+        </>)}
         <h3>Your server-side data</h3>
         <div className="row gap wrap">
           <button type="button" className="btn" data-testid="account-export" onClick={p.onExportAccount}><DownloadSimple aria-hidden />Download my data</button>

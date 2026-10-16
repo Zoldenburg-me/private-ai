@@ -4,7 +4,7 @@ import { MemoryAccountStore } from "../lib/store/memory";
 import { PgAccountStore } from "../lib/store/postgres";
 import { migrate } from "../lib/store/migrate";
 import { createStores, _setStores, type AccountStore } from "../lib/store";
-import { createSession, issueToken, issueTokenFor, setTier, tierOf, verifyToken } from "../lib/session";
+import { createSession, issueDeviceToken, issueToken, issueTokenFor, setTier, tierOf, verifyToken } from "../lib/session";
 import { handleChat } from "../lib/handler";
 import { GET as sessionGET } from "../app/api/session/route";
 
@@ -13,7 +13,7 @@ const pgUrl = process.env.TEST_DATABASE_URL;
 const pg = pgUrl ? new PgAccountStore(postgres(pgUrl, { max: 2, onnotice: () => {} }), false) : null;
 const backends: [string, () => Promise<AccountStore>][] = [["memory", async () => new MemoryAccountStore()]];
 if (pg) backends.push(["postgres", async () => {
-  await pg.sql.unsafe("DROP TABLE IF EXISTS passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
+  await pg.sql.unsafe("DROP TABLE IF EXISTS devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
   await migrate(pg.sql); return pg;
 }]);
 afterAll(async () => { await pg?.close(); });
@@ -113,6 +113,33 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect((await s.listCredentials("acct_d")).map((x) => x.counter)).toEqual([7]);
     await expect(s.addCredential(c)).rejects.toThrow();
   });
+  it("devices: add, touch only for the owner, list, delete, cascade", async () => {
+    const day1 = Date.UTC(2027, 0, 2, 9); const day2 = Date.UTC(2027, 0, 5, 9);
+    await s.addDevice({ id: "dev_aaaaaaaaaaaaaaaa", accountId: "acct_dev_1", createdAt: day1 });
+    await s.addDevice({ id: "dev_bbbbbbbbbbbbbbbb", accountId: "acct_dev_1", createdAt: day1 });
+    expect(await s.sessionExists("acct_dev_1")).toBe(true);
+    expect(await s.touchDevice("acct_other", "dev_aaaaaaaaaaaaaaaa", day2)).toBe(false);
+    expect(await s.touchDevice("acct_dev_1", "dev_unknown_xxxxxxxx", day2)).toBe(false);
+    expect(await s.touchDevice("acct_dev_1", "dev_aaaaaaaaaaaaaaaa", day2)).toBe(true);
+    const list = await s.listDevices("acct_dev_1");
+    expect(list.map((d) => d.id).sort()).toEqual(["dev_aaaaaaaaaaaaaaaa", "dev_bbbbbbbbbbbbbbbb"]);
+    expect(list.find((d) => d.id === "dev_aaaaaaaaaaaaaaaa")).toMatchObject({ accountId: "acct_dev_1", lastSeenOn: "2027-01-05" });
+    expect(list.find((d) => d.id === "dev_bbbbbbbbbbbbbbbb")?.lastSeenOn).toBe("2027-01-02");
+    expect(Object.keys(list[0]).sort()).toEqual(["accountId", "createdAt", "id", "lastSeenOn"]);
+    expect(await s.deleteDevice("acct_other", "dev_aaaaaaaaaaaaaaaa")).toBe(false);
+    expect(await s.deleteDevice("acct_dev_1", "dev_aaaaaaaaaaaaaaaa")).toBe(true);
+    expect(await s.touchDevice("acct_dev_1", "dev_aaaaaaaaaaaaaaaa", day2)).toBe(false);
+    expect(await s.deleteAccount("acct_dev_1")).toBe(true);
+    expect(await s.listDevices("acct_dev_1")).toEqual([]);
+  });
+  it("hasSignIn: true once the account has a passkey or a device", async () => {
+    await s.touchSession("acct_si_anon");
+    expect(await s.hasSignIn("acct_si_anon")).toBe(false);
+    await s.addCredential({ credentialId: "cred_si", accountId: "acct_si_pk", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    expect(await s.hasSignIn("acct_si_pk")).toBe(true);
+    await s.addDevice({ id: "dev_si_cccccccccccc", accountId: "acct_si_dev", createdAt: Date.now() });
+    expect(await s.hasSignIn("acct_si_dev")).toBe(true);
+  });
 });
 
 describe("session + entitlements over the store", () => {
@@ -121,6 +148,8 @@ describe("session + entitlements over the store", () => {
     const { id, token } = await createSession();
     expect(verifyToken(token)).toBe(id);
     expect(verifyToken(issueTokenFor(id))).toBe(id);
+    expect(verifyToken(issueDeviceToken(id, "dev_0123456789abcdef"))).toBe(id);
+    expect(verifyToken(issueDeviceToken(id, "dev_0123456789abcdef").replace("dev_0", "dev_1"))).toBeNull();
     const { accounts } = await (await import("../lib/store")).stores();
     expect(await accounts.sessionExists(id)).toBe(false);
     // anonymous calls (no cookie) never write a row, however many there are

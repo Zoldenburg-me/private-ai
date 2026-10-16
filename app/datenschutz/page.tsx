@@ -25,7 +25,7 @@ export default function Datenschutz() {
           Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
         <h3>5. Passkeys (optional)</h3>
-        <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht.
+        <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
         <h3>6. Zahlungen über Stripe</h3>
         <p>Bezahlte Tarife werden über Stripe abgewickelt (<Todo>Stripe Payments Europe, Ltd., Irland – Rolle als eigener Verantwortlicher/Auftragsverarbeiter prüfen</Todo>).
@@ -40,7 +40,7 @@ export default function Datenschutz() {
           <Todo>handels- und steuerrechtliche Aufbewahrungspflichten (Rechnungen bei Stripe) ergänzen</Todo></p>
         <h3>9. Ihre Rechte</h3>
         <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO),
-          z. B. <Todo>zuständige Landesdatenschutzbehörde</Todo>. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
+          z. B. <Todo>zuständige Landesdatenschutzbehörde</Todo>. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys, angemeldete Geräte und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
           Eine automatisierte Entscheidungsfindung oder Profilbildung findet nicht statt.</p>
       </Lang>
       <Lang id="en">
@@ -58,7 +58,7 @@ export default function Datenschutz() {
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
           Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
         <h3>5. Passkeys (optional)</h3>
-        <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Legal basis: Art. 6(1)(b) GDPR.</p>
+        <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>
         <p>Paid plans are processed by Stripe (<Todo>Stripe Payments Europe, Ltd., Ireland – confirm role</Todo>). You enter payment and contact details directly with Stripe; we never receive card data.
           We store only Stripe customer and subscription ids, plan, status and period end. Events sent by Stripe can contain further details (e.g. email); we neither store nor log them.
@@ -69,7 +69,7 @@ export default function Datenschutz() {
         <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. Details: <a href="/privacy/metadata">/privacy/metadata</a>.</p>
         <h3>9. Your rights</h3>
         <p>You have the rights of access, rectification, erasure, restriction, portability and objection (Art. 15–21 GDPR) and may complain to a supervisory authority (Art. 77 GDPR).
-          Access and portability: in Settings (⚙︎) under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
+          Access and portability: in Settings (⚙︎) under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys, signed-in devices and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
       </Lang>
     </LegalPage>
   );

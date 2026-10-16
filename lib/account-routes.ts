@@ -1,7 +1,7 @@
 import { BillingError, deleteStripeCustomers } from "./billing";
 import { consumeStepUp, restoreStepUp } from "./passkey";
 import { stepUpRequired } from "./passkey-routes";
-import { clearedSessionCookie, identityFrom, tierOf } from "./session";
+import { clearedSessionCookie, identityFrom, resolveIdentity, tierOf } from "./session";
 import { usage } from "./ratelimit";
 import { stores, withStores } from "./store";
 import { LIMITS, overLimit } from "./limits";
@@ -15,11 +15,11 @@ const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString
 
 /** Everything the server holds for this account, as a JSON download. */
 export const exportAccount = withStores(async (req: Request) => {
-  const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
   const { accounts } = await stores();
-  const [session, entitlement, subscriptions, passkeys] = await Promise.all([
-    accounts.getSession(id), accounts.getEntitlement(id), accounts.listSubscriptionsFor(id), accounts.listCredentials(id),
+  const [session, entitlement, subscriptions, passkeys, devices] = await Promise.all([
+    accounts.getSession(id), accounts.getEntitlement(id), accounts.listSubscriptionsFor(id), accounts.listCredentials(id), accounts.listDevices(id),
   ]);
   const data = {
     exportedAt: new Date().toISOString(),
@@ -30,6 +30,7 @@ export const exportAccount = withStores(async (req: Request) => {
       credentialId: c.credentialId, publicKey: Buffer.from(c.publicKey).toString("base64url"),
       counter: c.counter, transports: c.transports, createdAt: iso(c.createdAt),
     })),
+    devices: devices.map((d) => ({ id: d.id, createdAt: iso(d.createdAt), lastSeenOn: d.lastSeenOn })),
     usage: await usage(id, await tierOf(id)),
     notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see /datenschutz.",
   };
@@ -42,15 +43,38 @@ export const exportAccount = withStores(async (req: Request) => {
  * Usage counters in Redis carry only the opaque id and expire within 2 days.
  */
 export const deleteAccount = withStores(async (req: Request) => {
-  const id = identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const id = me.accountId;
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
-  if (!(await consumeStepUp(id))) return stepUpRequired();
+  if (!(await consumeStepUp(me))) return stepUpRequired();
   try { await deleteStripeCustomers(id); } catch (e) {
-    await restoreStepUp(id);
+    await restoreStepUp(me);
     if (e instanceof BillingError) return fail(e.status, e.message);
     throw e;
   }
   await (await stores()).accounts.deleteAccount(id);
   metaLogger({ route: "/api/account", event: "account_deleted", status: 200 });
   return json({ deleted: true }, 200, { "Set-Cookie": clearedSessionCookie() });
+});
+
+/** Signed-in browsers of this account. Ids only: there is no name, model or location to show. */
+export const listDevices = withStores(async (req: Request) => {
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const devices = await (await stores()).accounts.listDevices(me.accountId);
+  return json({ devices: devices.map((d) => ({ id: d.id, createdAt: d.createdAt, lastSeenOn: d.lastSeenOn, current: d.id === me.deviceId })) });
+});
+
+/** Sign a device out remotely. Needs step-up, like removing a passkey. */
+export const removeDevice = withStores(async (req: Request) => {
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  let b: { id?: unknown } | null = null;
+  try { b = (await req.json()) as { id?: unknown }; } catch { /* handled below */ }
+  const id = b?.id;
+  if (typeof id !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) return fail(400, "id required");
+  const limited = await overLimit(LIMITS.accountAction, `acct:${me.accountId}`); if (limited) return limited;
+  const { accounts } = await stores();
+  if (!(await accounts.listDevices(me.accountId)).some((d) => d.id === id)) return fail(404, "no such device on this account");
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  if (!(await accounts.deleteDevice(me.accountId, id))) { await restoreStepUp(me); return fail(404, "no such device on this account"); }
+  return json({ deleted: true }, 200, id === me.deviceId ? { "Set-Cookie": clearedSessionCookie() } : {});
 });

@@ -27,7 +27,7 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
 
 - `app/` routes and pages; `app/api/**/route.ts` files are thin and call into `lib/*-routes.ts`.
 - `lib/store/` persistence behind `AccountStore` / `CounterStore` (memory, Postgres, Redis).
-- `lib/billing*.ts` Stripe, `lib/passkey*.ts` WebAuthn, `lib/account-routes.ts` export/delete,
+- `lib/billing*.ts` Stripe, `lib/passkey*.ts` WebAuthn, `lib/account-routes.ts` export/delete/devices, `lib/session.ts` tokens and device sessions,
   `lib/limits.ts` abuse limits, `middleware.ts` CSP + HSTS.
 - `migrations/NNN_*.sql` plain SQL, applied automatically under an advisory lock.
 - `tests/` vitest; store and counter tests are contract tests that run on every backend.

@@ -19,7 +19,7 @@ import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
 import { ModelPicker } from "@/components/app/ModelPicker";
 import { PersonaGallery } from "@/components/app/PersonaGallery";
-import { SettingsView, type Billing } from "@/components/app/SettingsView";
+import { SettingsView, type AccountInfo, type Billing, type DeviceInfo } from "@/components/app/SettingsView";
 import type { Usage } from "@/components/app/UsageMeter";
 import { Sidebar } from "@/components/app/Sidebar";
 import { ChatScope } from "@/lib/chat-scope";
@@ -47,6 +47,8 @@ export default function Home() {
   const [navOpen, setNavOpen] = useState(false); // mobile only: rail + sidebar as a sheet
   const [notice, setNotice] = useState("");
   const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [ghost, setGhost] = useState(false);
   const [billing, setBilling] = useState<Billing | null>(null);
   const [scope] = useState(() => new ChatScope());
@@ -91,9 +93,11 @@ export default function Home() {
 
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
-      setTier(s.tier);
+      setTier(s.tier); setAccount(s.account ?? null);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.tier?.dailyMessages });
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
+      if (s.account?.signedIn) fetch("/api/account/devices").then((r) => r.json()).then((d) => setDevices(d.devices ?? [])).catch(() => {});
+      else setDevices([]);
       return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys ?? []));
     }).catch(() => {});
   }
@@ -191,7 +195,7 @@ export default function Home() {
     setNotice("Confirm with one of your passkeys");
     return (await loginPasskey(true)) ? run() : r;
   }
-  /** Passkey = optional upgrade of this anonymous account; no email or username. */
+  /** The first passkey creates the account (this browser becomes a signed-in device); no email or username. */
   async function addPasskey() {
     try {
       const o = await withStepUp(() => fetch("/api/auth/passkey/register/options", { method: "POST" }));
@@ -199,7 +203,7 @@ export default function Home() {
       const att = await startRegistration({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/register/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(att) });
       if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
-      setNotice("Passkey saved. Use it to restore your plan on other devices."); refreshSession();
+      setNotice(account?.signedIn ? "Passkey added." : "Account created. Sign in with this passkey on your other devices."); refreshSession();
     } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
   }
   async function loginPasskey(stepUp = false): Promise<boolean> {
@@ -209,13 +213,28 @@ export default function Home() {
       const asr = await startAuthentication({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/login/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(asr) });
       if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
-      if (!stepUp) { setNotice("Logged in with passkey"); refreshSession(); }
+      if (!stepUp) { setNotice("Signed in"); refreshSession(); }
       return true;
     } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); return false; }
   }
   async function removePasskey(id: string) {
     const r = await withStepUp(() => fetch("/api/auth/passkey", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }));
     if (r.ok) { setNotice("Passkey removed"); refreshSession(); } else setNotice(`Passkey: ${await errorOf(r)}`);
+  }
+  /** Revokes this browser's device token server-side. Local chats stay: they were never tied to the account. */
+  async function signOut() {
+    const r = await fetch("/api/auth/signout", { method: "POST" });
+    if (!r.ok) { setNotice(`Sign out: ${await errorOf(r)}`); return; }
+    setNotice("Signed out. Chats in this browser are kept.");
+    setBilling(null); setPasskeys([]); setDevices([]); refreshSession();
+  }
+  async function removeDevice(id: string) {
+    const r = await withStepUp(() => fetch("/api/account/devices", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }));
+    if (!r.ok) { setNotice(`Device: ${await errorOf(r)}`); return; }
+    const wasMe = devices.some((d) => d.id === id && d.current);
+    setNotice(wasMe ? "Signed out. Chats in this browser are kept." : "Device signed out.");
+    if (wasMe) { setBilling(null); setPasskeys([]); }
+    refreshSession();
   }
   /** GDPR Art. 15/20: everything the server holds for this account, as a JSON file. */
   async function downloadAccountData() {
@@ -230,7 +249,7 @@ export default function Home() {
     const r = await withStepUp(() => fetch("/api/account", { method: "DELETE" }));
     if (!r.ok) { setNotice(`Delete: ${await errorOf(r)}`); return; }
     setNotice("Account deleted on the server. Chats in this browser are kept until you wipe them.");
-    setBilling(null); setPasskeys([]); refreshSession();
+    setBilling(null); setPasskeys([]); setDevices([]); refreshSession();
   }
 
   const persona = personas.find((p) => p.id === personaId);
@@ -277,7 +296,7 @@ export default function Home() {
           {navBtn({ v: "settings", label: "Settings", Icon: GearSix })}
         </nav>
         <Sidebar ghost={ghost} query={query} onQuery={setQuery} chats={filtered} currentId={chat.id} vaultError={vaultError}
-          tier={tier} usage={usage} onUpgrade={() => go("settings")}
+          tier={tier} usage={usage} onUpgrade={() => go("settings")} account={account} onAccount={() => go("settings")}
           onNew={() => { startChat(); setNavOpen(false); }}
           onToggleGhost={() => { startChat({ ghost: !ghost }); setNavOpen(false); }}
           onOpen={(c) => { openChat(c, false); go("chat"); }}
@@ -316,6 +335,7 @@ export default function Home() {
         )}
         {view === "settings" && (
           <SettingsView tier={tier} usage={usage} billing={billing} passkeys={passkeys} ghost={ghost}
+            account={account} devices={devices} onSignOut={signOut} onRemoveDevice={removeDevice}
             onCheckout={(plan, interval) => goBilling("/api/billing/checkout", { plan, interval })}
             onPortal={() => goBilling("/api/billing/portal")}
             onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}

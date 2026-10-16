@@ -1,6 +1,6 @@
 import postgres, { type Sql } from "postgres";
 import type { TierId } from "../tiers";
-import type { AccountStore, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
+import type { AccountStore, Device, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
 import { dayKey, ENTITLED_STATUSES } from "./types";
 import { migrate } from "./migrate";
 
@@ -17,6 +17,9 @@ const toCred = (r: CredRow): PasskeyCredential => ({
   credentialId: r.credential_id, accountId: r.account_id, publicKey: new Uint8Array(r.public_key),
   counter: Number(r.counter), transports: r.transports ?? [], createdAt: r.created_at.getTime(),
 });
+
+interface DeviceRow { id: string; account_id: string; created_at: Date; last_seen_on: string }
+const toDevice = (r: DeviceRow): Device => ({ id: r.id, accountId: r.account_id, createdAt: r.created_at.getTime(), lastSeenOn: r.last_seen_on });
 
 export class PgAccountStore implements AccountStore {
   private ready: Promise<void> | null = null;
@@ -51,7 +54,7 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteAccount(id: string) {
     const sql = await this.db();
-    // ON DELETE CASCADE removes entitlements, subscriptions and passkeys.
+    // ON DELETE CASCADE removes entitlements, subscriptions, passkeys and devices.
     return (await sql`DELETE FROM sessions WHERE id = ${id}`).count > 0;
   }
   async getEntitlement(id: string): Promise<Entitlement | null> {
@@ -122,6 +125,35 @@ export class PgAccountStore implements AccountStore {
   async deleteCredential(accountId: string, id: string) {
     const sql = await this.db();
     return (await sql`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count > 0;
+  }
+  async addDevice(d: { id: string; accountId: string; createdAt: number }) {
+    const sql = await this.db();
+    await sql.begin(async (tx) => {
+      await tx`INSERT INTO sessions (id) VALUES (${d.accountId}) ON CONFLICT (id) DO NOTHING`;
+      await tx`INSERT INTO devices (id, account_id, created_at, last_seen_on) VALUES (${d.id}, ${d.accountId}, ${new Date(d.createdAt)}, ${dayKey(d.createdAt)})`;
+    });
+  }
+  async touchDevice(accountId: string, id: string, now = Date.now()) {
+    const sql = await this.db(); const day = dayKey(now);
+    const [r] = await sql<{ last_seen_on: string }[]>`SELECT to_char(last_seen_on, 'YYYY-MM-DD') AS last_seen_on FROM devices WHERE id = ${id} AND account_id = ${accountId}`;
+    if (!r) return false;
+    // At most one write per device and day.
+    if (r.last_seen_on < day) await sql`UPDATE devices SET last_seen_on = ${day} WHERE id = ${id} AND last_seen_on < ${day}`;
+    return true;
+  }
+  async listDevices(accountId: string) {
+    const sql = await this.db();
+    return (await sql<DeviceRow[]>`SELECT id, account_id, created_at, to_char(last_seen_on, 'YYYY-MM-DD') AS last_seen_on FROM devices WHERE account_id = ${accountId} ORDER BY created_at`).map(toDevice);
+  }
+  async deleteDevice(accountId: string, id: string) {
+    const sql = await this.db();
+    return (await sql`DELETE FROM devices WHERE id = ${id} AND account_id = ${accountId}`).count > 0;
+  }
+  async hasSignIn(accountId: string) {
+    const sql = await this.db();
+    const [r] = await sql<{ x: boolean }[]>`SELECT EXISTS (SELECT 1 FROM passkey_credentials WHERE account_id = ${accountId})
+      OR EXISTS (SELECT 1 FROM devices WHERE account_id = ${accountId}) AS x`;
+    return r.x;
   }
   async purgeInactive(cutoff: number) {
     const sql = await this.db();

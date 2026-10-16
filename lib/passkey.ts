@@ -78,18 +78,19 @@ export async function verifyRegistration(accountId: string, response: Registrati
 
 /**
  * Login: discoverable credentials, no allowCredentials list, so nothing about accounts is revealed.
- * Step-up (`stepUpFor` = the signed-in account): only that account's passkeys are offered and
- * accepted, so confirming an action can never switch to, or act on, a different account.
+ * Step-up (`stepUpFor` = the signed-in browser): only that account's passkeys are offered and
+ * accepted, so confirming an action can never switch to, or act on, a different account. The
+ * challenge remembers the asking device, and only that device gets the step-up.
  */
-export async function authenticationOptions(rp: RpConfig, stepUpFor?: string) {
+export async function authenticationOptions(rp: RpConfig, stepUpFor?: Identity) {
   const { accounts, counters } = await stores();
-  const allow = stepUpFor ? (await accounts.listCredentials(stepUpFor)).map((c) => ({ id: c.credentialId, transports: transports(c.transports) })) : undefined;
+  const allow = stepUpFor ? (await accounts.listCredentials(stepUpFor.accountId)).map((c) => ({ id: c.credentialId, transports: transports(c.transports) })) : undefined;
   const options = await generateAuthenticationOptions({ rpID: rp.rpID, userVerification: "required", ...(allow ? { allowCredentials: allow } : {}) });
-  await counters.putOnce(`webauthn:auth:${options.challenge}`, stepUpFor ? `step:${stepUpFor}` : "1", CHALLENGE_TTL_MS);
+  await counters.putOnce(`webauthn:auth:${options.challenge}`, stepUpFor ? `step:${stepUpKey(stepUpFor)}` : "1", CHALLENGE_TTL_MS);
   return options;
 }
 
-export async function verifyAuthentication(response: AuthenticationResponseJSON, rp: RpConfig): Promise<Result<{ accountId: string }>> {
+export async function verifyAuthentication(response: AuthenticationResponseJSON, rp: RpConfig): Promise<Result<{ accountId: string; stepUp: boolean }>> {
   const challenge = signedChallenge(response?.response?.clientDataJSON);
   if (!challenge || typeof response.id !== "string" || response.id.length > 1024) return { ok: false, status: 400, message: "malformed response" };
   const { accounts, counters } = await stores();
@@ -97,7 +98,8 @@ export async function verifyAuthentication(response: AuthenticationResponseJSON,
   if (pending !== "1" && !pending?.startsWith("step:")) return { ok: false, status: 400, message: "challenge expired or unknown" };
   const cred = await accounts.getCredential(response.id);
   if (!cred) return { ok: false, status: 401, message: "unknown passkey" };
-  if (pending !== "1" && cred.accountId !== pending.slice(5)) return { ok: false, status: 401, message: "passkey belongs to another account" };
+  const step = pending === "1" ? null : pending.slice(5);
+  if (step && cred.accountId !== step.split(":")[0]) return { ok: false, status: 401, message: "passkey belongs to another account" };
   let v;
   try {
     v = await verifyAuthenticationResponse({
@@ -110,24 +112,30 @@ export async function verifyAuthentication(response: AuthenticationResponseJSON,
   const handle = response.response.userHandle;
   if (handle && Buffer.from(handle, "base64url").toString("utf8") !== cred.accountId) return { ok: false, status: 401, message: "passkey owner mismatch" };
   await accounts.updateCredentialCounter(cred.credentialId, v.authenticationInfo.newCounter);
-  await counters.putOnce(`webauthn:stepup:${cred.accountId}`, "1", STEP_UP_TTL_MS);
-  return { ok: true, accountId: cred.accountId };
+  // A plain sign-in grants no step-up: it would otherwise unlock every other device's cookie too.
+  if (step) await counters.putOnce(`webauthn:stepup:${step}`, "1", STEP_UP_TTL_MS);
+  return { ok: true, accountId: cred.accountId, stepUp: step !== null };
 }
 
 /**
  * Sensitive actions (adding or removing a passkey, deleting the account) on an account that has
  * a passkey need a passkey login within STEP_UP_TTL_MS, so a copied session cookie alone cannot
  * take the account over or destroy it. Accounts without a passkey have nothing stronger than the
- * cookie, so the cookie suffices. Each step-up is consumed by one action.
+ * cookie, so the cookie suffices. Each step-up belongs to the device that confirmed it and is
+ * consumed by one action.
  */
-export async function consumeStepUp(accountId: string): Promise<boolean> {
+export async function consumeStepUp(me: Identity): Promise<boolean> {
   const { accounts, counters } = await stores();
-  if ((await accounts.listCredentials(accountId)).length === 0) return true;
-  return (await counters.takeOnce(`webauthn:stepup:${accountId}`)) === "1";
+  if ((await accounts.listCredentials(me.accountId)).length === 0) return true;
+  return (await counters.takeOnce(`webauthn:stepup:${stepUpKey(me)}`)) === "1";
 }
 
 /** Give a consumed step-up back when the action failed, so a retry needs no second passkey prompt. */
-export async function restoreStepUp(accountId: string): Promise<void> {
+export async function restoreStepUp(me: Identity): Promise<void> {
   const { accounts, counters } = await stores();
-  if ((await accounts.listCredentials(accountId)).length > 0) await counters.putOnce(`webauthn:stepup:${accountId}`, "1", STEP_UP_TTL_MS);
+  if ((await accounts.listCredentials(me.accountId)).length > 0) await counters.putOnce(`webauthn:stepup:${stepUpKey(me)}`, "1", STEP_UP_TTL_MS);
 }
+
+type Identity = { accountId: string; deviceId: string | null };
+/** `<account>:<device>`; anonymous tokens have no device and keep the account-only form. */
+const stepUpKey = (me: Identity) => (me.deviceId ? `${me.accountId}:${me.deviceId}` : me.accountId);
