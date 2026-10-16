@@ -124,7 +124,13 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteCredential(accountId: string, id: string) {
     const sql = await this.db();
-    return (await sql`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count > 0;
+    return sql.begin(async (tx) => {
+      // The account row lock serialises removals, so two of them cannot both see a second passkey.
+      await tx`SELECT 1 FROM sessions WHERE id = ${accountId} FOR UPDATE`;
+      const [{ n }] = await tx<{ n: number }[]>`SELECT count(*)::int AS n FROM passkey_credentials WHERE account_id = ${accountId}`;
+      if (n <= 1) return false;
+      return (await tx`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count > 0;
+    });
   }
   async addDevice(d: { id: string; accountId: string; createdAt: number }) {
     const sql = await this.db();

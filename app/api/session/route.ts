@@ -1,4 +1,4 @@
-import { createSession, resolveIdentity, sessionCookie, tierOf, touchSession } from "@/lib/session";
+import { createSession, resolveIdentity, sessionCookie, tierOf } from "@/lib/session";
 import { usage } from "@/lib/ratelimit";
 import { withStores } from "@/lib/store";
 import { LIMITS, overLimit } from "@/lib/limits";
@@ -15,7 +15,6 @@ export const GET = withStores(async (req: Request) => {
   const me = await resolveIdentity(req);
   if (me) {
     const existing = me.accountId;
-    await touchSession(existing);
     const tier = await tierOf(existing);
     return Response.json({ tier: TIERS[tier], usage: await usage(existing, tier), account: { signedIn: me.deviceId !== null, id: existing.slice(0, 6) } },
       { headers: { "Cache-Control": "no-store" } });

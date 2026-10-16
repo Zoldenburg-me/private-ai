@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setStores, type Stores } from "../lib/store";
+import { purgeInactive, RETENTION_DAYS } from "../lib/retention";
 import { createSession, verifyToken } from "../lib/session";
 import { handleChat } from "../lib/handler";
 import { GET as sessionGET } from "../app/api/session/route";
@@ -183,6 +184,43 @@ describe("step-up is bound to the device that confirmed it", () => {
     expect((await stepUp(auth, a)).status).toBe(200);
     expect((await removeDevice(req("/d", "DELETE", b, { id: idA }))).status).toBe(403);
     expect((await removeDevice(req("/d", "DELETE", a, { id: idB }))).status).toBe(200);
+  });
+});
+
+describe("device activity", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it("using a device only through the API keeps the account from the retention purge", async () => {
+    const { id, device } = await createAccount(new SoftAuthenticator());
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + (RETENTION_DAYS + 30) * 86_400_000);
+    await handleChat(new Request("http://app/x", { method: "POST", headers: { Authorization: `Bearer ${device}` }, body: "{}" }), "/t", { catalog: async () => [], log: () => {} });
+    await purgeInactive();
+    expect(await st.accounts.sessionExists(id)).toBe(true);
+    expect(await devices(device)).toHaveLength(1);
+  });
+  it("a sign-in that fails half-way leaves this browser's old device signed in", async () => {
+    const auth = new SoftAuthenticator();
+    const { device } = await createAccount(auth);
+    const opts = await (await loginOptions(req("/l", "POST", device, {}))).json();
+    st.accounts.addDevice = async () => { throw new Error("store down"); };
+    await expect(loginVerify(req("/l", "POST", device, auth.get(opts, ORIGIN)))).rejects.toThrow();
+    expect((await listDevices(req("/d", "GET", device))).status).toBe(200);
+  });
+  it("a failed clean-up of the old device still signs this browser in", async () => {
+    const auth = new SoftAuthenticator();
+    const { device } = await createAccount(auth);
+    let calls = 0;
+    st.accounts.deleteDevice = async () => { calls++; throw new Error("store down"); };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const again = await signIn(auth, device);
+      expect(calls).toBe(1);
+      expect(again).not.toBe(device);
+      const list = await devices(again);
+      expect(list).toHaveLength(2); // the old one is left over, listed for the user to remove
+      expect(list.filter((d) => d.current)).toHaveLength(1);
+      expect(log.mock.calls.flat().join()).toContain("old_device_cleanup_failed");
+    } finally { log.mockRestore(); }
   });
 });
 

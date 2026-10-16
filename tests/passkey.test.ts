@@ -137,6 +137,8 @@ describe("passkey hardening", () => {
     const a = { token: await save(auth, (await createSession()).token) }; const b = await createSession();
     const [{ id, label }] = await list(a.token);
     expect(label).toBe(id.slice(0, 8));
+    expect((await stepUp(auth, a.token)).status).toBe(200);
+    expect((await register(new SoftAuthenticator(), a.token)).status).toBe(200); // a second key, so the first may go
     expect((await deletePasskey(del({ id }))).status).toBe(401);
     const noStepUp = await deletePasskey(del({ id }, a.token));
     expect(noStepUp.status).toBe(403);
@@ -145,8 +147,54 @@ describe("passkey hardening", () => {
     expect((await stepUp(auth, a.token)).status).toBe(200);
     expect((await deletePasskey(del({ nope: 1 }, a.token))).status).toBe(400);
     expect((await deletePasskey(del({ id }, a.token))).status).toBe(200);
-    expect(await list(a.token)).toHaveLength(0);
+    expect(await list(a.token)).toHaveLength(1);
     expect((await login(auth)).status).toBe(401); // removed passkey no longer logs in
+  });
+
+  it("the last passkey cannot be removed, so an old anonymous token never gets the account back", async () => {
+    const auth = new SoftAuthenticator();
+    const { token: anon } = await createSession();
+    const device = await save(auth, anon);
+    const [{ id }] = await list(device);
+    expect((await stepUp(auth, device)).status).toBe(200);
+    const r = await deletePasskey(del({ id }, device));
+    expect(r.status).toBe(409);
+    expect((await r.json()).error.message).toMatch(/add another passkey first or delete the account/);
+    expect(await list(device)).toHaveLength(1);
+    expect((await register(new SoftAuthenticator(), device)).status).toBe(200); // the refusal did not use up the step-up
+    expect((await listPasskeys(new Request(`${ORIGIN}/api/auth/passkey`, { headers: { Cookie: `pai_session=${anon}` } }))).status).toBe(401);
+  });
+
+  async function twoPasskeys() {
+    const st = _setStores();
+    const auth = new SoftAuthenticator();
+    const device = await save(auth, (await createSession()).token);
+    expect((await stepUp(auth, device)).status).toBe(200);
+    expect((await register(new SoftAuthenticator(), device)).status).toBe(200);
+    const [{ id }] = await list(device);
+    expect((await stepUp(auth, device)).status).toBe(200);
+    return { st, device, id };
+  }
+  it("a removal that loses the race to another one gets 409 and keeps its step-up", async () => {
+    const { st, device, id } = await twoPasskeys();
+    st.accounts.deleteCredential = async () => false; // the other removal won: this would be the last one
+    const r = await deletePasskey(del({ id }, device));
+    expect(r.status).toBe(409);
+    expect(await list(device)).toHaveLength(2);
+    expect((await register(new SoftAuthenticator(), device)).status).toBe(200); // step-up restored
+  });
+  it("a removal whose passkey vanished meanwhile gets 404 and keeps its step-up", async () => {
+    const { st, device, id } = await twoPasskeys();
+    const real = st.accounts.deleteCredential.bind(st.accounts);
+    st.accounts.deleteCredential = async (acct, cred) => { await real(acct, cred); return false; };
+    expect((await deletePasskey(del({ id }, device))).status).toBe(404);
+    expect((await register(new SoftAuthenticator(), device)).status).toBe(200);
+  });
+  it("a store error during removal gives the step-up back", async () => {
+    const { st, device, id } = await twoPasskeys();
+    st.accounts.deleteCredential = async () => { throw new Error("store down"); };
+    await expect(deletePasskey(del({ id }, device))).rejects.toThrow();
+    expect((await register(new SoftAuthenticator(), device)).status).toBe(200);
   });
 
   it("a step-up login only accepts passkeys of the signed-in account", async () => {

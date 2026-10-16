@@ -50,14 +50,17 @@ function tokenFrom(req: Request): string | null {
 /**
  * Identity from Bearer header (API) or cookie (web app). A device token needs its device row
  * (sign-out and device removal revoke it); an anonymous token stops working once the account
- * has a passkey or a device, so a copied pre-sign-in token cannot outlive a sign-out.
+ * has a passkey or a device, so a copied pre-sign-in token cannot outlive a sign-out. Every
+ * accepted token marks the account as seen today, so API-only use is not purged as inactive.
  */
 export async function resolveIdentity(req: Request): Promise<{ accountId: string; deviceId: string | null } | null> {
   const t = parseToken(tokenFrom(req));
   if (!t) return null;
   const { accounts } = await stores();
-  if (t.deviceId) return (await accounts.touchDevice(t.accountId, t.deviceId)) ? t : null;
-  return (await accounts.hasSignIn(t.accountId)) ? null : t;
+  const ok = t.deviceId ? await accounts.touchDevice(t.accountId, t.deviceId) : !(await accounts.hasSignIn(t.accountId));
+  if (!ok) return null;
+  await accounts.touchSession(t.accountId);
+  return t;
 }
 
 export const identityFrom = async (req: Request): Promise<string | null> => (await resolveIdentity(req))?.accountId ?? null;

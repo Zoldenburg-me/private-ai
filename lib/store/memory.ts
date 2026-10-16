@@ -60,6 +60,8 @@ export class MemoryAccountStore implements AccountStore {
   async updateCredentialCounter(id: string, counter: number) { const c = this.credentials.get(id); if (c) c.counter = counter; }
   async deleteCredential(accountId: string, id: string) {
     if (this.credentials.get(id)?.accountId !== accountId) return false;
+    // No await between the count and the delete, so concurrent removals cannot both pass.
+    if ([...this.credentials.values()].filter((c) => c.accountId === accountId).length <= 1) return false;
     return this.credentials.delete(id);
   }
   async addDevice(d: { id: string; accountId: string; createdAt: number }) {

@@ -3,6 +3,7 @@ import { authenticationOptions, consumeStepUp, registrationOptions, restoreStepU
 import { stores, withStores } from "./store";
 import { TIERS } from "./tiers";
 import { LIMITS, overLimit } from "./limits";
+import { metaLogger } from "./log";
 
 /** HTTP glue for app/api/auth/passkey/*. Bodies are WebAuthn JSON only; nothing is logged. */
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -33,10 +34,15 @@ export const removePasskey = withStores(async (req: Request) => {
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
   const { accounts } = await stores();
   if ((await accounts.getCredential(b.id))?.accountId !== id) return fail(404, "no such passkey on this account");
+  // Without a passkey a pre-sign-in anonymous token would work again once the last device signs out.
+  // Checked here so a refusal keeps the step-up; the store re-checks atomically against concurrent removals.
+  const onlyOne = () => fail(409, "this is your only passkey: add another passkey first or delete the account");
+  if ((await accounts.listCredentials(id)).length <= 1) return onlyOne();
   if (!(await consumeStepUp(me))) return stepUpRequired();
-  if (await accounts.deleteCredential(id, b.id)) return json({ deleted: true });
+  const deleted = await accounts.deleteCredential(id, b.id).catch(async (e) => { await restoreStepUp(me); throw e; });
+  if (deleted) return json({ deleted: true });
   await restoreStepUp(me);
-  return fail(404, "no such passkey on this account");
+  return (await accounts.getCredential(b.id))?.accountId === id ? onlyOne() : fail(404, "no such passkey on this account");
 });
 
 export const registerOptions = withStores(async (req: Request) => {
@@ -83,10 +89,13 @@ export const loginVerify = withStores(async (req: Request) => {
   // Step-up only confirms an action on this browser's account: no new device, no new cookie.
   if (v.stepUp) return json({ confirmed: true });
   await touchSession(v.accountId);
-  // Signing in again on this browser replaces its old device instead of leaving it behind.
+  // Signing in again on this browser replaces its old device instead of leaving it behind; the
+  // old one goes only after the new one exists, so a failed sign-in leaves this browser signed in.
   const prev = await resolveIdentity(req);
-  if (prev?.deviceId) await (await stores()).accounts.deleteDevice(prev.accountId, prev.deviceId);
   const token = await signInDevice(v.accountId);
+  // Clean-up only: if it fails the old device stays listed under Settings, but the sign-in stands.
+  if (prev?.deviceId) await (await stores()).accounts.deleteDevice(prev.accountId, prev.deviceId)
+    .catch(() => metaLogger({ route: "/api/auth/passkey/login/verify", event: "old_device_cleanup_failed", status: 200 }));
   return json({ tier: TIERS[await tierOf(v.accountId)], apiToken: token }, 200, { "Set-Cookie": sessionCookie(token) });
 });
 

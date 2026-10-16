@@ -18,6 +18,29 @@ if (pg) backends.push(["postgres", async () => {
 }]);
 afterAll(async () => { await pg?.close(); });
 
+describe.skipIf(!pg)("postgres passkey removal lock", () => {
+  beforeEach(async () => { await backends[1][1](); });
+  it("deleteCredential waits on the account row lock, then re-counts", async () => {
+    const cred = (credentialId: string) => ({ credentialId, accountId: "acct_lock_1", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    await pg!.addCredential(cred("cred_lock_1")); await pg!.addCredential(cred("cred_lock_2"));
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+    let locked!: () => void; const hasLock = new Promise<void>((r) => { locked = r; });
+    // A competing removal holds the lock and deletes the other passkey.
+    const holder = pg!.sql.begin(async (tx) => {
+      await tx`SELECT 1 FROM sessions WHERE id = 'acct_lock_1' FOR UPDATE`; locked(); await gate;
+      await tx`DELETE FROM passkey_credentials WHERE credential_id = 'cred_lock_2'`;
+    });
+    await hasLock;
+    let settled = false;
+    const p = pg!.deleteCredential("acct_lock_1", "cred_lock_1").then((v) => { settled = true; return v; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false); // without the lock it would already have deleted
+    release(); await holder;
+    expect(await p).toBe(false);
+    expect(await pg!.listCredentials("acct_lock_1")).toHaveLength(1);
+  });
+});
+
 describe.each(backends)("account store contract (%s)", (_name, make) => {
   let s: AccountStore;
   beforeEach(async () => { s = await make(); });
@@ -86,10 +109,20 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
   });
   it("deleteCredential only deletes the owner's credential", async () => {
     await s.addCredential({ credentialId: "cred_del_1", accountId: "acct_owner_1", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    await s.addCredential({ credentialId: "cred_del_1b", accountId: "acct_owner_1", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
     expect(await s.deleteCredential("acct_other_1", "cred_del_1")).toBe(false);
     expect(await s.getCredential("cred_del_1")).not.toBeNull();
     expect(await s.deleteCredential("acct_owner_1", "cred_del_1")).toBe(true);
     expect(await s.getCredential("cred_del_1")).toBeNull();
+  });
+  it("deleteCredential never deletes an account's last passkey, even when two removals race", async () => {
+    const cred = (credentialId: string) => ({ credentialId, accountId: "acct_race_1", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    await s.addCredential(cred("cred_race_1"));
+    expect(await s.deleteCredential("acct_race_1", "cred_race_1")).toBe(false);
+    await s.addCredential(cred("cred_race_2"));
+    const r = await Promise.all([s.deleteCredential("acct_race_1", "cred_race_1"), s.deleteCredential("acct_race_1", "cred_race_2")]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(await s.listCredentials("acct_race_1")).toHaveLength(1);
   });
   it("deleteAccount removes the account and everything hanging off it", async () => {
     const id = "acct_gone_123";

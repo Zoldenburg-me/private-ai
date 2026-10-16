@@ -43,7 +43,7 @@ export interface AccountStore {
   getCredential(credentialId: string): Promise<PasskeyCredential | null>;
   listCredentials(accountId: string): Promise<PasskeyCredential[]>;
   updateCredentialCounter(credentialId: string, counter: number): Promise<void>;
-  /** Delete a passkey only if it belongs to `accountId`. False if not found for that account. */
+  /** Delete a passkey only if it belongs to `accountId` and is not its last one (atomic). False otherwise. */
   deleteCredential(accountId: string, credentialId: string): Promise<boolean>;
   /** Creates the account row if missing. */
   addDevice(d: { id: string; accountId: string; createdAt: number }): Promise<void>;
