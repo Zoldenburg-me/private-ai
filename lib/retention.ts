@@ -5,7 +5,7 @@ import { metaLogger } from "./log";
 export const RETENTION_DAYS = 365;
 
 export async function purgeInactive(now = Date.now()): Promise<number> {
-  return (await stores()).accounts.purgeInactive(now - RETENTION_DAYS * 86_400_000);
+  return (await stores()).accounts.purgeInactive(now - RETENTION_DAYS * 86_400_000, now);
 }
 
 /** Daily purge in the server process (started from instrumentation.ts). Safe with many instances. */

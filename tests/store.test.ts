@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import postgres from "postgres";
 import { MemoryAccountStore } from "../lib/store/memory";
 import { PgAccountStore } from "../lib/store/postgres";
 import { migrate } from "../lib/store/migrate";
 import { createStores, _setStores, type AccountStore } from "../lib/store";
+import { ERASURE_LEDGER_DAYS } from "../lib/store/types";
 import { createSession, issueDeviceToken, issueToken, issueTokenFor, setTier, tierOf, verifyToken } from "../lib/session";
 import { handleChat } from "../lib/handler";
 import { GET as sessionGET } from "../app/api/session/route";
@@ -13,7 +17,7 @@ const pgUrl = process.env.TEST_DATABASE_URL;
 const pg = pgUrl ? new PgAccountStore(postgres(pgUrl, { max: 2, onnotice: () => {} }), false) : null;
 const backends: [string, () => Promise<AccountStore>][] = [["memory", async () => new MemoryAccountStore()]];
 if (pg) backends.push(["postgres", async () => {
-  await pg.sql.unsafe("DROP TABLE IF EXISTS devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
+  await pg.sql.unsafe("DROP TABLE IF EXISTS erasures, devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
   await migrate(pg.sql); return pg;
 }]);
 afterAll(async () => { await pg?.close(); });
@@ -137,6 +141,25 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.getCredential("cred_gone")).toBeNull();
     expect(await s.deleteAccount(id)).toBe(false);
   });
+  it("deleteAccount records the sha256 of the id in the erasure ledger; the purge prunes it later", async () => {
+    const hash = createHash("sha256").update("acct_erase_1").digest("hex");
+    await s.touchSession("acct_erase_1");
+    expect(await s.deleteAccount("acct_erase_1")).toBe(true);
+    expect(await s.listErasures()).toEqual([{ idHash: hash, deletedOn: new Date().toISOString().slice(0, 10) }]);
+    await s.touchSession("acct_erase_1");
+    await s.deleteAccount("acct_erase_1");
+    expect(await s.listErasures()).toHaveLength(1);
+    const day = 86_400_000;
+    await s.purgeInactive(0, Date.now() + (ERASURE_LEDGER_DAYS - 1) * day);
+    expect(await s.listErasures()).toHaveLength(1);
+    await s.purgeInactive(0, Date.now() + (ERASURE_LEDGER_DAYS + 1) * day);
+    expect(await s.listErasures()).toEqual([]);
+  });
+  it("purgeInactive does not add to the erasure ledger (the purge itself re-deletes after a restore)", async () => {
+    await s.touchSession("acct_purged_1", Date.UTC(2020, 0, 1));
+    expect(await s.purgeInactive(Date.UTC(2021, 0, 1))).toBe(1);
+    expect(await s.listErasures()).toEqual([]);
+  });
   it("passkey credentials: add, get, list, counter, duplicate rejected", async () => {
     const c = { credentialId: "cred1", accountId: "acct_d", publicKey: new Uint8Array([1, 2, 3]), counter: 0, transports: ["internal"], createdAt: Date.now() };
     await s.addCredential(c);
@@ -231,5 +254,26 @@ describe("fail closed", () => {
     expect(s.kind).toEqual({ accounts: "unconfigured", counters: "unconfigured" });
     await expect(s.accounts.ping()).rejects.toThrow(/not configured/);
     expect((await createStores({ NODE_ENV: "production", PAI_ALLOW_MEMORY_STORE: "1" })).kind.accounts).toBe("memory");
+  });
+});
+
+describe.skipIf(!pg)("restore: scripts/reerase.sql", () => {
+  it("deletes restored accounts that are in the snapshot's or the incoming ledger, keeps the rest", async () => {
+    const s = await backends[1][1]();
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    for (const id of ["acct_rs_keep", "acct_rs_old", "acct_rs_new"]) await s.touchSession(id);
+    await s.addCredential({ credentialId: "cred_rs_new", accountId: "acct_rs_new", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    // acct_rs_old was deleted before the snapshot (row is in its ledger); acct_rs_new after it (only in the incoming ledger).
+    await pg!.sql`INSERT INTO erasures (id_hash, deleted_on) VALUES (${hash("acct_rs_old")}, '2027-01-01')`;
+    await pg!.sql.begin(async (tx) => {
+      await tx`CREATE TEMP TABLE incoming (id_hash text, deleted_on date) ON COMMIT DROP`;
+      await tx`INSERT INTO incoming VALUES (${hash("acct_rs_new")}, '2027-02-01'), (${hash("acct_rs_new")}, '2027-02-01'), (${hash("acct_rs_old")}, '2027-01-01')`;
+      await tx.unsafe(readFileSync(join(__dirname, "../scripts/reerase.sql"), "utf8"));
+    });
+    expect(await s.sessionExists("acct_rs_keep")).toBe(true);
+    expect(await s.sessionExists("acct_rs_old")).toBe(false);
+    expect(await s.sessionExists("acct_rs_new")).toBe(false);
+    expect(await s.getCredential("cred_rs_new")).toBeNull();
+    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("acct_rs_new"), hash("acct_rs_old")].sort());
   });
 });

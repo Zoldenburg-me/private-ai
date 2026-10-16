@@ -1,5 +1,5 @@
 import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Device, Entitlement, EntitlementSource, HitResult, PasskeyCredential, Subscription } from "./types";
-import { dayKey, minuteStartOf, ENTITLED_STATUSES } from "./types";
+import { dayKey, minuteStartOf, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
 export class MemoryAccountStore implements AccountStore {
@@ -8,6 +8,7 @@ export class MemoryAccountStore implements AccountStore {
   subscriptions = new Map<string, Subscription & { updatedAt: number }>();
   credentials = new Map<string, PasskeyCredential>();
   devices = new Map<string, Device>();
+  erasures = new Map<string, string>();
   private seq = 0;
 
   async touchSession(id: string, now = Date.now()) {
@@ -19,6 +20,15 @@ export class MemoryAccountStore implements AccountStore {
   async sessionExists(id: string) { return this.sessions.has(id); }
   async getSession(id: string) { const s = this.sessions.get(id); return s ? { ...s } : null; }
   async deleteAccount(id: string) {
+    if (!this.drop(id)) return false;
+    if (!this.erasures.has(erasureHash(id))) this.erasures.set(erasureHash(id), dayKey(Date.now()));
+    return true;
+  }
+  async listErasures() {
+    return [...this.erasures].map(([idHash, deletedOn]) => ({ idHash, deletedOn })).sort((a, b) => a.deletedOn.localeCompare(b.deletedOn) || a.idHash.localeCompare(b.idHash));
+  }
+  /** Delete the account and everything hanging off it (ON DELETE CASCADE in Postgres). */
+  private drop(id: string) {
     if (!this.sessions.delete(id)) return false;
     this.entitlements.delete(id);
     for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
@@ -83,13 +93,15 @@ export class MemoryAccountStore implements AccountStore {
   async hasSignIn(accountId: string) {
     return [...this.credentials.values(), ...this.devices.values()].some((x) => x.accountId === accountId);
   }
-  async purgeInactive(cutoff: number) {
+  async purgeInactive(cutoff: number, now = Date.now()) {
+    const keepFrom = dayKey(now - ERASURE_LEDGER_DAYS * 86_400_000);
+    for (const [h, d] of this.erasures) if (d < keepFrom) this.erasures.delete(h);
     const day = dayKey(cutoff); let n = 0;
     for (const [id, s] of this.sessions) {
       if (s.lastSeenOn >= day) continue;
       if ([...this.subscriptions.values()].some((x) => x.accountId === id && (ENTITLED_STATUSES as readonly string[]).includes(x.status)
         && (x.currentPeriodEnd == null || x.currentPeriodEnd >= cutoff))) continue;
-      await this.deleteAccount(id); n++;
+      this.drop(id); n++;
     }
     return n;
   }

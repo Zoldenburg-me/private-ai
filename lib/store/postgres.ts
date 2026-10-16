@@ -1,7 +1,7 @@
 import postgres, { type Sql } from "postgres";
 import type { TierId } from "../tiers";
 import type { AccountStore, Device, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
-import { dayKey, ENTITLED_STATUSES } from "./types";
+import { dayKey, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 import { migrate } from "./migrate";
 
 const ms = (d: Date | null) => (d ? d.getTime() : null);
@@ -54,8 +54,17 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteAccount(id: string) {
     const sql = await this.db();
-    // ON DELETE CASCADE removes entitlements, subscriptions, passkeys and devices.
-    return (await sql`DELETE FROM sessions WHERE id = ${id}`).count > 0;
+    return sql.begin(async (tx) => {
+      // ON DELETE CASCADE removes entitlements, subscriptions, passkeys and devices.
+      if ((await tx`DELETE FROM sessions WHERE id = ${id}`).count === 0) return false;
+      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      return true;
+    });
+  }
+  async listErasures() {
+    const sql = await this.db();
+    return (await sql<{ id_hash: string; deleted_on: string }[]>`SELECT id_hash, to_char(deleted_on, 'YYYY-MM-DD') AS deleted_on FROM erasures ORDER BY deleted_on, id_hash`)
+      .map((r) => ({ idHash: r.id_hash, deletedOn: r.deleted_on }));
   }
   async getEntitlement(id: string): Promise<Entitlement | null> {
     const sql = await this.db();
@@ -161,8 +170,9 @@ export class PgAccountStore implements AccountStore {
       OR EXISTS (SELECT 1 FROM devices WHERE account_id = ${accountId}) AS x`;
     return r.x;
   }
-  async purgeInactive(cutoff: number) {
+  async purgeInactive(cutoff: number, now = Date.now()) {
     const sql = await this.db();
+    await sql`DELETE FROM erasures WHERE deleted_on < ${dayKey(now - ERASURE_LEDGER_DAYS * 86_400_000)}`;
     // ON DELETE CASCADE removes entitlements, subscriptions and passkeys of purged accounts.
     const r = await sql`DELETE FROM sessions s WHERE s.last_seen_on < ${dayKey(cutoff)}
       AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]})

@@ -1,4 +1,5 @@
 import { RETENTION_DAYS } from "./retention";
+import { ERASURE_LEDGER_DAYS } from "./store/types";
 
 /**
  * Single source of truth for /privacy/metadata: every field we store, where, and for how long.
@@ -37,6 +38,8 @@ export const DATA_INVENTORY: DataField[] = [
   acc("devices", "account_id", "Opaque account id the browser is signed in to.", "Konto-ID, bei der der Browser angemeldet ist."),
   acc("devices", "created_at", "When you signed in on that browser.", "Zeitpunkt der Anmeldung in diesem Browser."),
   acc("devices", "last_seen_on", "Day (not time) the browser was last used. Signing out or removing the device deletes the row.", "Tag (keine Uhrzeit) der letzten Nutzung. Abmelden oder Entfernen des Geräts löscht die Zeile."),
+  { store: "postgres", container: "erasures", field: "id_hash", en: "One-way hash (SHA-256) of the id of an account you deleted, so that restoring a backup deletes it again. Cannot be turned back into the id.", de: "Einweg-Hash (SHA-256) der ID eines gelöschten Kontos, damit es beim Einspielen einer Sicherung erneut gelöscht wird. Lässt sich nicht in die ID zurückrechnen.", retentionEn: `${ERASURE_LEDGER_DAYS} days after the deletion`, retentionDe: `${ERASURE_LEDGER_DAYS} Tage nach der Löschung` },
+  { store: "postgres", container: "erasures", field: "deleted_on", en: "Day (not time) the account was deleted.", de: "Tag (keine Uhrzeit) der Löschung.", retentionEn: `${ERASURE_LEDGER_DAYS} days after the deletion`, retentionDe: `${ERASURE_LEDGER_DAYS} Tage nach der Löschung` },
   { store: "postgres", container: "schema_migrations", field: "name, applied_at", en: "Database schema version. No personal data.", de: "Version des Datenbankschemas. Keine personenbezogenen Daten.", retentionEn: "permanent", retentionDe: "dauerhaft" },
   { store: "redis", container: "pai:d:{account}:<day>", field: "counter", en: "Messages sent today (a number).", de: "Heute gesendete Nachrichten (eine Zahl).", retentionEn: "expires after 2 days", retentionDe: "läuft nach 2 Tagen ab" },
   { store: "redis", container: "pai:m:{account}:<minute>", field: "counter", en: "Requests in the current minute (a number).", de: "Anfragen in der aktuellen Minute (eine Zahl).", retentionEn: "expires after 2 minutes", retentionDe: "läuft nach 2 Minuten ab" },

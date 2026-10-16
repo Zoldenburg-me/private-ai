@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { TierId } from "../tiers";
 
 /**
@@ -28,8 +29,13 @@ export interface AccountStore {
   sessionExists(id: string): Promise<boolean>;
   /** Created time and last-seen day, or null if the account has no row. */
   getSession(id: string): Promise<{ createdAt: number; lastSeenOn: string } | null>;
-  /** Delete the account row; entitlements, subscriptions and passkeys go with it. False if absent. */
+  /**
+   * Delete the account row; entitlements, subscriptions and passkeys go with it. False if absent.
+   * Also records erasureHash(id) in the erasure ledger, which a backup restore replays.
+   */
   deleteAccount(id: string): Promise<boolean>;
+  /** The erasure ledger (account deletions of the last ERASURE_LEDGER_DAYS). */
+  listErasures(): Promise<{ idHash: string; deletedOn: string }[]>;
   getEntitlement(id: string): Promise<Entitlement | null>;
   setEntitlement(id: string, e: Entitlement): Promise<void>;
   /** Remove the entitlement, optionally only if it came from `source`. */
@@ -57,9 +63,10 @@ export interface AccountStore {
   /**
    * Delete accounts last seen before `cutoff` that have no entitled subscription. A subscription
    * still marked active whose period ended before `cutoff` (missed renewal webhooks) does not
-   * protect the account. Returns count.
+   * protect the account. Returns count. Purged accounts are not ledgered: after a restore this
+   * purge deletes them again. Also prunes ledger entries older than ERASURE_LEDGER_DAYS before `now`.
    */
-  purgeInactive(cutoff: number): Promise<number>;
+  purgeInactive(cutoff: number, now?: number): Promise<number>;
   ping(): Promise<void>;
 }
 
@@ -103,4 +110,9 @@ export interface CounterStore {
 export interface HitResult { allowed: boolean; count: number; resetAt: number }
 
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
+
+/** Erasure ledger entries outlive the oldest backup (3 months, docs/backup-restore.md) with margin. */
+export const ERASURE_LEDGER_DAYS = 120;
+/** Ledger key of a deleted account. Account ids are 128-bit random, so the hash cannot be reversed. */
+export const erasureHash = (id: string) => createHash("sha256").update(id, "utf8").digest("hex");
 export const minuteStartOf = (now: number) => Math.floor(now / 60_000) * 60_000;
