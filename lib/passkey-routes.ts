@@ -26,26 +26,28 @@ export const listPasskeys = withStores(async (req: Request) => {
 });
 
 export const removePasskey = withStores(async (req: Request) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const id = me.accountId;
   const b = await body<{ id?: unknown }>(req);
   if (typeof b?.id !== "string" || !/^[A-Za-z0-9_-]{1,1024}$/.test(b.id)) return fail(400, "id required");
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
   const { accounts } = await stores();
   if ((await accounts.getCredential(b.id))?.accountId !== id) return fail(404, "no such passkey on this account");
-  if (!(await consumeStepUp(id))) return stepUpRequired();
+  if (!(await consumeStepUp(me))) return stepUpRequired();
   if (await accounts.deleteCredential(id, b.id)) return json({ deleted: true });
-  await restoreStepUp(id);
+  await restoreStepUp(me);
   return fail(404, "no such passkey on this account");
 });
 
 export const registerOptions = withStores(async (req: Request) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const id = me.accountId;
   const r = rp(req); if (r instanceof Response) return r;
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
-  if (!(await consumeStepUp(id))) return stepUpRequired();
+  if (!(await consumeStepUp(me))) return stepUpRequired();
   const o = await registrationOptions(id, r);
   if (o.ok) return json(o.options);
-  await restoreStepUp(id);
+  await restoreStepUp(me);
   return fail(o.status, o.message);
 });
 
@@ -64,12 +66,12 @@ export const registerVerify = withStores(async (req: Request) => {
 export const loginOptions = withStores(async (req: Request) => {
   const r = rp(req); if (r instanceof Response) return r;
   const b = await body<{ stepUp?: unknown }>(req);
-  const id = b?.stepUp === true ? await identityFrom(req) : null;
-  if (b?.stepUp === true && !id) return fail(401, "missing or invalid session token");
+  const me = b?.stepUp === true ? await resolveIdentity(req) : null;
+  if (b?.stepUp === true && !me) return fail(401, "missing or invalid session token");
   // Step-up counts against the account, so a flood of anonymous logins cannot block account actions.
-  const limited = id ? await overLimit(LIMITS.accountAction, `acct:${id}`) : await overLimit(LIMITS.passkeyLogin, "passkey-login");
+  const limited = me ? await overLimit(LIMITS.accountAction, `acct:${me.accountId}`) : await overLimit(LIMITS.passkeyLogin, "passkey-login");
   if (limited) return limited;
-  return json(await authenticationOptions(r, id ?? undefined));
+  return json(await authenticationOptions(r, me ?? undefined));
 });
 
 export const loginVerify = withStores(async (req: Request) => {

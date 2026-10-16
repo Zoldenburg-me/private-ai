@@ -138,9 +138,8 @@ describe("/api/account/devices", () => {
   });
   it("removing a device needs step-up and ownership; the removed device is signed out", async () => {
     const auth = new SoftAuthenticator();
-    const { id, device: a } = await createAccount(auth);
+    const { device: a } = await createAccount(auth);
     const b = await signIn(auth);
-    await st.counters.takeOnce(`webauthn:stepup:${id}`); // the sign-in on B also counts as a step-up; start without one
     const other = await createAccount(new SoftAuthenticator());
     const target = (await devices(a)).find((d) => !d.current)!.id;
     const denied = await removeDevice(req("/d", "DELETE", a, { id: target }));
@@ -163,6 +162,27 @@ describe("/api/account/devices", () => {
     const r = await removeDevice(req("/d", "DELETE", device, { id: me.id }));
     expect(r.status).toBe(200);
     expect(r.headers.get("set-cookie")).toMatch(/Max-Age=0/);
+  });
+});
+
+describe("step-up is bound to the device that confirmed it", () => {
+  it("a sign-in on device B grants no step-up to device A", async () => {
+    const auth = new SoftAuthenticator();
+    const { device: a } = await createAccount(auth);
+    await signIn(auth);
+    const target = (await devices(a)).find((d) => !d.current)!.id;
+    const r = await removeDevice(req("/d", "DELETE", a, { id: target }));
+    expect(r.status).toBe(403);
+    expect((await r.json()).error.code).toBe("step_up_required");
+  });
+  it("a step-up made with device A's cookie confirms only for A", async () => {
+    const auth = new SoftAuthenticator();
+    const { device: a } = await createAccount(auth);
+    const b = await signIn(auth);
+    const [idA, idB] = [(await devices(a)).find((d) => d.current)!.id, (await devices(b)).find((d) => d.current)!.id];
+    expect((await stepUp(auth, a)).status).toBe(200);
+    expect((await removeDevice(req("/d", "DELETE", b, { id: idA }))).status).toBe(403);
+    expect((await removeDevice(req("/d", "DELETE", a, { id: idB }))).status).toBe(200);
   });
 });
 

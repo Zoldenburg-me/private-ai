@@ -43,11 +43,12 @@ export const exportAccount = withStores(async (req: Request) => {
  * Usage counters in Redis carry only the opaque id and expire within 2 days.
  */
 export const deleteAccount = withStores(async (req: Request) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const id = me.accountId;
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
-  if (!(await consumeStepUp(id))) return stepUpRequired();
+  if (!(await consumeStepUp(me))) return stepUpRequired();
   try { await deleteStripeCustomers(id); } catch (e) {
-    await restoreStepUp(id);
+    await restoreStepUp(me);
     if (e instanceof BillingError) return fail(e.status, e.message);
     throw e;
   }
@@ -73,7 +74,7 @@ export const removeDevice = withStores(async (req: Request) => {
   const limited = await overLimit(LIMITS.accountAction, `acct:${me.accountId}`); if (limited) return limited;
   const { accounts } = await stores();
   if (!(await accounts.listDevices(me.accountId)).some((d) => d.id === id)) return fail(404, "no such device on this account");
-  if (!(await consumeStepUp(me.accountId))) return stepUpRequired();
-  if (!(await accounts.deleteDevice(me.accountId, id))) { await restoreStepUp(me.accountId); return fail(404, "no such device on this account"); }
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  if (!(await accounts.deleteDevice(me.accountId, id))) { await restoreStepUp(me); return fail(404, "no such device on this account"); }
   return json({ deleted: true }, 200, id === me.deviceId ? { "Set-Cookie": clearedSessionCookie() } : {});
 });
