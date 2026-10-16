@@ -113,7 +113,7 @@ Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Event
 - [ ] DCAP quote chain + NVIDIA NRAS verification (dcap-qvl wasm)
 - [ ] Model picker from provider /models, image gen, doc upload
 - [ ] Zero-access encrypted sync (P3 in docs/venice-lumo-integration-plan.md), now that persistence exists
-- [ ] CI job running the integration tests against Postgres/Redis services
+- [x] CI job running the integration tests against Postgres/Redis services
 - [ ] Brand
 
 ## Licenses
