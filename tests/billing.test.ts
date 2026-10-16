@@ -15,6 +15,7 @@ const real = new Stripe("sk_test_dummy");
 
 let subs: Map<string, Stripe.Subscription>;
 let checkoutCalls: Stripe.Checkout.SessionCreateParams[];
+let checkoutKeys: (string | undefined)[];
 let st: Stores;
 const sub = (id: string, account: string | null, price: string, status: Stripe.Subscription.Status, periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400) => {
   const s = { id, object: "subscription", customer: "cus_123", status, metadata: account ? { pai_account: account } : {},
@@ -22,7 +23,7 @@ const sub = (id: string, account: string | null, price: string, status: Stripe.S
   subs.set(id, s); return s;
 };
 const mock = (): StripeLike => ({
-  checkout: { sessions: { create: async (p) => { checkoutCalls.push(p); return { url: "https://checkout.stripe.com/c/pay/cs_test_1" }; } } },
+  checkout: { sessions: { create: async (p, o) => { checkoutCalls.push(p); checkoutKeys.push(o?.idempotencyKey); return { url: "https://checkout.stripe.com/c/pay/cs_test_1" }; } } },
   billingPortal: { sessions: { create: async (p) => ({ url: `https://billing.stripe.com/p/session/${p.customer}` }) } },
   subscriptions: { retrieve: async (id) => { const s = subs.get(id); if (!s) throw new Error("no such subscription"); return s; } },
   customers: { del: async (id) => ({ id, deleted: true }) },
@@ -39,7 +40,7 @@ const authed = (path: string, token: string, body?: unknown) =>
   new Request(`http://app${path}`, { method: body === undefined ? "GET" : "POST", headers: { Cookie: `pai_session=${token}`, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
 beforeEach(() => {
-  st = _setStores(); subs = new Map(); checkoutCalls = [];
+  st = _setStores(); subs = new Map(); checkoutCalls = []; checkoutKeys = [];
   _setStripe(mock());
   for (const [k, v] of Object.entries({ ...PRICES, STRIPE_WEBHOOK_SECRET: WH_SECRET, STRIPE_SECRET_KEY: "sk_test_dummy" })) vi.stubEnv(k, v);
 });
@@ -54,6 +55,25 @@ describe("stripe checkout", () => {
     const p = checkoutCalls[0];
     expect(p).toMatchObject({ mode: "subscription", client_reference_id: id, line_items: [{ price: "price_pro_y", quantity: 1 }], subscription_data: { metadata: { pai_account: id } } });
     expect(p).not.toHaveProperty("customer_email");
+  });
+  it("sends the same idempotency key for repeat requests", async () => {
+    const { id, token } = await createSession();
+    const body = { plan: "pro", interval: "month" };
+    await Promise.all([checkoutPOST(authed("/api/billing/checkout", token, body)), checkoutPOST(authed("/api/billing/checkout", token, body))]);
+    expect(checkoutKeys).toHaveLength(2);
+    expect(checkoutKeys[0]).toMatch(new RegExp(`^checkout:${id}:pro:month:[0-9a-f]{16}:\\d+$`));
+    expect(checkoutKeys[1]).toBe(checkoutKeys[0]);
+    await checkoutPOST(authed("/api/billing/checkout", token, { plan: "max", interval: "month" }));
+    expect(checkoutKeys[2]).not.toBe(checkoutKeys[0]);
+  });
+  it("sends a different idempotency key once the request carries a customer", async () => {
+    const { id, token } = await createSession();
+    const body = { plan: "pro", interval: "month" };
+    await checkoutPOST(authed("/api/billing/checkout", token, body));
+    await st.accounts.upsertSubscription({ stripeSubscriptionId: "sub_old", accountId: id, stripeCustomerId: "cus_old", tier: "pro", status: "canceled", currentPeriodEnd: null });
+    expect((await checkoutPOST(authed("/api/billing/checkout", token, body))).status).toBe(200);
+    expect(checkoutCalls[1]).toMatchObject({ customer: "cus_old" });
+    expect(checkoutKeys[1]).not.toBe(checkoutKeys[0]);
   });
   it("validates input, auth and configuration", async () => {
     const { token } = await createSession();

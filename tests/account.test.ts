@@ -7,6 +7,7 @@ import { GET as exportGET } from "../app/api/account/export/route";
 import { DELETE as accountDELETE } from "../app/api/account/route";
 import { GET as sessionGET } from "../app/api/session/route";
 import { POST as webhookPOST } from "../app/api/billing/webhook/route";
+import { POST as portalPOST } from "../app/api/billing/portal/route";
 import { POST as regOptions } from "../app/api/auth/passkey/register/options/route";
 import { POST as regVerify } from "../app/api/auth/passkey/register/verify/route";
 import { POST as loginOptions } from "../app/api/auth/passkey/login/options/route";
@@ -70,9 +71,13 @@ describe("GET /api/account/export (Art. 15 / 20)", () => {
   it("needs a session", async () => {
     expect((await exportGET(req("/api/account/export", "GET"))).status).toBe(401);
   });
-  it("returns everything stored server-side for the account, as a download", async () => {
+  it("returns everything stored server-side for the account, as a download, after a passkey step-up", async () => {
     const { id, token: anon } = await subscribed();
-    const { token } = await withPasskey(anon);
+    const { auth, token } = await withPasskey(anon);
+    const denied = await exportGET(req("/api/account/export", "GET", token)); // a copied cookie alone is not enough
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe("step_up_required");
+    await stepUp(auth, token);
     const r = await exportGET(req("/api/account/export", "GET", token));
     expect(r.status).toBe(200);
     expect(r.headers.get("content-disposition")).toMatch(/^attachment; filename="private-ai-account-/);
@@ -87,12 +92,43 @@ describe("GET /api/account/export (Art. 15 / 20)", () => {
     expect(d.usage).toMatchObject({ usedToday: 0 });
     expect(d.notStoredHere).toBeDefined();
   });
+  it("gives the step-up back when the export fails, so the retry needs no second passkey prompt", async () => {
+    const { token: anon } = await subscribed();
+    const { auth, token } = await withPasskey(anon);
+    await stepUp(auth, token);
+    const spy = vi.spyOn(st.accounts, "listDevices").mockRejectedValueOnce(new Error("db hiccup"));
+    await expect(exportGET(req("/e", "GET", token))).rejects.toThrow("db hiccup");
+    spy.mockRestore();
+    expect((await exportGET(req("/e", "GET", token))).status).toBe(200);
+  });
   it("is rate-limited per account", async () => {
     vi.stubEnv("PAI_LIMIT_ACCOUNT_ACTIONS_PER_HOUR", "2");
     const { token } = await createSession();
     expect((await exportGET(req("/e", "GET", token))).status).toBe(200);
     expect((await exportGET(req("/e", "GET", token))).status).toBe(200);
     expect((await exportGET(req("/e", "GET", token))).status).toBe(429);
+  });
+});
+
+describe("POST /api/billing/portal", () => {
+  it("with a passkey, needs a step-up (the portal shows billing details and can cancel)", async () => {
+    const { token: anon } = await subscribed();
+    const { auth, token } = await withPasskey(anon);
+    const denied = await portalPOST(req("/p", "POST", token, {}));
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe("step_up_required");
+    await stepUp(auth, token);
+    expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(200);
+    expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(403); // one step-up, one portal session
+  });
+  it("gives the step-up back when the portal cannot be opened", async () => {
+    const { token: anon } = await subscribed();
+    const { auth, token } = await withPasskey(anon);
+    await stepUp(auth, token);
+    _setStripe(undefined); vi.stubEnv("STRIPE_SECRET_KEY", "");
+    expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(503);
+    _setStripe(mockStripe());
+    expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(200);
   });
 });
 

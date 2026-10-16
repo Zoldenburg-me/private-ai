@@ -1,5 +1,7 @@
 import { appBaseUrl, BillingError, createCheckout, createPortal, handleWebhook, priceId, stripe, type Interval, type Plan } from "./billing";
-import { identityFrom } from "./session";
+import { identityFrom, resolveIdentity } from "./session";
+import { consumeStepUp, restoreStepUp } from "./passkey";
+import { stepUpRequired } from "./passkey-routes";
 import { ENTITLED_STATUSES, stores, withStores } from "./store";
 import { metaLogger } from "./log";
 
@@ -30,9 +32,11 @@ export const checkout = billing(async (req) => {
   return json({ url: await createCheckout(id, plan, interval, appBaseUrl(req)) });
 });
 
+/** The portal shows what the user gave Stripe and can cancel, so it needs step-up like delete. */
 export const portal = billing(async (req) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
-  return json({ url: await createPortal(id, appBaseUrl(req)) });
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  try { return json({ url: await createPortal(me.accountId, appBaseUrl(req)) }); } catch (e) { await restoreStepUp(me); throw e; }
 });
 
 export const webhook = billing(async (req) => {

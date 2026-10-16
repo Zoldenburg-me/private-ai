@@ -51,6 +51,7 @@ export default function Home() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [ghost, setGhost] = useState(false);
   const [billing, setBilling] = useState<Billing | null>(null);
+  const [sessionReady, setSessionReady] = useState(false); // evidence needs the session cookie
   const [scope] = useState(() => new ChatScope());
   /** Every chat switch goes through here so a running reply cannot follow into the next chat. */
   function openChat(next: Chat, nextGhost = ghost) { scope.switch(); setGhost(nextGhost); setChat(next); }
@@ -93,6 +94,7 @@ export default function Home() {
 
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
+      if (!s.error) setSessionReady(true); // a 429/503 sets no cookie, so evidence would only 401
       setTier(s.tier); setAccount(s.account ?? null);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.tier?.dailyMessages });
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
@@ -108,6 +110,7 @@ export default function Home() {
     let proof: Proof;
     try {
       const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
+      if (r.status === 401) return null; // no session yet: do not cache, the next check retries
       proof = r.ok ? proofFromResponse(ref, await r.json(), nonce)
         : { modelRef: ref, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] };
     } catch {
@@ -117,7 +120,7 @@ export default function Home() {
     return proof;
   }, []);
 
-  useEffect(() => { if (modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [modelRef, proofs, checkProof]);
+  useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
 
   const verifySignature = useCallback(async (receipt: Receipt): Promise<Signed> => {
     const ref = `${receipt.provider}:${receipt.model}`;
@@ -182,7 +185,7 @@ export default function Home() {
   }
   async function goBilling(path: string, body: object = {}) {
     try {
-      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await withStepUp(() => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
       const j = await r.json(); if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
       window.location.href = j.url;
     } catch (e) { setNotice(`Billing: ${(e as Error).message}`); }
@@ -238,7 +241,7 @@ export default function Home() {
   }
   /** GDPR Art. 15/20: everything the server holds for this account, as a JSON file. */
   async function downloadAccountData() {
-    const r = await fetch("/api/account/export");
+    const r = await withStepUp(() => fetch("/api/account/export"));
     if (!r.ok) { setNotice(`Export: ${await errorOf(r)}`); return; }
     const url = URL.createObjectURL(await r.blob());
     const a = document.createElement("a"); a.href = url; a.download = "private-ai-account.json"; a.click();

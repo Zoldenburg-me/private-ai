@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { stores, ENTITLED_STATUSES } from "./store";
 import type { TierId } from "./tiers";
@@ -17,6 +18,8 @@ const ENV_KEYS: Record<`${Plan}:${Interval}`, string> = {
 const ENTITLED = new Set<string>(ENTITLED_STATUSES);
 /** Grace after period end in case a renewal webhook is late; afterwards access lapses on its own. */
 export const GRACE_MS = 3 * 86_400_000;
+/** Window in which repeated checkout requests map to one Stripe session. */
+const CHECKOUT_DEDUP_MS = 5 * 60_000;
 const RANK: Record<TierId, number> = { free: 0, pro: 1, max: 2 };
 const ACCOUNT_RE = /^[A-Za-z0-9_-]{10,64}$/;
 
@@ -30,7 +33,7 @@ export function tierForPrice(id: string | undefined | null, env: Env = process.e
 
 /** The subset of the Stripe SDK we use (lets tests inject a mock). */
 export interface StripeLike {
-  checkout: { sessions: { create(p: Stripe.Checkout.SessionCreateParams): Promise<{ url: string | null }> } };
+  checkout: { sessions: { create(p: Stripe.Checkout.SessionCreateParams, o?: Stripe.RequestOptions): Promise<{ url: string | null }> } };
   billingPortal: { sessions: { create(p: Stripe.BillingPortal.SessionCreateParams): Promise<{ url: string }> } };
   subscriptions: { retrieve(id: string): Promise<Stripe.Subscription> };
   customers: { del(id: string): Promise<unknown> };
@@ -46,12 +49,12 @@ export function _setStripe(s: StripeLike | undefined) { g.__paiStripe = s; }
 
 export class BillingError extends Error { constructor(readonly status: number, message: string) { super(message); } }
 
-export async function createCheckout(accountId: string, plan: Plan, interval: Interval, baseUrl: string): Promise<string> {
+export async function createCheckout(accountId: string, plan: Plan, interval: Interval, baseUrl: string, now = Date.now()): Promise<string> {
   const s = stripe(); if (!s) throw new BillingError(503, "payments not configured");
   const price = priceId(plan, interval); if (!price) throw new BillingError(400, "plan not available");
   const subs = await (await stores()).accounts.listSubscriptionsFor(accountId);
   if (subs.some((x) => ENTITLED.has(x.status))) throw new BillingError(409, "already subscribed; use the billing portal to change plan");
-  const session = await s.checkout.sessions.create({
+  const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
     line_items: [{ price, quantity: 1 }],
     client_reference_id: accountId,
@@ -60,7 +63,12 @@ export async function createCheckout(accountId: string, plan: Plan, interval: In
     ...(subs[0] ? { customer: subs[0].stripeCustomerId } : {}),
     success_url: `${baseUrl}/?billing=success`,
     cancel_url: `${baseUrl}/?billing=cancelled`,
-  });
+  };
+  // A double click or second tab gets the same session. The key covers every parameter that can
+  // change (Stripe rejects a reused key with other params) and a short window, so a later retry
+  // after cancel or re-subscribe never replays an old session.
+  const variant = createHash("sha256").update(JSON.stringify([params.customer ?? null, price, params.success_url])).digest("hex").slice(0, 16);
+  const session = await s.checkout.sessions.create(params, { idempotencyKey: `checkout:${accountId}:${plan}:${interval}:${variant}:${Math.floor(now / CHECKOUT_DEDUP_MS)}` });
   if (!session.url) throw new BillingError(502, "checkout unavailable");
   return session.url;
 }

@@ -228,6 +228,7 @@ describe("export and delete include devices", () => {
   it("export lists devices; delete removes them", async () => {
     const auth = new SoftAuthenticator();
     const { id, device } = await createAccount(auth);
+    await stepUp(auth, device);
     const d = await (await exportGET(req("/e", "GET", device))).json();
     expect(d.devices).toEqual([expect.objectContaining({ createdAt: expect.any(String), lastSeenOn: expect.any(String) })]);
     await st.accounts.deleteAccount(id);

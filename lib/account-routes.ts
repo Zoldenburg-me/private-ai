@@ -1,7 +1,7 @@
 import { BillingError, deleteStripeCustomers } from "./billing";
 import { consumeStepUp, restoreStepUp } from "./passkey";
 import { stepUpRequired } from "./passkey-routes";
-import { clearedSessionCookie, identityFrom, resolveIdentity, tierOf } from "./session";
+import { clearedSessionCookie, resolveIdentity, tierOf } from "./session";
 import { usage } from "./ratelimit";
 import { stores, withStores } from "./store";
 import { LIMITS, overLimit } from "./limits";
@@ -13,10 +13,15 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const fail = (status: number, message: string) => json({ error: { message } }, status);
 const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
 
-/** Everything the server holds for this account, as a JSON download. */
+/** Everything the server holds for this account, as a JSON download. Needs step-up once the account has a passkey. */
 export const exportAccount = withStores(async (req: Request) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
-  const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  const limited = await overLimit(LIMITS.accountAction, `acct:${me.accountId}`); if (limited) return limited;
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  try { return await exportData(me.accountId); } catch (e) { await restoreStepUp(me); throw e; }
+});
+
+async function exportData(id: string): Promise<Response> {
   const { accounts } = await stores();
   const [session, entitlement, subscriptions, passkeys, devices] = await Promise.all([
     accounts.getSession(id), accounts.getEntitlement(id), accounts.listSubscriptionsFor(id), accounts.listCredentials(id), accounts.listDevices(id),
@@ -35,7 +40,7 @@ export const exportAccount = withStores(async (req: Request) => {
     notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see /datenschutz.",
   };
   return json(data, 200, { "Content-Disposition": `attachment; filename="private-ai-account-${id.slice(0, 8)}.json"` });
-});
+}
 
 /**
  * Delete the account: Stripe customer(s) first, so a failure there leaves everything intact and

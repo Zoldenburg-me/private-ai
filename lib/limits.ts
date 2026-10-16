@@ -15,6 +15,10 @@ export const LIMITS = {
   passkeyLogin: { env: "PAI_LIMIT_PASSKEY_LOGINS_PER_MIN", fallback: 300, windowMs: 60_000 },
   /** Export, delete, passkey add/remove per account per hour. */
   accountAction: { env: "PAI_LIMIT_ACCOUNT_ACTIONS_PER_HOUR", fallback: 20, windowMs: 3_600_000 },
+  /** Attestation / signature fetches per account per minute (each spends the shared provider key). */
+  evidence: { env: "PAI_LIMIT_EVIDENCE_PER_MIN", fallback: 30, windowMs: 60_000 },
+  /** Attestation / signature fetches per minute, whole instance (fresh anonymous sessions are free to mint). */
+  evidenceAll: { env: "PAI_LIMIT_EVIDENCE_ALL_PER_MIN", fallback: 600, windowMs: 60_000 },
 } satisfies Record<string, LimitSpec>;
 
 function limitOf(spec: LimitSpec, env: Record<string, string | undefined>): number {
