@@ -27,6 +27,11 @@ async function save(auth: SoftAuthenticator, token: string) {
   expect(r.status).toBe(200);
   return decodeURIComponent(/^pai_session=([^;]*)/.exec(r.headers.get("set-cookie") ?? "")![1]);
 }
+/** Passkey confirmation made with this browser's cookie; it confirms actions for this browser only. */
+async function stepUp(auth: SoftAuthenticator, token: string) {
+  const opts = await (await loginOptions(post("/api/auth/passkey/login/options", { stepUp: true }, token))).json();
+  return loginVerify(post("/api/auth/passkey/login/verify", auth.get(opts, ORIGIN), token));
+}
 async function login(auth: SoftAuthenticator, origin = ORIGIN) {
   const opts = await (await loginOptions(post("/api/auth/passkey/login/options", {}))).json();
   return loginVerify(post("/api/auth/passkey/login/verify", auth.get(opts, origin)));
@@ -119,7 +124,9 @@ describe("passkey hardening", () => {
     expect(denied.status).toBe(403);
     expect((await denied.json()).error.code).toBe("step_up_required");
     expect((await login(mine)).status).toBe(200);
-    expect((await register(attacker, token)).status).toBe(200); // step-up granted by the login above
+    expect((await regOptions(post("/x", {}, token))).status).toBe(403); // a sign-in elsewhere confirms nothing here
+    expect((await stepUp(mine, token)).status).toBe(200);
+    expect((await register(attacker, token)).status).toBe(200); // step-up granted by the confirmation above
     // step-up is single use
     expect((await regOptions(post("/x", {}, token))).status).toBe(403);
     expect(await list(token)).toHaveLength(2);
@@ -135,7 +142,7 @@ describe("passkey hardening", () => {
     expect(noStepUp.status).toBe(403);
     expect((await noStepUp.json()).error.code).toBe("step_up_required");
     expect((await deletePasskey(del({ id }, b.token))).status).toBe(404); // b has no passkeys: not found, not 403
-    expect((await login(auth)).status).toBe(200);
+    expect((await stepUp(auth, a.token)).status).toBe(200);
     expect((await deletePasskey(del({ nope: 1 }, a.token))).status).toBe(400);
     expect((await deletePasskey(del({ id }, a.token))).status).toBe(200);
     expect(await list(a.token)).toHaveLength(0);

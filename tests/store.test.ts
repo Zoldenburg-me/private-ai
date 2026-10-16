@@ -68,6 +68,16 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.sessionExists("acct_stale_1")).toBe(false);
     expect(await s.sessionExists("acct_paid_1")).toBe(true);
   });
+  it("purgeStaleDevices signs out browsers unused since the cutoff, keeps the account", async () => {
+    const old = Date.UTC(2020, 0, 1); const cutoff = Date.UTC(2021, 0, 1);
+    await s.touchSession("acct_dev_1234");
+    await s.addDevice({ id: "dev_old_0123456789ab", accountId: "acct_dev_1234", createdAt: old });
+    await s.addDevice({ id: "dev_new_0123456789ab", accountId: "acct_dev_1234", createdAt: old });
+    expect(await s.touchDevice("acct_dev_1234", "dev_new_0123456789ab", cutoff)).toBe(true);
+    expect(await s.purgeStaleDevices(cutoff)).toBe(1);
+    expect((await s.listDevices("acct_dev_1234")).map((d) => d.id)).toEqual(["dev_new_0123456789ab"]);
+    expect(await s.sessionExists("acct_dev_1234")).toBe(true);
+  });
   it("getSession returns created/last-seen, null when unknown", async () => {
     expect(await s.getSession("acct_unknown_1")).toBeNull();
     await s.touchSession("acct_gs_12345", Date.UTC(2027, 0, 2, 15));

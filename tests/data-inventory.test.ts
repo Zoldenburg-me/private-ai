@@ -53,4 +53,13 @@ describe("retention purge", () => {
     expect(await accounts.sessionExists("old_subscribed")).toBe(true);
     expect(await accounts.sessionExists("recent_user")).toBe(true);
   });
+  it("signs out browsers unused for the retention period", async () => {
+    const { accounts } = _setStores();
+    const now = Date.UTC(2027, 5, 1);
+    await accounts.touchSession("active_user_1", now);
+    await accounts.addDevice({ id: "stale_device_000001", accountId: "active_user_1", createdAt: now - (RETENTION_DAYS + 2) * 86_400_000 });
+    await accounts.addDevice({ id: "fresh_device_000001", accountId: "active_user_1", createdAt: now });
+    expect(await purgeInactive(now)).toBe(1);
+    expect((await accounts.listDevices("active_user_1")).map((d) => d.id)).toEqual(["fresh_device_000001"]);
+  });
 });

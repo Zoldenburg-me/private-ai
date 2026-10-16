@@ -91,6 +91,11 @@ export class MemoryAccountStore implements AccountStore {
     }
     return n;
   }
+  async purgeStaleDevices(cutoff: number) {
+    const stale = [...this.devices.values()].filter((d) => d.lastSeenOn < dayKey(cutoff));
+    for (const d of stale) this.devices.delete(d.id);
+    return stale.length;
+  }
   async ping() {}
 }
 
