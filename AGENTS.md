@@ -69,13 +69,23 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
   `/opt/stacks/private-ai`, step 2 from a checkout):
   1. Back up: `docker compose exec -T postgres pg_dump -U pai -Fc pai > data/pre-upgrade.dump`
      and `docker tag private-ai:latest private-ai:previous`.
-  2. Replace the source as a whole, so files deleted upstream do not stay in the build:
-     `git archive origin/main | ssh homeserver 'cd /opt/stacks/private-ai && rm -rf src.new src.old && mkdir src.new && tar -x -C src.new && mv src src.old && mv src.new src'`.
+  2. `git fetch origin`, note the commit (`git rev-parse --short origin/main`), then replace the
+     source as a whole, so files deleted upstream do not stay in the build:
+     `git archive <commit> | ssh homeserver 'cd /opt/stacks/private-ai && rm -rf src.new src.old && mkdir src.new && tar -x -C src.new && mv src src.old && mv src.new src'`.
      `compose.yaml`, `.env` and `data/` live outside `src/` and are not touched.
-  3. `docker compose up -d --build app`, then check `https://hiddensee.app/api/health`.
+  3. `docker compose up -d --build app`, then check `https://hiddensee.app/api/health` and that
+     `docker compose logs app` shows a fresh start.
   4. Rollback: `mv src src.bad && mv src.old src`, `docker tag private-ai:previous private-ai:latest`,
-     `docker compose up -d --no-build app`; restore `data/pre-upgrade.dump` if a migration since was
-     not additive.
+     `docker compose up -d --no-build app`. Restore the dump only if a migration since was not
+     additive, and never straight into `pai`: accounts deleted after the dump would come back
+     (GDPR Art. 17). With `P="docker compose exec -T postgres"`: `docker compose stop app`;
+     `$P psql -U pai -d pai -Atc '\copy erasures to stdout' > data/erasures.tsv`;
+     `$P sh -c 'dropdb -U pai --if-exists pai_restore && createdb -U pai pai_restore'`;
+     `$P pg_restore -U pai -d pai_restore --no-owner --no-acl --exit-on-error < data/pre-upgrade.dump`;
+     `$P psql -U pai -d pai_restore -v ON_ERROR_STOP=1 -c 'create temp table incoming (id_hash text, deleted_on date)' -c '\copy incoming from pstdin' -c "$(cat src/scripts/reerase.sql)" < data/erasures.tsv`;
+     `$P psql -U pai -d postgres -c 'ALTER DATABASE pai RENAME TO pai_bad' -c 'ALTER DATABASE pai_restore RENAME TO pai'`;
+     `docker compose up -d app`. (`scripts/restore-db.sh` does this from restic snapshots, once
+     off-site backups exist.)
 
   The Caddy setup (`deploy/caddy`) is for a Hetzner box and is not used here, so there are no
   per-IP limits.
