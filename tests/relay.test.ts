@@ -58,6 +58,21 @@ describe("relay: zero content logging", () => {
     expect((await handleChat(req(token, { model: "mock:m", messages: [{ role: "user", content: "x" }], pai_options: { web_search: true } }), "/t", deps)).status).toBe(400);
     expect((await handleChat(req("pai_forgedforgedforged.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", { model: "mock:m", messages: [] }), "/t", deps)).status).toBe(401);
   });
+  it("anonymized frontier model: relayed to the gateway with our key only, no identity fields", async () => {
+    const { token } = issueToken();
+    const venice = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "claude-fable-5-1" });
+    const deps = { catalog: async () => [venice], env: { VENICE_API_KEY: "gw-key", VENICE_BASE_URL: "http://venice/v1", VENICE_MODELS: "claude-fable-5-1" }, fetchImpl: upstream };
+    const res = await handleChat(req(token, { model: "venice:claude-fable-5-1", user: "alice", metadata: { account: "a" }, safety_identifier: "s", messages: [{ role: "user", content: "x" }] }), "/t", deps);
+    expect(res.status).toBe(200);
+    const [url, init] = (upstream as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)! as [string, RequestInit];
+    expect(url).toBe("http://venice/v1/chat/completions");
+    expect(Object.keys(init.headers as Record<string, string>).sort()).toEqual(["Authorization", "Content-Type"]);
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer gw-key");
+    const body = JSON.parse(String(init.body));
+    expect(body.model).toBe("claude-fable-5-1");
+    for (const k of ["user", "metadata", "safety_identifier"]) expect(body).not.toHaveProperty(k);
+    expect(JSON.stringify(body)).not.toContain(token);
+  });
   it("tier comes from server, not from client body", async () => {
     const { id, token } = issueToken();
     const deps = { catalog, env, fetchImpl: upstream };

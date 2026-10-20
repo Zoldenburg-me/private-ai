@@ -13,6 +13,7 @@ import type { Receipt } from "@/lib/sse";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
+import { ANONYMIZED_NOTE } from "@/lib/client/providers";
 
 export type { Signed, StoredMsg };
 
@@ -27,6 +28,8 @@ export interface ThreadProps {
   onUsage: (remaining: string | null) => void;
   verifySignature: (r: Receipt) => Promise<Signed>;
   suggestions?: string[];
+  /** The selected model is anonymized: no enclave, so the welcome text must not claim one. */
+  anonymized?: boolean;
 }
 
 function textOf(content: readonly { type: string; text?: string }[]) {
@@ -106,7 +109,7 @@ export function ChatThread(props: ThreadProps) {
             <div className="welcome" data-testid="welcome">
               <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
               <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
-              <p className="muted">Runs inside an attested enclave on NEAR AI Cloud. Your history stays encrypted in this browser.</p>
+              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : "Runs inside an attested enclave on NEAR AI Cloud."} Your history stays encrypted in this browser.</p>
               <div className="suggestions">
                 {(props.suggestions ?? []).map((s) => (
                   <ThreadPrimitive.Suggestion key={s} prompt={s} send className="suggestion">{s}</ThreadPrimitive.Suggestion>

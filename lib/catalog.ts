@@ -23,6 +23,8 @@ const bool = (v: unknown) => v === true || v === "true";
 /** Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes. */
 export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
+  // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
+  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name: String(raw.name ?? raw.display_name ?? id), privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
@@ -33,7 +35,6 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
   const zdr = bool(raw.zdr) || bool(meta.zdr) || privacyText.includes("private") || privacyText.includes("zdr") || provider.privacy === "zdr-contract";
   const privacy: Privacy = tee ? "tee" : zdr ? "private" : "anonymized";
-  const ctx = Number(raw.context_length ?? raw.contextLength ?? raw.max_model_len ?? NaN);
   return {
     id,
     provider: provider.id,
@@ -41,12 +42,20 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     privacy,
     tee,
     e2ee,
-    contextLength: Number.isFinite(ctx) ? ctx : undefined,
+    contextLength: ctxOf(raw),
     selectable: isSelectable(privacy),
   };
 }
 
-/** Launch policy: only TEE-attested or contractual zero-retention models may be selected. */
+function ctxOf(raw: Raw): number | undefined {
+  const ctx = Number(raw.context_length ?? raw.contextLength ?? raw.max_model_len ?? NaN);
+  return Number.isFinite(ctx) ? ctx : undefined;
+}
+
+/**
+ * TEE-attested or contractual zero-retention models may be selected. "anonymized" from any other
+ * provider stays blocked: only the anonymizing gateway (normaliseModel above) strips the identity.
+ */
 export function isSelectable(p: Privacy): boolean {
   return p === "tee" || p === "private";
 }
@@ -59,11 +68,12 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { data?: Raw[] } | Raw[];
   const arr = Array.isArray(j) ? j : j.data ?? [];
-  return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id);
+  return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id && (!p.models || p.models.includes(m.id)));
 }
 
-/** What a provider offers when its /models call fails: only its configured default model. */
-export const fallbackModels = (p: ProviderConfig): ModelEntry[] => (p.defaultModel ? [normaliseModel(p, { id: p.defaultModel })] : []);
+/** What a provider offers when its /models call fails: its allowlist if set, else its configured default model. */
+export const fallbackModels = (p: ProviderConfig): ModelEntry[] =>
+  (p.models ?? (p.defaultModel ? [p.defaultModel] : [])).map((id) => normaliseModel(p, { id }));
 
 export async function fetchCatalog(providers: ProviderConfig[], fetchImpl: typeof fetch = fetch): Promise<ModelEntry[]> {
   const lists = await Promise.all(providers.map((p) => fetchProviderModels(p, fetchImpl).catch(() => fallbackModels(p))));

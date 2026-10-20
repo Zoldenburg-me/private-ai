@@ -12,7 +12,7 @@ import type { Tier } from "@/lib/tiers";
 import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
-import { proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
@@ -40,6 +40,7 @@ export default function Home() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [modelRef, setModelRef] = useState("");
+  const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.privacy === "anonymized";
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState("");
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
@@ -105,10 +106,11 @@ export default function Home() {
   }
 
   const checkProof = useCallback(async (ref: string): Promise<Proof | null> => {
-    if (!ref) return null;
+    if (!ref || !models.length) return null; // the catalog decides whether this model has an enclave at all
     const nonce = newNonce();
     let proof: Proof;
-    try {
+    if (models.find((m) => `${m.provider}:${m.id}` === ref)?.privacy === "anonymized") proof = noEnclaveProof(ref);
+    else try {
       const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
       if (r.status === 401) return null; // no session yet: do not cache, the next check retries
       proof = r.ok ? proofFromResponse(ref, await r.json(), nonce)
@@ -118,7 +120,7 @@ export default function Home() {
     }
     setProofs((p) => ({ ...p, [ref]: proof }));
     return proof;
-  }, []);
+  }, [models]);
 
   useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
 
@@ -335,7 +337,8 @@ export default function Home() {
         {view === "chat" && (
           kv || ghost
             ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
-                onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature} suggestions={SUGGESTIONS} />
+                onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
+                anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/enclave/i.test(s)) : SUGGESTIONS} />
             : <div className="loading muted">Unlocking encrypted history…</div>
         )}
         {view === "personas" && (

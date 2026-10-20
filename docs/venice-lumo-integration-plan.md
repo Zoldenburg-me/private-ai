@@ -52,10 +52,9 @@ Venice proves privacy for *some* models with TEE + E2EE. Lumo encrypts *everythi
 
 ### P5. Venice as an optional upstream provider — small, behind a flag
 - Venice has a public OpenAI-compatible API (`https://api.venice.ai/api/v1`); Lumo has **no public API**, so Lumo can only be learned from, not integrated.
-- Add a `venice` entry in `lib/providers.ts` with the `VENICE_*` env vars.
-- In `lib/catalog.ts`, mark only `e2ee-*` models (TEE) and models where `model_spec.privacy=private` (ZDR) as selectable. **Anonymized frontier models stay blocked** by the existing launch policy.
+- Done for anonymized frontier models: `venice` is in `lib/providers.ts` as an `anon-gateway` provider (`VENICE_*` env vars). Every Venice model is labelled anonymized (never TEE or E2EE), is selectable but never the default, and gets no enclave proof. Venice E2EE models (TEE) need the attestation work below before they can be offered as TEE.
 - Attestation path differs: `GET /tee/attestation?model=&nonce=` and `/tee/signature`, not NEAR's `/attestation/report`. `lib/evidence.ts` needs a per-provider endpoint map.
-- Open question (business): reselling Venice means Venice's metadata retention applies (account, IP, token counts). We must disclose it in the privacy policy.
+- Venice keeps metadata of our Venice account (account, IP, token counts), not of our users; `/datenschutz` names Venice as a recipient for anonymized models (company details still `<Todo>`).
 
 ### P5b. Accountless paid access (Venice x402) — medium
 - Wallet sign-in with an EIP-4361 message: our own domain, a 5-minute window and a one-time nonce. Prepaid USDC balance through an x402 top-up with an EIP-3009 authorization. This is the seller side in Zold.

@@ -58,6 +58,13 @@ describe("evidence endpoints (spend the shared provider key)", () => {
       "http://up/v1/signature/c1?model=m1&signing_algo=ecdsa",
     ]);
   });
+  it("never fetch enclave evidence for an anonymized model (it runs at the model vendor, not in an enclave)", async () => {
+    vi.stubEnv("VENICE_API_KEY", "k"); vi.stubEnv("VENICE_BASE_URL", "http://venice/v1"); vi.stubEnv("VENICE_MODELS", "m1");
+    const token = await session();
+    expect((await attestation(get(`model=venice:m1&nonce=${NONCE}`, token))).status).toBe(404);
+    expect((await signature(get("model=venice:m1&chat_id=c1", token))).status).toBe(404);
+    expect(upstream.every((u) => u.endsWith("/models"))).toBe(true);
+  });
   it("reject models that are not in the catalog", async () => {
     const token = await session();
     expect((await attestation(get(`model=mock:other&nonce=${NONCE}`, token))).status).toBe(400);

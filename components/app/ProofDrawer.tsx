@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, CheckCircle, Circle, Code, MinusCircle, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
 import type { Proof, ProofItem } from "@/lib/client/proof";
+import { ANONYMIZED_NOTE } from "@/lib/client/providers";
 import { CopyHash } from "./CopyHash";
 
 const STATE_TEXT = { pass: "passed", fail: "failed", "not-checked": "not checked" } as const;
@@ -48,13 +49,22 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
     return () => { removeEventListener("keydown", onKey); setTimeout(() => { if (back?.isConnected) back.focus(); }); }; // after this commit: <main> may still be inert on mobile
   }, [open]);
   if (!open) return null;
+  const title = proof?.level === "no-enclave" ? "Privacy details" : "Enclave proof";
   return (
-    <aside className="drawer" data-testid="proof-drawer" aria-label="Enclave proof">
+    <aside className="drawer" data-testid="proof-drawer" aria-label={title}>
       <header className="drawer-head">
-        <h2>Enclave proof</h2>
-        <button type="button" className="icon-btn" ref={closeBtn} onClick={onClose} aria-label="Close enclave proof"><X aria-hidden /></button>
+        <h2>{title}</h2>
+        <button type="button" className="icon-btn" ref={closeBtn} onClick={onClose} aria-label={`Close ${title.toLowerCase()}`}><X aria-hidden /></button>
       </header>
-      {!proof ? <p className="drawer-body muted">Checking…</p> : (
+      {!proof ? <p className="drawer-body muted">Checking…</p> : proof.level === "no-enclave" ? (
+        <div className="drawer-body">
+          <section className="summary lvl-no-enclave" data-testid="proof-summary">
+            <p className="summary-title"><ShieldSlash aria-hidden /><strong>{proof.label}</strong></p>
+            <dl className="facts"><div><dt>Model</dt><dd><code>{proof.modelRef}</code></dd></div></dl>
+            <p className="summary-note">No enclave attestation applies. {ANONYMIZED_NOTE} The vendor sees the prompt and reply; we cannot prove what it does with them.</p>
+          </section>
+        </div>
+      ) : (
         <div className="drawer-body">
           <section className={`summary lvl-${proof.level}`} data-testid="proof-summary">
             <p className="summary-title"><SummaryIcon level={proof.level} /><strong>{proof.label}</strong></p>

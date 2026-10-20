@@ -7,9 +7,24 @@ describe("model catalog + privacy policy", () => {
     const m = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "Qwen/Qwen3.8-27B" });
     expect(m).toMatchObject({ privacy: "tee", tee: true, selectable: true });
   });
-  it("explicitly anonymized models are NOT selectable even on a TEE provider", () => {
+  it("anonymized models are selectable only through the anonymizing gateway", () => {
     const m = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "x", privacy: "anonymized" });
     expect(m).toMatchObject({ privacy: "anonymized", selectable: false });
+    const f = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "claude-fable-5-1", model_spec: { privacy: "anonymized" } });
+    expect(f).toMatchObject({ provider: "venice", privacy: "anonymized", tee: false, e2ee: false, selectable: true });
+  });
+  it("the anonymizing gateway never claims TEE, E2EE or zero retention, whatever its metadata says", () => {
+    const m = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "e2ee-x", tee: true, capabilities: { e2ee: true }, model_spec: { privacy: "private" } });
+    expect(m).toMatchObject({ privacy: "anonymized", tee: false, e2ee: false, selectable: true });
+  });
+  it("<PREFIX>_MODELS limits a provider's catalogue to the listed ids", async () => {
+    const providers = loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, claude-fable-5-1" });
+    const fake = (async () => Response.json({ data: [{ id: "gpt-x" }, { id: "claude-fable-5-1" }, { id: "llama-y" }] })) as unknown as typeof fetch;
+    expect((await fetchCatalog(providers, fake)).map((m) => m.id)).toEqual(["gpt-x", "claude-fable-5-1"]);
+    const down = (async () => new Response("", { status: 500 })) as unknown as typeof fetch;
+    // /models down: the allowlist is the fallback, and an unlisted default model is never offered.
+    const fallback = await fetchCatalog(loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, claude-fable-5-1", VENICE_MODEL: "llama-y" }), down);
+    expect(fallback.map((m) => [m.id, m.privacy, m.selectable])).toEqual([["gpt-x", "anonymized", true], ["claude-fable-5-1", "anonymized", true]]);
   });
   it("e2ee and zdr flags", () => {
     expect(normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);

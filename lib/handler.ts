@@ -46,7 +46,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const ref = parseModelRef(String(input.model ?? ""));
   if (!ref) { await recordFailure(id); return err(400, "model must be '<provider>:<model>' (see /api/v1/models)"); }
   const entry = findSelectable(await deps.catalog(), ref.provider, ref.model);
-  if (!entry) { await recordFailure(id); return err(403, "model not available under the privacy policy (TEE or zero-retention only)"); }
+  if (!entry) { await recordFailure(id); return err(403, "model not available under the privacy policy (TEE, zero-retention or anonymized gateway only)"); }
   const provider = loadProviders(deps.env ?? process.env).find((p) => p.id === ref.provider);
   if (!provider) return err(503, "provider not configured");
 

@@ -60,7 +60,7 @@ export interface ReportProof {
   items: ProofItem[];
 }
 
-export type ProofLevel = "verified" | "checks-passed" | "failed" | "unavailable" | "pending";
+export type ProofLevel = "verified" | "checks-passed" | "failed" | "unavailable" | "pending" | "no-enclave";
 
 export interface Proof {
   modelRef: string;
@@ -132,7 +132,13 @@ export const LEVEL_LABEL: Record<ProofLevel, string> = {
   failed: "Proof failed",
   unavailable: "No proof available",
   pending: "Checking proof…",
+  "no-enclave": "No enclave · anonymized",
 };
+
+/** Anonymized models run at the model vendor: there is no enclave to attest, so nothing is fetched or claimed. */
+export function noEnclaveProof(modelRef: string, now = Date.now()): Proof {
+  return { modelRef, level: "no-enclave", label: LEVEL_LABEL["no-enclave"], chainVerified: false, checkedAt: now, reports: [], notVerified: [] };
+}
 
 export function proofFromResponse(modelRef: string, body: unknown, nonce: string): Proof {
   const j = (body ?? {}) as { gateway_attestation?: NearReport; model_attestations?: NearReport[] } & Partial<NearReport>;

@@ -3,7 +3,7 @@ import { CircleNotch, Shield, ShieldCheck, ShieldSlash } from "@phosphor-icons/r
 import type { Proof, ProofLevel } from "@/lib/client/proof";
 
 const TONE: Record<ProofLevel, string> = {
-  verified: "ok", "checks-passed": "warn", failed: "bad", unavailable: "muted", pending: "muted",
+  verified: "ok", "checks-passed": "warn", failed: "bad", unavailable: "muted", pending: "muted", "no-enclave": "warn",
 };
 
 function LevelIcon({ level }: { level: ProofLevel }) {
@@ -20,10 +20,10 @@ export function ProofBadge({ proof, onOpen }: { proof: Proof | null; onOpen: () 
   const text = proof?.label ?? "Checking proof…";
   return (
     <button type="button" className={`proof-badge tone-${TONE[level]}`} data-testid="proof-badge" data-level={level} onClick={onOpen}
-      title="Show enclave proof details">
+      title={level === "no-enclave" ? "No enclave: this model runs at the vendor" : "Show enclave proof details"}>
       <LevelIcon level={level} />
       <span className="pb-label">{text.split(" · ")[0]}</span>
-      {proof && <span className="chain-pill" data-testid="chain-status">{proof.chainVerified ? "chain ✓" : "chain unverified"}</span>}
+      {proof && level !== "no-enclave" && <span className="chain-pill" data-testid="chain-status">{proof.chainVerified ? "chain ✓" : "chain unverified"}</span>}
     </button>
   );
 }

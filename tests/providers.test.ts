@@ -7,6 +7,13 @@ describe("providers", () => {
     expect(ps.map((p) => p.id)).toEqual(["near"]);
     expect(ps[0].baseUrl).toBe("https://cloud-api.near.ai/v1");
   });
+  it("Venice is the anonymizing gateway, configured from env only", () => {
+    const [v] = loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, gpt-x" });
+    expect(v).toMatchObject({ id: "venice", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", apiKey: "k", models: ["gpt-x"] });
+    // Without an explicit frontier allowlist the gateway is off, so nothing unvetted is offered as "Frontier".
+    expect(loadProviders({ VENICE_API_KEY: "k" })).toEqual([]);
+    expect(loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: " , " })).toEqual([]);
+  });
   it("picks default then first", () => {
     const env = { NEAR_AI_API_KEY: "a", PHALA_API_KEY: "b", DEFAULT_PROVIDER: "phala" };
     expect(pickProvider(undefined, env)?.id).toBe("phala");

@@ -146,6 +146,7 @@ details summary { cursor: pointer; color: var(--text); }
 .picker-item[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
 .pi-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .pi-name svg { color: var(--accent); }
+.picker-note { margin: 0 10px 6px; font-size: 12px; line-height: 1.4; color: var(--warn); }
 .pi-blocked { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .tags { display: flex; align-items: center; gap: 4px; }
 .tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; font: 600 10.5px var(--mono); color: var(--ink-soft); white-space: nowrap; }
@@ -254,7 +255,7 @@ details summary { cursor: pointer; color: var(--text); }
 .summary { margin-bottom: 18px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); }
 .summary-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; }
 .summary-title svg { font-size: 18px; flex: none; }
-.lvl-checks-passed { background: var(--warn-bg); border-color: var(--warn-line); } .lvl-checks-passed .summary-title { color: var(--warn); }
+.lvl-checks-passed, .lvl-no-enclave { background: var(--warn-bg); border-color: var(--warn-line); } .lvl-checks-passed .summary-title, .lvl-no-enclave .summary-title { color: var(--warn); }
 .lvl-verified { background: var(--ok-bg); border-color: var(--ok-line); } .lvl-verified .summary-title { color: var(--ok); }
 .lvl-failed { background: var(--bad-bg); border-color: var(--bad-line); } .lvl-failed .summary-title { color: var(--bad); }
 .lvl-unavailable .summary-title { color: var(--muted); }

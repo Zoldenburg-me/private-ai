@@ -20,7 +20,9 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   if (!ref) return fail(400, "model=<provider>:<model> required");
   const p = loadProviders().find((x) => x.id === ref.provider);
   if (!p) return fail(503, "provider not configured");
-  if (!(await getCatalog()).some((m) => m.provider === ref.provider && m.id === ref.model)) return fail(400, "unknown model");
+  const entry = (await getCatalog()).find((m) => m.provider === ref.provider && m.id === ref.model);
+  if (!entry) return fail(400, "unknown model");
+  if (entry.privacy === "anonymized") return fail(404, "no enclave evidence: anonymized models run at the model vendor");
   let target: string;
   if (kind === "attestation") {
     const nonce = url.searchParams.get("nonce") ?? "";

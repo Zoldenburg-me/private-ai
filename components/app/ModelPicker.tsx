@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { CaretDown, Check, LockSimple, Prohibit } from "@phosphor-icons/react";
 import type { ModelEntry } from "@/lib/catalog";
-import { PROVIDER_LABEL } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
 
 const ref = (m: ModelEntry) => `${m.provider}:${m.id}`;
 
@@ -45,7 +45,8 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
           else if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); }
         }}>
         <span className="picker-name">{sel ? sel.name : "Select a model"}</span>
-        {sel && <span className={`tag t-${sel.privacy}`} data-testid={`badge-${sel.privacy}`}>{sel.privacy.toUpperCase()}</span>}
+        {sel && <span className={`tag t-${sel.privacy}`} data-testid={`badge-${sel.privacy}`}
+          title={sel.privacy === "anonymized" ? ANONYMIZED_NOTE : undefined}>{sel.privacy.toUpperCase()}</span>}
         <CaretDown aria-hidden />
       </button>
       {open && (
@@ -53,8 +54,10 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
           {groups.map((g) => (
             <div key={g} role="group" aria-label={PROVIDER_LABEL[g] ?? g}>
               <div className="picker-group" aria-hidden>{PROVIDER_LABEL[g] ?? g}</div>
+              {models.some((m) => m.provider === g && m.privacy === "anonymized" && m.selectable) && <p className="picker-note" id={`note-${g}`} aria-hidden>{ANONYMIZED_NOTE}</p>}
               {models.filter((m) => m.provider === g).map((m) => (
                 <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} aria-disabled={!m.selectable || undefined}
+                  aria-describedby={m.privacy === "anonymized" && m.selectable ? `note-${g}` : undefined}
                   className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { if (!m.selectable) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
                   <span className="pi-name">{ref(m) === value && <Check weight="bold" aria-hidden />}{m.name}</span>
                   <span className="tags">

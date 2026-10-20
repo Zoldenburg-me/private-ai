@@ -24,6 +24,11 @@ export default function Datenschutz() {
           verarbeitet, weder gespeichert noch protokolliert. Standardmäßig nutzen wir nur Anbieter, deren Modelle in vertraulichen Rechenumgebungen (TEE) laufen oder die vertraglich keine Daten aufbewahren.
           Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
+        <p>Anonymisierte Frontier-Modelle (optional): Modelle mit der Kennzeichnung „ANONYMIZED“ (z. B. GPT, Claude, Gemini) laufen nicht in einer TEE und werden nie automatisch ausgewählt.
+          Wählen Sie eines aus, leiten wir Ihre Nachricht über Venice (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Venice ergänzen</Todo>) an den jeweiligen
+          Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>). Die Anfrage läuft unter unserem Konto bei Venice;
+          Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt. Venice und der Modellanbieter erhalten aber den Inhalt Ihrer Nachricht und der Antwort,
+          und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
         <h3>5. Passkeys (optional)</h3>
         <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
@@ -57,6 +62,11 @@ export default function Datenschutz() {
         <p>Your messages are relayed through our server to the selected AI provider and the reply is streamed back. Content is processed in memory only; it is never stored or logged.
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
           Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
+        <p>Anonymized frontier models (optional): models labelled “ANONYMIZED” (e.g. GPT, Claude, Gemini) do not run in a TEE and are never selected automatically.
+          If you pick one, we relay your message via Venice (<Todo>Venice company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>) to the model vendor
+          (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>). The request runs under our Venice account;
+          your account id, IP address and session token are not sent. Venice and the model vendor do receive the content of your message and the reply,
+          and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
         <h3>5. Passkeys (optional)</h3>
         <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>

@@ -1,4 +1,5 @@
-export type PrivacyModel = "tee-attested" | "tee-gateway" | "zdr-contract";
+/** "anon-gateway": no enclave; the gateway forwards prompts to the model vendor under its own account, without the user's identity. */
+export type PrivacyModel = "tee-attested" | "tee-gateway" | "zdr-contract" | "anon-gateway";
 
 export interface ProviderConfig {
   id: string;
@@ -7,6 +8,8 @@ export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
   defaultModel: string;
+  /** From <PREFIX>_MODELS: if set, only these model ids are offered. */
+  models?: string[];
 }
 
 const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
@@ -16,6 +19,7 @@ const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; b
   { id: "privatemode", name: "Privatemode (Edgeless)", prefix: "PRIVATEMODE", privacy: "tee-attested" },
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway" },
   { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },
+  { id: "venice", name: "Venice (anonymized frontier models)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1" },
   { id: "custom", name: "Custom OpenAI-compatible", prefix: "CUSTOM", privacy: "zdr-contract" },
 ];
 
@@ -28,7 +32,10 @@ export function loadProviders(env: Env = process.env): ProviderConfig[] {
     if (d.id === "mock" && env.MOCK_PROVIDER !== "1") return [];
     const apiKey = env[`${d.prefix}_API_KEY`] || (d.id === "mock" ? "mock" : "");
     if (!baseUrl || !apiKey) return [];
-    return [{ id: d.id, name: d.name, privacy: d.privacy, baseUrl: baseUrl.replace(/\/$/, ""), apiKey, defaultModel: env[`${d.prefix}_MODEL`] || "" }];
+    const listed = env[`${d.prefix}_MODELS`]?.split(",").map((m) => m.trim()).filter(Boolean);
+    const models = listed && [...new Set(listed)];
+    if (d.privacy === "anon-gateway" && !models?.length) return []; // only explicitly vetted frontier models
+    return [{ id: d.id, name: d.name, privacy: d.privacy, baseUrl: baseUrl.replace(/\/$/, ""), apiKey, defaultModel: env[`${d.prefix}_MODEL`] || "", ...(models?.length ? { models } : {}) }];
   });
 }
 
