@@ -86,7 +86,7 @@ export function HeroSky() {
         ctx.fillStyle = s.blue ? "#cfe0ff" : "#ffffff";
         ctx.beginPath(); ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.filter = "blur(.7px)"; // soft water glints; ignored where unsupported
+      // No ctx.filter blur here: it runs one blur pass per shape, measured at ~5 s a frame on a retina hero.
       for (const g of glints) {
         const on = Math.max(0, Math.sin(ms / 1000 * g.speed + g.phase));
         ctx.globalAlpha = on * on * (g.path ? .85 - g.depth * .35 : .25);
@@ -94,7 +94,6 @@ export function HeroSky() {
         const sway = Math.sin(ms / 1400 + g.phase) * 2;
         ctx.fillRect(g.x * w + sway - g.len / 2, g.y * h, g.len, 1 + g.depth * 1.2);
       }
-      ctx.filter = "none";
       if (withShoot && !shoot && ms > nextShoot) shoot = { x: w * (.3 + Math.random() * .6), y: h * Math.random() * .35, start: ms };
       if (shoot) {
         const t = (ms - shoot.start) / SHOOT_MS;
