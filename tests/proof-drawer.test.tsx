@@ -37,6 +37,16 @@ describe("proof badge (short, honest)", () => {
     expect(text(badge(summarise("m", allPass, true)))).toMatch(/Verified/);
     expect(claimsVerified(badge(summarise("m", allPass, false)))).toBe(false);
   });
+
+  it("failed and unavailable proofs keep their own label, with no chain chip that could hide it", () => {
+    const n = newNonce();
+    const failed = proofFromResponse("m", { model_attestations: [mockReport(n, { debug: true })] }, n);
+    const none = proofFromResponse("m", {}, n);
+    expect(text(badge(failed))).toMatch(/Proof failed/);
+    expect(text(badge(none))).toMatch(/No proof/);
+    expect(badge(failed)).not.toContain("chain-status");
+    expect(badge(none)).not.toContain("chain-status");
+  });
 });
 
 describe("proof drawer (summary first)", () => {

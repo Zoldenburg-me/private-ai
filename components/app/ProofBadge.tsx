@@ -28,7 +28,7 @@ export function ProofBadge({ proof, onOpen }: { proof: Proof | null; onOpen: () 
       aria-label={label} title={level === "no-enclave" ? "No enclave: this model runs at the vendor" : label}>
       <LevelIcon level={level} />
       <span className="pb-label">{SHORT[level]}</span>
-      {proof && level !== "no-enclave" && !proof.chainVerified && <span className="chain-pill" data-testid="chain-status">unverified</span>}
+      {level === "checks-passed" && <span className="chain-pill" data-testid="chain-status">unverified</span>}
     </button>
   );
 }
