@@ -17,7 +17,7 @@ export interface ProviderConfig {
 export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
   { id: "near", name: "NEAR AI Cloud", prefix: "NEAR_AI", privacy: "tee-attested", baseUrl: "https://cloud-api.near.ai/v1" },
   { id: "phala", name: "Phala Confidential AI", prefix: "PHALA", privacy: "tee-attested", baseUrl: "https://inference.phala.com/v1" },
-  { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested" },
+  { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested", baseUrl: "https://inference.tinfoil.sh/v1" },
   { id: "privatemode", name: "Privatemode (Edgeless)", prefix: "PRIVATEMODE", privacy: "tee-attested" },
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway" },
   { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },

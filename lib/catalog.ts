@@ -1,4 +1,5 @@
 import type { ProviderConfig } from "./providers";
+import { tinfoilFetch } from "./tinfoil";
 
 export type Privacy = "tee" | "private" | "anonymized";
 
@@ -63,7 +64,7 @@ export function isSelectable(p: Privacy): boolean {
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 /** One provider's /models, normalised. Throws when the provider fails or times out. */
-export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = fetch): Promise<ModelEntry[]> {
+export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = p.id === "tinfoil" ? tinfoilFetch : fetch): Promise<ModelEntry[]> {
   const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { data?: Raw[] } | Raw[];
@@ -75,7 +76,7 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
 export const fallbackModels = (p: ProviderConfig): ModelEntry[] =>
   (p.models ?? (p.defaultModel ? [p.defaultModel] : [])).map((id) => normaliseModel(p, { id }));
 
-export async function fetchCatalog(providers: ProviderConfig[], fetchImpl: typeof fetch = fetch): Promise<ModelEntry[]> {
+export async function fetchCatalog(providers: ProviderConfig[], fetchImpl?: typeof fetch): Promise<ModelEntry[]> {
   const lists = await Promise.all(providers.map((p) => fetchProviderModels(p, fetchImpl).catch(() => fallbackModels(p))));
   return lists.flat();
 }

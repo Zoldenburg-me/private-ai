@@ -92,3 +92,29 @@ describe("OpenAI-compatible extensions", () => {
     expect(r.body).not.toHaveProperty("evil");
   });
 });
+
+describe("tinfoil prompt-cache scoping", () => {
+  it("sends a stable, per-account user_cache_secret that a client cannot set", async () => {
+    const secrets: unknown[] = [];
+    const spy = (async (_u: string, init: RequestInit) => { secrets.push(JSON.parse(String(init.body)).user_cache_secret); return Response.json({ choices: [] }); }) as unknown as typeof fetch;
+    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "t" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: spy };
+    const send = (token: string) => handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content: "x" }], user_cache_secret: "victim" }), "/t", deps);
+    const a = issueToken(), b = issueToken();
+    await send(a.token); await send(a.token); await send(b.token);
+    expect(typeof secrets[0]).toBe("string");
+    expect(secrets[0]).not.toBe("victim");
+    expect(secrets[1]).toBe(secrets[0]);
+    expect(secrets[2]).not.toBe(secrets[0]);
+  });
+
+  it("does not count user_cache_secret toward the tier's context limit", async () => {
+    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "t" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: (async () => Response.json({ choices: [] })) as unknown as typeof fetch };
+    // Sized so the forwarded body without the cache secret sits exactly at the free tier's 8,000-token estimate.
+    const shape = (content: string) => JSON.stringify({ messages: [{ role: "user", content }], model: "t", max_tokens: 4096 });
+    const content = "a".repeat(8_000 * 3 - shape("").length);
+    expect(shape(content).length).toBe(24_000);
+    const { token } = issueToken();
+    expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content }] }), "/t", deps)).status).toBe(200);
+    expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content: content + "aaa" }] }), "/t", deps)).status).toBe(413);
+  });
+});

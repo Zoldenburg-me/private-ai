@@ -1,7 +1,8 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { gate, recordFailure } from "./ratelimit";
-import { resolveIdentity, tierOf } from "./session";
+import { createHmac } from "node:crypto";
+import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit } from "./limits";
 import { parseModelRef } from "./providers";
@@ -60,8 +61,11 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
   // Forward the field the client used: some models accept only max_completion_tokens.
   const field = max_completion_tokens != null ? "max_completion_tokens" : "max_tokens";
-  const body = { ...rest, model: ref.model, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
-  const g = await gate(id, tier, estimateTokens(JSON.stringify(body)));
+  // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
+  const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
+  const prompt = { ...rest, model: ref.model, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
+  const g = await gate(id, tier, estimateTokens(JSON.stringify(prompt))); // the cache secret uses no model context
+  const body = { ...prompt, ...cacheScope };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget
     const limited = await overLimit(LIMITS.anonChat, "anon-chat");

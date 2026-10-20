@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ProviderConfig } from "./providers";
 import type { Logger } from "./log";
+import { tinfoilFetch } from "./tinfoil";
 
 /**
  * Zero-content relay: forwards the body to the provider and pipes the stream back.
@@ -16,7 +17,7 @@ export const FIRST_BYTE_TIMEOUT_MS = { stream: 30_000, json: 120_000 };
 export const IDLE_TIMEOUT_MS = 30_000;
 export const TOTAL_TIMEOUT_MS = 300_000;
 
-export async function relay({ provider, body, log, route, fetchImpl = fetch, extraHeaders = {} }: RelayOpts): Promise<Response> {
+export async function relay({ provider, body, log, route, fetchImpl = provider.id === "tinfoil" ? tinfoilFetch : fetch, extraHeaders = {} }: RelayOpts): Promise<Response> {
   const started = Date.now();
   const reqText = JSON.stringify(body);
   const reqSha256 = createHash("sha256").update(reqText).digest("hex");
