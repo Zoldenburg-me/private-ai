@@ -52,6 +52,22 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
 - **Legal pages** (`app/impressum`, `app/datenschutz`, `app/agb`) keep their `<Todo>` markers until
   a lawyer has reviewed them. Never invent company details, addresses or register numbers.
 
+## Where it runs (hiddensee.app)
+
+- **Public:** `https://hiddensee.app`, an invite-only test (`INVITE_ONLY=1`, Stripe off). DNS is on
+  Cloudflare; the apex is a CNAME to the Cloudflare Tunnel `private-ai`. No open ports.
+- **Host:** the owner's home server (`ssh homeserver`, Tailscale only), Compose stack
+  `/opt/stacks/private-ai`: `app`, `postgres`, `redis`, `cloudflared`. Source in `src/`, data in
+  `data/`, secrets in `.env` (mode 600, generated on the box; never copy them off it). The box has
+  its own rules in its README: read them before changing anything there.
+- **Admin:** `/admin` and `/api/admin` sit behind the Cloudflare Access app "Hiddensee admin"
+  (owner email only), then the app's passkey login and `ADMIN_ACCOUNT_IDS`.
+- **Deploy an update:** `git archive <branch> | ssh homeserver 'tar -x -C /opt/stacks/private-ai/src'`,
+  then `ssh homeserver 'cd /opt/stacks/private-ai && docker compose up -d --build app'` and check
+  `https://hiddensee.app/api/health`. The Caddy setup (`deploy/caddy`) is for a Hetzner box and is
+  not used here, so there are no per-IP limits.
+- **Not yet:** off-site Postgres backups (`docs/backup-restore.md` needs a storage target).
+
 ## Workflow
 
 - Tests first: write the failing test, then the fix (see existing tests for style).
