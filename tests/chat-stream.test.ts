@@ -56,6 +56,14 @@ describe("client chat stream", () => {
     expect(out.at(-1)!.text).toBe("ok");
   });
 
+  it("agent mode: agent_error and a stream cut before [DONE] both surface as errors", async () => {
+    const run = (parts: string[]) => (async () => {
+      for await (const _ of streamChat({ model: "near:m", messages: [], agent: true, fetchImpl: (async () => sse(parts)) as unknown as typeof fetch })) void _;
+    })();
+    await expect(run(['data: {"choices":[{"delta":{"content":"a"}}]}\n\n', 'event: agent_error\ndata: {"message":"daily limit reached"}\n\n'])).rejects.toThrow("daily limit reached");
+    await expect(run(['data: {"choices":[{"delta":{"content":"a"}}]}\n\n'])).rejects.toThrow(/connection lost/);
+  });
+
   it("surfaces server errors (e.g. tier limit)", async () => {
     const fetchImpl = (async () => Response.json({ error: { message: "daily limit reached" } }, { status: 429 })) as unknown as typeof fetch;
     await expect((async () => { for await (const _ of streamChat({ model: "near:m", messages: [], fetchImpl })) void _; })()).rejects.toThrow("daily limit reached");

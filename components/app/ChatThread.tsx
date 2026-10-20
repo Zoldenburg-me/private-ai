@@ -55,8 +55,8 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
           <li key={t.id} data-status={t.status}>
             <span className="tool-query"><MagnifyingGlass aria-hidden /> {t.query ?? t.name}{t.status === "error" && " · failed"}</span>
             {t.results && t.results.length > 0 && (
-              <ul>{t.results.filter((r) => httpUrl(r.url)).map((r) => (
-                <li key={r.url}><a href={r.url} target="_blank" rel="noopener noreferrer nofollow">{r.title || r.url}</a></li>
+              <ul>{t.results.filter((r) => httpUrl(r.url)).map((r, i) => (
+                <li key={`${i}:${r.url}`}><a href={r.url} target="_blank" rel="noopener noreferrer nofollow">{r.title || r.url}<span className="sr-only"> (opens in a new tab)</span></a></li>
               ))}</ul>
             )}
           </li>
@@ -87,7 +87,10 @@ function Message({ role, content, signed, tools }: { role: string; content: stri
 export function ChatThread(props: ThreadProps) {
   const ref = useRef(props); ref.current = props;
   const [search, setSearch] = useState(false);
-  const searchRef = useRef(search); searchRef.current = search && !!props.webSearch;
+  const searchOn = search && !!props.webSearch;
+  const searchRef = useRef(searchOn); searchRef.current = searchOn;
+  // Losing the feature (e.g. signing out) clears the opt-in, so it never comes back switched on by itself.
+  useEffect(() => { if (!props.webSearch) setSearch(false); }, [props.webSearch]);
 
   const adapter = useMemo<ChatModelAdapter>(() => ({
     async *run({ messages, abortSignal }) {
@@ -99,7 +102,9 @@ export function ChatThread(props: ThreadProps) {
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       const agent = searchRef.current; // fixed for this turn
+      // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
+      const settled = () => tools.map((t) => (t.status === "running" ? { ...t, status: "error" as const } : t));
       const save = (signed?: Signed) => {
         if (turn.discarded()) return; // chat was deleted or wiped meanwhile
         const msgs: StoredMsg[] = [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}) }];
@@ -113,9 +118,9 @@ export function ChatThread(props: ThreadProps) {
             yield { content: [{ type: "text", text }], metadata: { custom: { tools } } };
           }
         } catch (e) {
-          if (signal.aborted) { save(); return; } // keep what streamed so far, no error text
+          if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } } }; return; } // keep what streamed so far, no error text
           text = `⚠️ ${(e as Error).message}`; save();
-          yield { content: [{ type: "text", text }], metadata: { custom: { tools } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
+          yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
           return;
         }
         save();
@@ -174,9 +179,9 @@ export function ChatThread(props: ThreadProps) {
         </div>
         <ComposerPrimitive.Root className="composer">
           {props.webSearch && (
-            <button type="button" className={`tool-toggle ${search ? "on" : ""}`} data-testid="web-search-toggle" aria-pressed={search}
-              title="Let the model search the web. Only search queries are sent to Brave Search." onClick={() => setSearch((s) => !s)}>
-              <MagnifyingGlass aria-hidden /><span>Web search</span>
+            <button type="button" className={`tool-toggle ${searchOn ? "on" : ""}`} data-testid="web-search-toggle" aria-pressed={searchOn}
+              title="Let the model search the web. The search queries it writes are sent to Brave Search." onClick={() => setSearch((s) => !s)}>
+              <MagnifyingGlass aria-hidden /><span className="tool-toggle-label">Web search</span>
             </button>
           )}
           <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
@@ -187,7 +192,7 @@ export function ChatThread(props: ThreadProps) {
             <ComposerPrimitive.Cancel className="send-btn stop" data-testid="stop" aria-label="Stop"><Stop weight="fill" aria-hidden /></ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>
         </ComposerPrimitive.Root>
-        {search && props.webSearch && <p className="composer-hint" data-testid="web-search-hint">Web search is on: the model may send search queries (not your chat) to Brave Search.</p>}
+        {searchOn && <p className="composer-hint" data-testid="web-search-hint">Web search is on: search queries the model writes, which can repeat parts of your message, go to Brave Search. Your chat history does not.</p>}
         {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>

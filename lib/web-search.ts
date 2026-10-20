@@ -40,7 +40,7 @@ export async function webSearch(query: string, env: Env, fetchImpl: typeof fetch
     redirect: "error", // never forward the API key to another host
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]) : AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`search provider error ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`search provider error ${res.status}`), { status: res.status });
   const j = (await res.json()) as { web?: { results?: { title?: unknown; url?: unknown; description?: unknown }[] } };
   return (j.web?.results ?? [])
     .filter((r) => typeof r.url === "string" && /^https?:\/\//.test(r.url))

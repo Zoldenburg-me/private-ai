@@ -19,6 +19,16 @@ describe("sse", () => {
     expect(r.deltas.join("")).toBe("Hey"); expect(r.done).toBe(true); expect(r.rest).toBe('data: {"cho');
   });
 });
+describe("sse events split across reads", () => {
+  it("keeps an event line until its data line arrives", () => {
+    const a = parseSseChunk('data: {"choices":[{"delta":{"content":"x"}}]}\n\nevent: agent_error\n');
+    expect(a.error).toBeUndefined();
+    const b = parseSseChunk(a.rest + 'data: {"message":"provider timeout"}\n\n');
+    expect(b.error).toBe("provider timeout");
+    const c = parseSseChunk("event: pai_receipt\ndata: {\"chat_id\":\"c\"");
+    expect(parseSseChunk(c.rest + ',"provider":"p","model":"m","req_sha256":"a","resp_sha256":"b"}\n\n').receipt?.chat_id).toBe("c");
+  });
+});
 describe("sse receipt", () => {
   it("extracts pai_receipt", () => {
     const r = parseSseChunk('data: [DONE]\n\nevent: pai_receipt\ndata: {"chat_id":"c","provider":"p","model":"m","req_sha256":"a","resp_sha256":"b"}\n\n');

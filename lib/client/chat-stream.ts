@@ -55,16 +55,18 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     throw new Error(j.error?.message || `HTTP ${res.status}`);
   }
   const reader = res.body.getReader(); const dec = new TextDecoder();
-  let buf = ""; let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
+  let buf = ""; let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = []; let finished = false;
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
-    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools);
+    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); finished ||= p.done;
     if (p.error) throw new Error(p.error);
     yield { text, remaining, tools };
   }
   const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools);
   if (p.error) throw new Error(p.error);
+  // /api/agent always ends with [DONE] or agent_error: anything else is a cut connection, not an answer.
+  if (agent && !(finished || p.done)) throw new Error("connection lost before the answer finished");
   yield { text, receipt, remaining, tools };
 }

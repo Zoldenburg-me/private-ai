@@ -232,7 +232,7 @@ details summary { cursor: pointer; color: var(--text); }
 .tool-steps ul { margin: 4px 0 0; padding-left: 18px; }
 .tool-steps a { color: var(--accent); overflow-wrap: anywhere; }
 .tool-query { display: inline-flex; align-items: center; gap: 4px; }
-@media (max-width: 480px) { .tool-toggle span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
+@media (max-width: 480px) { .tool-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 
 /* Ghost chat: a cooler, slate surface plus a dashed composer. Nothing about it looks like an error. */
 .app.is-ghost { --bg: var(--g-bg); --bg-raised: var(--g-raised); --panel2: var(--g-panel2); --line: var(--g-line); }

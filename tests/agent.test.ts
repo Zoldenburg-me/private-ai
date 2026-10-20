@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleAgent, handleChat } from "../lib/handler";
-import { issueToken } from "../lib/session";
+import { issueToken, setTier } from "../lib/session";
 import { _reset } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { parseSseChunk } from "../lib/sse";
@@ -57,15 +57,15 @@ describe("agent loop", () => {
     const out = await events(res);
     expect(out.text).toBe("Answer [1]");
     expect(out.tools.map((t) => t.status)).toEqual(["running", "done"]);
-    expect(out.tools[1]).toMatchObject({ id: "call_1", name: "web_search", query: QUERY, results: [{ title: "T1", url: "https://example.org/a" }] });
+    expect(out.tools[1]).toMatchObject({ id: "call_1_0", name: "web_search", query: QUERY, results: [{ title: "T1", url: "https://example.org/a" }] });
     expect(out.receipt).toMatchObject({ chat_id: "c2", provider: "mock", model: "m" });
 
     expect(u.model).toHaveLength(2);
     expect(u.model[0].tools).toEqual([expect.objectContaining({ type: "function", function: expect.objectContaining({ name: "web_search" }) })]);
     const msgs = u.model[1].messages as { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }[];
     expect(msgs[0].role).toBe("system"); // untrusted-tool-output rule comes first
-    expect(msgs.at(-2)).toMatchObject({ role: "assistant", tool_calls: [{ id: "call_1", type: "function", function: { name: "web_search", arguments: `{"query": "${QUERY}"}` } }] });
-    expect(msgs.at(-1)).toMatchObject({ role: "tool", tool_call_id: "call_1" });
+    expect(msgs.at(-2)).toMatchObject({ role: "assistant", tool_calls: [{ id: "call_1_0", type: "function", function: { name: "web_search", arguments: `{"query": "${QUERY}"}` } }] });
+    expect(msgs.at(-1)).toMatchObject({ role: "tool", tool_call_id: "call_1_0" });
     expect(msgs.at(-1)!.content).toContain(SNIPPET);
 
     const all = JSON.stringify(logged);
@@ -134,6 +134,29 @@ describe("agent loop", () => {
     await res.body!.cancel();
     release(); await new Promise((r) => setTimeout(r, 10));
     expect(logged.map((m) => m.event)).not.toContain("upstream_timeout");
+  });
+
+  it("pairs two parallel calls, and ids stay unique across steps even when the provider reuses them", async () => {
+    const { id, token } = issueToken(); await setTier(id, "pro");
+    const two = (id: string) => sse([{ id, choices: [{ delta: { tool_calls: [
+      { index: 0, id: "dup", function: { name: "web_search", arguments: '{"query":"a"}' } },
+      { index: 1, id: "dup", function: { name: "web_search", arguments: '{"query":"b"}' } },
+    ] }, finish_reason: "tool_calls" }] }]);
+    const u = upstream((n) => (n <= 2 ? two(`c${n}`) : answerStream("c3")));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(new Set(out.tools.map((t) => t.id))).toEqual(new Set(["call_1_0", "call_1_1", "call_2_0", "call_2_1"]));
+    const msgs = u.model[2].messages as { role: string; tool_calls?: { id: string }[]; tool_call_id?: string }[];
+    const callIds = msgs.flatMap((m) => m.tool_calls?.map((c) => c.id) ?? []);
+    expect(msgs.filter((m) => m.role === "tool").map((m) => m.tool_call_id)).toEqual(callIds);
+    expect(u.searches).toHaveLength(4);
+  });
+
+  it("an empty upstream answer and an unreachable provider are errors with our own text, never the transport's", async () => {
+    const { token } = issueToken();
+    const empty = upstream(() => sse([{ id: "c", choices: [{ delta: {}, finish_reason: "stop" }] }]));
+    expect((await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: empty.fetchImpl }))).error).toBe("empty provider response");
+    const down = (async () => { throw new Error("connect ECONNREFUSED 10.0.0.5:443"); }) as unknown as typeof fetch;
+    expect((await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: down }))).error).toBe("provider unreachable");
   });
 
   it("rejects client-supplied tools, and web_search when no search key is configured", async () => {
