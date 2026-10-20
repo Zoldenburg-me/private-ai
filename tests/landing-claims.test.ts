@@ -35,6 +35,12 @@ describe("landing claims follow the invite gate", () => {
     expect(render(Compare)).not.toContain("Coming soon");
   });
 
+  it("hero shows no hardcoded enclave status: the landing page checks nothing", () => {
+    const html = render(Hero);
+    expect(html).not.toContain("Enclave checks passed");
+    expect(html).not.toContain("chain unverified");
+  });
+
   it("does not claim per-reply attestation", () => {
     expect(render(Compare)).not.toContain("Checked on every reply");
   });

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Shield, Tag, UserFocus, Vault,
+  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Tag, UserFocus, Vault,
 } from "@phosphor-icons/react/dist/ssr";
 import { LEVEL_LABEL, NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
@@ -58,7 +58,6 @@ export function Hero() {
         <p className="lead">Private by design. We never store a copy of your chats.</p>
         <HeroComposer />
         <p className="hero-trust">
-          <span className="badge tone-warn"><Shield weight="duotone" aria-hidden />Enclave checks passed<span className="chain">chain unverified</span></span>
           <Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link>
         </p>
       </div>
