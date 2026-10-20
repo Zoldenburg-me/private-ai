@@ -43,7 +43,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
   if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name, privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
   if (provider.id === "near")
-    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested };
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw) };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
