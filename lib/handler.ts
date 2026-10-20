@@ -3,6 +3,7 @@ import { findSelectable, type ModelEntry } from "./catalog";
 import { gate, recordFailure } from "./ratelimit";
 import { resolveIdentity, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
+import { LIMITS, overLimit } from "./limits";
 import { parseModelRef } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
 import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS } from "./tiers";
@@ -32,9 +33,14 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const log = deps.log ?? metaLogger;
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
-  // Invite-only: anonymous sessions would otherwise spend the shared provider key without an invite.
-  if (!me.deviceId && inviteGateOn())
-    return Response.json({ error: { message: "Create a passkey with your invite code (Account) to start chatting.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  // Invite-only: signed-out visitors may try the web app under one whole-instance cap (fresh sessions
+  // are free to mint, so a per-account limit alone would not bound the shared provider key); the API needs an account.
+  if (!me.deviceId && inviteGateOn()) {
+    if (route !== "/api/chat")
+      return Response.json({ error: { message: "Sign up with a passkey to use the API.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
+    const limited = await overLimit(LIMITS.anonChat, "anon-chat");
+    if (limited) return limited;
+  }
   const id = me.accountId;
   let input: Record<string, unknown>;
   const raw = await readCapped(req, MAX_BODY_BYTES);

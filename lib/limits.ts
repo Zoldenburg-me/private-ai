@@ -11,6 +11,8 @@ interface LimitSpec { env: string; fallback: number; windowMs: number }
 export const LIMITS = {
   /** New anonymous sessions per minute, whole instance. */
   newSession: { env: "PAI_LIMIT_NEW_SESSIONS_PER_MIN", fallback: 600, windowMs: 60_000 },
+  /** Signed-out web chat messages per minute, whole instance, while signup is invite-only (bounds the shared provider key). */
+  anonChat: { env: "PAI_LIMIT_ANON_CHATS_PER_MIN", fallback: 60, windowMs: 60_000 },
   /** Anonymous passkey login options per minute, whole instance (bounds stored challenges). */
   passkeyLogin: { env: "PAI_LIMIT_PASSKEY_LOGINS_PER_MIN", fallback: 300, windowMs: 60_000 },
   /** Failed invite codes per minute, whole instance (caps guessing across fresh sessions). */

@@ -12,6 +12,8 @@ import type { Tier } from "@/lib/tiers";
 import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
+import { openHistory, readHandoff } from "@/lib/client/guest";
+import { readSidebarCollapsed, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
 import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
@@ -23,10 +25,16 @@ import { SettingsView, type AccountInfo, type Billing, type DeviceInfo } from "@
 import type { Usage } from "@/components/app/UsageMeter";
 import { Sidebar } from "@/components/app/Sidebar";
 import { ChatScope } from "@/lib/chat-scope";
-import { ChatsCircle, GearSix, Ghost, List, UserFocus, X } from "@phosphor-icons/react";
+import { ChatsCircle, GearSix, Ghost, List, SidebarSimple, UserCirclePlus, UserFocus, X } from "@phosphor-icons/react";
 
 type View = "chat" | "personas" | "settings";
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
+/** Below this width the rail + sidebar are an off-canvas drawer (phones and iPads in portrait). */
+const NAV_MQ = "(max-width: 1024px)";
+/** Below this width the proof drawer is a bottom sheet over the chat. */
+const SHEET_MQ = "(max-width: 820px)";
+/** Homepage hand-off: how long to wait for a model and its enclave check before only prefilling the prompt. */
+const HANDOFF_WAIT_MS = 10_000;
 const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
 
 export default function Home() {
@@ -45,7 +53,13 @@ export default function Home() {
   const [personaId, setPersonaId] = useState("");
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
   const [drawer, setDrawer] = useState(false);
-  const [navOpen, setNavOpen] = useState(false); // mobile only: rail + sidebar as a sheet
+  const [navOpen, setNavOpen] = useState(false); // narrow only: rail + sidebar as a drawer
+  const [narrow, setNarrow] = useState(false);
+  const [sheet, setSheet] = useState(false); // proof drawer is a bottom sheet
+  const [collapsed, setCollapsed] = useState(false); // wide only: sidebar hidden, rail stays
+  const [sessionDone, setSessionDone] = useState(false);
+  const [pending, setPending] = useState(""); // hand-off prompt waiting for a model and its proof
+  const [handoff, setHandoff] = useState<{ text: string; send: boolean } | null>(null);
   const [notice, setNotice] = useState("");
   const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -57,16 +71,32 @@ export default function Home() {
   /** Every chat switch goes through here so a running reply cannot follow into the next chat. */
   function openChat(next: Chat, nextGhost = ghost) { scope.switch(); setGhost(nextGhost); setChat(next); }
 
-  // Open the encrypted local vault (non-extractable key in IndexedDB); fall back to read-nothing if unavailable.
   useEffect(() => {
-    Vault.open(localStorage, idbKeyStore(), { onError: (e) => setNotice(`Not saved to encrypted history: ${e.message}`) }).then((v) => {
-      setKv(v); setChats(loadChats(v)); setPersonas(loadPersonas(v));
-    }).catch((e) => setVaultError(`Encrypted storage unavailable (${(e as Error).message}). Use ghost chat.`));
+    // Homepage hand-off: the prompt only ever sits in the fragment; drop it from the address bar right away.
+    const h = readHandoff(location);
+    if (h.ghost) setGhost(true);
+    if (h.prompt) setPending(h.prompt);
+    if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+    setCollapsed(readSidebarCollapsed());
     refreshSession();
     fetch("/api/models").then((r) => r.json()).then((all: ModelEntry[]) => {
       const m = visibleModels(all); setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
     }).catch(() => setNotice("Could not load models"));
   }, []);
+
+  // Open the encrypted local vault (non-extractable key in IndexedDB) once we know who this is. A signed-out
+  // first visit gets no vault and chats in ghost mode: nothing is written to this browser until they sign up.
+  const opening = useRef(false);
+  const signedIn = !!account?.signedIn;
+  useEffect(() => {
+    if (!sessionDone || kv || opening.current) return;
+    opening.current = true;
+    openHistory(localStorage, idbKeyStore(), signedIn, { onError: (e) => setNotice(`Not saved to encrypted history: ${e.message}`) }).then((v) => {
+      if (!v) { setGhost(true); return; }
+      setKv(v); setChats(loadChats(v)); setPersonas(loadPersonas(v));
+    }).catch((e) => setVaultError(`Encrypted storage unavailable (${(e as Error).message}). Use ghost chat.`))
+      .finally(() => { opening.current = false; });
+  }, [sessionDone, signedIn, kv]);
 
   // Vault writes finish asynchronously; warn before a reload or close would drop one.
   useEffect(() => {
@@ -102,7 +132,7 @@ export default function Home() {
       if (s.account?.signedIn) fetch("/api/account/devices").then((r) => r.json()).then((d) => setDevices(d.devices ?? [])).catch(() => {});
       else setDevices([]);
       return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys ?? []));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setSessionDone(true));
   }
 
   const checkProof = useCallback(async (ref: string): Promise<Proof | null> => {
@@ -269,25 +299,53 @@ export default function Home() {
   const onUsage = useCallback((rem: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: u?.limit })); }, []);
 
   const go = (v: View) => { setView(v); setNavOpen(false); };
+  /** Saving and history need an account: say so and show where to create one, never block the chat. */
+  const promptSignup = (why: string) => { setNotice(`${why} Create an account with a passkey: no email, no password.`); go("settings"); };
 
-  // Below 820px the nav is an off-canvas sheet and the proof drawer a bottom sheet: keep focus out of
-  // whatever is hidden or covered, move it into the sheet on open and back to the menu button on close.
+  // Homepage hand-off: send once a model is chosen and its enclave check is in; otherwise only prefill.
+  const proofReady = !!proof && !["failed", "unavailable", "pending"].includes(proof.level);
+  useEffect(() => {
+    if (!pending) return;
+    const give = (send: boolean) => { setHandoff({ text: pending, send }); setPending(""); };
+    if (modelRef && sessionReady && proofReady) { give(true); return; }
+    const t = setTimeout(() => give(false), HANDOFF_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [pending, modelRef, sessionReady, proofReady]);
+
+  useEffect(() => {
+    const mq = matchMedia(NAV_MQ); const sq = matchMedia(SHEET_MQ);
+    const apply = () => { setNarrow(mq.matches); setSheet(sq.matches); if (!mq.matches) setNavOpen(false); };
+    apply(); mq.addEventListener("change", apply); sq.addEventListener("change", apply);
+    return () => { mq.removeEventListener("change", apply); sq.removeEventListener("change", apply); };
+  }, []);
+  const navShown = narrow ? navOpen : !collapsed;
+  function toggleNav() {
+    if (narrow) { setNavOpen((o) => !o); return; }
+    setCollapsed(!collapsed); sidebarTouched.current = true;
+  }
+  // Remember the user's choice, but only outside ghost chat (it writes nothing, not even a display setting);
+  // a choice made in ghost chat is saved once they leave it.
+  const sidebarTouched = useRef(false);
+  useEffect(() => { // saved once per toggle, so a stale value never overwrites another tab's later choice
+    if (!ghost && sidebarTouched.current) { writeSidebarCollapsed(collapsed); sidebarTouched.current = false; }
+  }, [ghost, collapsed]);
+
+  // Narrow: the nav is an off-canvas drawer (and below 820px the proof drawer a bottom sheet): keep focus out of
+  // whatever is hidden or covered, move it into the drawer on open and back to the menu button on close.
   const sheetRef = useRef<HTMLDivElement>(null); const mainRef = useRef<HTMLElement>(null); const menuRef = useRef<HTMLButtonElement>(null);
   const navWasOpen = useRef(false);
   useEffect(() => {
-    const mq = matchMedia("(max-width: 820px)");
-    const apply = () => {
-      if (sheetRef.current) sheetRef.current.inert = mq.matches && !navOpen;
-      if (mainRef.current) mainRef.current.inert = mq.matches && (navOpen || drawer);
-    };
-    apply(); mq.addEventListener("change", apply);
-    if (navOpen && mq.matches) sheetRef.current?.querySelector<HTMLElement>(".rail-btn")?.focus();
-    if (!navOpen && navWasOpen.current && mq.matches) menuRef.current?.focus();
-    navWasOpen.current = navOpen;
+    if (sheetRef.current) sheetRef.current.inert = narrow && !navOpen;
+    if (mainRef.current) mainRef.current.inert = (narrow && navOpen) || (drawer && sheet);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && navOpen) setNavOpen(false); };
     addEventListener("keydown", onKey);
-    return () => { mq.removeEventListener("change", apply); removeEventListener("keydown", onKey); };
-  }, [navOpen, drawer]);
+    return () => removeEventListener("keydown", onKey);
+  }, [navOpen, drawer, narrow, sheet]);
+  useEffect(() => {
+    if (navOpen && narrow) sheetRef.current?.querySelector<HTMLElement>(".rail-btn")?.focus();
+    if (!navOpen && navWasOpen.current) menuRef.current?.focus();
+    navWasOpen.current = navOpen;
+  }, [navOpen, narrow]);
   const NAV = [
     { v: "chat" as const, label: "Chats", Icon: ChatsCircle },
     { v: "personas" as const, label: "Personas", Icon: UserFocus },
@@ -298,8 +356,8 @@ export default function Home() {
   );
 
   return (
-    <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""}`}>
-      <div className="nav-sheet" ref={sheetRef}>
+    <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""} ${collapsed ? "side-collapsed" : ""}`}>
+      <div className="nav-sheet" id="app-nav" ref={sheetRef}>
         <nav className="rail" aria-label="Main">
           <Link href="/" className="brand" aria-label="Private AI home"><Image src="/brand/narwhal.svg" alt="" width={28} height={15} unoptimized /></Link>
           {NAV.map(navBtn)}
@@ -309,7 +367,10 @@ export default function Home() {
         <Sidebar ghost={ghost} query={query} onQuery={setQuery} chats={filtered} currentId={chat.id} vaultError={vaultError}
           tier={tier} usage={usage} onUpgrade={() => go("settings")} account={account} onAccount={() => go("settings")}
           onNew={() => { startChat(); setNavOpen(false); }}
-          onToggleGhost={() => { startChat({ ghost: !ghost }); setNavOpen(false); }}
+          onToggleGhost={() => {
+            if (ghost && !kv && !signedIn) { promptSignup("Sign up to save chats in this browser."); return; }
+            startChat({ ghost: !ghost }); setNavOpen(false);
+          }}
           onOpen={(c) => { openChat(c, false); go("chat"); }}
           onDelete={(c) => { if (!kv) return; scope.forget(c.id); const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }} />
       </div>
@@ -317,11 +378,13 @@ export default function Home() {
 
       <main className="main" ref={mainRef}>
         <header className="topbar">
-          <button type="button" className="icon-btn menu-btn" ref={menuRef} aria-label="Open menu" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><List aria-hidden /></button>
+          <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Sidebar"}
+            aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple aria-hidden />}</button>
           <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} />
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
           {ghost && <span className="chip ghost-chip"><Ghost aria-hidden />Ghost chat</span>}
           <div className="grow" />
+          {sessionDone && !signedIn && view !== "settings" && <button type="button" className="btn signup-btn" data-testid="signup" onClick={() => go("settings")}><UserCirclePlus aria-hidden className="signup-ico" /><span className="signup-label">Sign up</span></button>}
           <ProofBadge proof={proof} onOpen={() => setDrawer(true)} />
         </header>
         {/* The live region stays mounted so screen readers announce text added to it. */}
@@ -338,6 +401,8 @@ export default function Home() {
           kv || ghost
             ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
+                handoff={handoff} onHandoff={() => setHandoff(null)}
+                hint={sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
                 anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/enclave/i.test(s)) : SUGGESTIONS} />
             : <div className="loading muted">Unlocking encrypted history…</div>
         )}

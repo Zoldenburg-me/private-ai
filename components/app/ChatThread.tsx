@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
@@ -30,6 +30,11 @@ export interface ThreadProps {
   suggestions?: string[];
   /** The selected model is anonymized: no enclave, so the welcome text must not claim one. */
   anonymized?: boolean;
+  /** Homepage hand-off: send this prompt as the first message, or only put it in the composer. */
+  handoff?: { text: string; send: boolean } | null;
+  onHandoff?: () => void;
+  /** Small line under the composer (e.g. the sign-up hint for signed-out visitors). */
+  hint?: ReactNode;
 }
 
 function textOf(content: readonly { type: string; text?: string }[]) {
@@ -101,6 +106,15 @@ export function ChatThread(props: ThreadProps) {
 
   const runtime = useLocalRuntime(adapter, { initialMessages });
 
+  const { handoff, onHandoff } = props;
+  const used = useRef<typeof handoff>(null); // StrictMode runs effects twice: send once
+  useEffect(() => {
+    if (!handoff || used.current === handoff) return;
+    used.current = handoff; onHandoff?.();
+    if (handoff.send) runtime.thread.append(handoff.text);
+    else runtime.thread.composer.setText(handoff.text);
+  }, [handoff, onHandoff, runtime]);
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="thread">
@@ -109,7 +123,7 @@ export function ChatThread(props: ThreadProps) {
             <div className="welcome" data-testid="welcome">
               <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
               <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
-              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : "Runs inside an attested enclave on NEAR AI Cloud."} Your history stays encrypted in this browser.</p>
+              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : "Runs inside an attested enclave on NEAR AI Cloud."} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
               <div className="suggestions">
                 {(props.suggestions ?? []).map((s) => (
                   <ThreadPrimitive.Suggestion key={s} prompt={s} send className="suggestion">{s}</ThreadPrimitive.Suggestion>
@@ -137,6 +151,7 @@ export function ChatThread(props: ThreadProps) {
             <ComposerPrimitive.Cancel className="send-btn stop" data-testid="stop" aria-label="Stop"><Stop weight="fill" aria-hidden /></ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>
         </ComposerPrimitive.Root>
+        {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );

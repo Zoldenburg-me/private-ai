@@ -40,6 +40,23 @@ describe("invite gate: chat", () => {
   });
 });
 
+describe("invite gate: anonymous web chat", () => {
+  const webChat = (token: string) => handleChat(post(token, { model: "mock:m", messages: [{ role: "user", content: "hi" }] }), "/api/chat", deps);
+
+  it("a signed-out visitor chats in the web app while gated, under a whole-instance cap (never per IP)", async () => {
+    vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "2");
+    const a = (await createSession()).token; const b = (await createSession()).token;
+    expect((await webChat(a)).status).toBe(200);
+    expect((await webChat(b)).status).toBe(200);
+    const r = await webChat((await createSession()).token); // fresh sessions are free to mint: the route cap holds
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Retry-After")).toBeTruthy();
+    expect((await chat(a)).status).toBe(401); // the OpenAI-compatible API still needs an account
+    const device = await signInDevice((await createSession()).id);
+    expect((await webChat(device)).status).toBe(200); // accounts are not counted against the anonymous cap
+  });
+});
+
 describe("invite gate: codes", () => {
   it("rejects whitespace-only, non-string and non-JSON invites", async () => {
     expect(inviteOk("   ")).toBe(false);

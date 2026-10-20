@@ -67,6 +67,12 @@ describe("ghost chat: one persistence gate", () => {
         if (/\.clear\s*\(/.test(src)) offenders.push(`${rel}: clears storage`);
         if (/\b(sessionStorage|document\.cookie\s*=)/.test(src) || /\bindexedDB\b(?!\.open\()/.test(src)) offenders.push(`${rel}: other browser storage`);
         if (/\blocalStorage\s*[.[]/.test(src)) offenders.push(`${rel}: uses localStorage directly`);
+      } else if (rel === "lib/client/ui-prefs.ts") {
+        // One UI preference (sidebar collapsed), never content: exactly one localStorage key, nothing else.
+        const writes = [...src.matchAll(/([\w.]+)\.(setItem|removeItem|clear)\s*\(([^,)]*)/g)];
+        if (writes.some((m) => m[0] !== "localStorage.setItem(SIDEBAR_KEY")) offenders.push(`${rel}: writes something other than SIDEBAR_KEY`);
+        if (!/export const SIDEBAR_KEY = "pai\.ui\.[\w-]+";/.test(src)) offenders.push(`${rel}: SIDEBAR_KEY is not a pai.ui.* literal`);
+        if (/\b(sessionStorage|indexedDB|document\.cookie\s*=)/.test(src)) offenders.push(`${rel}: other browser storage`);
       } else {
         // Only the gated writer modules may call setItem/removeItem, and only on a Writer.
         if (/\.(setItem|removeItem|clear)\s*\(/.test(src) && !["lib/storage.ts", "lib/personas.ts"].includes(rel)) offenders.push(`${rel}: direct storage write`);

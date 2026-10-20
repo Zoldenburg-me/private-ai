@@ -52,7 +52,7 @@ export function Sidebar(p: SidebarProps) {
         <UserCircle weight={p.account?.signedIn ? "fill" : "regular"} aria-hidden />
         {p.account?.signedIn
           ? <span><b>Signed in</b><span className="muted"> · {p.account.id}</span></span>
-          : <span><b>Sign in</b><span className="muted"> · or create an account</span></span>}
+          : <span><b>Sign up</b><span className="muted"> · save chats, keep your plan</span></span>}
       </button>
       <UsageMeter tier={p.tier} usage={p.usage} onUpgrade={p.onUpgrade} />
     </aside>
