@@ -14,16 +14,21 @@ function LevelIcon({ level }: { level: ProofLevel }) {
   return <Shield aria-hidden />;
 }
 
+// Short visible text; the full label stays the accessible name. Never "Verified" unless level === "verified".
+const SHORT: Record<ProofLevel, string> = {
+  verified: "Verified", "checks-passed": "Enclave", failed: "Proof failed", unavailable: "No proof", pending: "Checking…", "no-enclave": "No enclave",
+};
+
 /** Compact per-model/per-chat proof badge. Click opens the details drawer. */
 export function ProofBadge({ proof, onOpen }: { proof: Proof | null; onOpen: () => void }) {
   const level: ProofLevel = proof?.level ?? "pending";
-  const text = proof?.label ?? "Checking proof…";
+  const label = proof?.label ?? "Checking proof…";
   return (
     <button type="button" className={`proof-badge tone-${TONE[level]}`} data-testid="proof-badge" data-level={level} onClick={onOpen}
-      title={level === "no-enclave" ? "No enclave: this model runs at the vendor" : "Show enclave proof details"}>
+      aria-label={label} title={level === "no-enclave" ? "No enclave: this model runs at the vendor" : label}>
       <LevelIcon level={level} />
-      <span className="pb-label">{text.split(" · ")[0]}</span>
-      {proof && level !== "no-enclave" && <span className="chain-pill" data-testid="chain-status">{proof.chainVerified ? "chain ✓" : "chain unverified"}</span>}
+      <span className="pb-label">{SHORT[level]}</span>
+      {level === "checks-passed" && <span className="chain-pill" data-testid="chain-status">unverified</span>}
     </button>
   );
 }
