@@ -313,7 +313,7 @@ details summary { cursor: pointer; color: var(--text); }
   .site-footer { display: none; }
 }
 @media (max-width: 480px) {
-  .pb-label:has(+ .chain-pill) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* shield + "unverified" on phones */
+  .proof-badge[data-level="checks-passed"] .pb-label:has(+ .chain-pill) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* shield + "unverified" on phones */
   .ghost-chip { padding: 0 8px; font-size: 0; gap: 0; }
   .ghost-chip > svg { font-size: 14px; }
 }
