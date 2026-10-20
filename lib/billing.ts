@@ -133,13 +133,14 @@ export async function syncSubscription(subscriptionId: string, accountHint?: str
 export async function recomputeEntitlement(accountId: string, now = Date.now()) {
   const { accounts } = await stores();
   const current = await accounts.getEntitlement(accountId);
-  // Manual paid plans (ops) win; a manual "free" is only a downgrade and must not block a purchase.
-  if (current?.source === "manual" && current.tier !== "free") return;
+  const expiredManual = current?.source === "manual" && current.expiresAt != null && current.expiresAt <= now;
+  // Live manual paid plans (ops) win; a manual "free" is only a downgrade and must not block a purchase.
+  if (current?.source === "manual" && current.tier !== "free" && !expiredManual) return;
   const best = (await accounts.listSubscriptionsFor(accountId))
     .filter((x) => ENTITLED.has(x.status) && x.tier !== "free" && (x.currentPeriodEnd == null || x.currentPeriodEnd + GRACE_MS > now))
     .sort((a, b) => RANK[b.tier] - RANK[a.tier])[0];
   if (best) await accounts.setEntitlement(accountId, { tier: best.tier, source: "stripe", expiresAt: best.currentPeriodEnd == null ? null : best.currentPeriodEnd + GRACE_MS });
-  else await accounts.clearEntitlement(accountId, "stripe");
+  else await accounts.clearEntitlement(accountId, expiredManual ? undefined : "stripe");
 }
 
 /** Verify the Stripe signature over the raw body, then apply the event. Returns the event type handled. */

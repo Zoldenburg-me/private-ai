@@ -1,7 +1,7 @@
 import postgres, { type Sql } from "postgres";
 import type { TierId } from "../tiers";
-import type { AccountStore, Device, Entitlement, EntitlementSource, PasskeyCredential, Subscription } from "./types";
-import { dayKey, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
+import type { AccountStore, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import { dayKey, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 import { migrate } from "./migrate";
 
 const ms = (d: Date | null) => (d ? d.getTime() : null);
@@ -20,6 +20,16 @@ const toCred = (r: CredRow): PasskeyCredential => ({
 
 interface DeviceRow { id: string; account_id: string; created_at: Date; last_seen_on: string }
 const toDevice = (r: DeviceRow): Device => ({ id: r.id, accountId: r.account_id, createdAt: r.created_at.getTime(), lastSeenOn: r.last_seen_on });
+
+interface KeyRow { id: string; provider: string; suffix: string; status: ProviderKeyStatus; created_at: Date; disabled_at: Date | null; last_used_at: Date | null }
+const toKey = (r: KeyRow): ProviderKeyInfo => ({
+  id: r.id, provider: r.provider, suffix: r.suffix, status: r.status,
+  createdAt: r.created_at.getTime(), disabledAt: ms(r.disabled_at), lastUsedAt: ms(r.last_used_at),
+});
+interface AuditRow { id: string; at: Date; admin_id: string; action: string; account_id: string | null; target: string | null; detail: string | null }
+const toAudit = (r: AuditRow): AuditEntry => ({ id: Number(r.id), at: r.at.getTime(), adminId: r.admin_id, action: r.action, accountId: r.account_id, target: r.target, detail: r.detail });
+interface InviteRow { id: string; max_uses: number; uses: number; created_at: Date; revoked_at: Date | null }
+const toInvite = (r: InviteRow): InviteInfo => ({ id: r.id, maxUses: r.max_uses, uses: r.uses, createdAt: r.created_at.getTime(), revokedAt: ms(r.revoked_at) });
 
 export class PgAccountStore implements AccountStore {
   private ready: Promise<void> | null = null;
@@ -173,11 +183,96 @@ export class PgAccountStore implements AccountStore {
   async purgeInactive(cutoff: number, now = Date.now()) {
     const sql = await this.db();
     await sql`DELETE FROM erasures WHERE deleted_on < ${dayKey(now - ERASURE_LEDGER_DAYS * 86_400_000)}`;
+    await sql`DELETE FROM admin_audit WHERE at < ${new Date(now - AUDIT_LOG_DAYS * 86_400_000)}`;
     // ON DELETE CASCADE removes entitlements, subscriptions and passkeys of purged accounts.
     const r = await sql`DELETE FROM sessions s WHERE s.last_seen_on < ${dayKey(cutoff)}
       AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]})
         AND (x.current_period_end IS NULL OR x.current_period_end >= ${new Date(cutoff)}))`;
     return r.count;
+  }
+  async listAccounts(q: { prefix: string; limit: number; offset: number }) {
+    const sql = await this.db();
+    // starts_with is a literal prefix match: "_" and "%" in the search are not wildcards.
+    const rows = await sql<{ id: string; created_at: Date; last_seen_on: string; tier: TierId | null }[]>`
+      SELECT s.id, s.created_at, to_char(s.last_seen_on, 'YYYY-MM-DD') AS last_seen_on, e.tier
+      FROM sessions s LEFT JOIN entitlements e ON e.account_id = s.id AND (e.expires_at IS NULL OR e.expires_at > now())
+      WHERE starts_with(s.id, ${q.prefix}) ORDER BY s.created_at DESC, s.id LIMIT ${q.limit} OFFSET ${q.offset}`;
+    return rows.map((r) => ({ id: r.id, createdAt: r.created_at.getTime(), lastSeenOn: r.last_seen_on, tier: r.tier }));
+  }
+  async addProviderKey(k: { id: string; provider: string; ciphertext: Uint8Array; suffix: string; createdAt: number }) {
+    const sql = await this.db();
+    await sql.begin(async (tx) => {
+      // Serialises rotations of one provider, so concurrent ones queue instead of hitting provider_keys_one_active.
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`provider_key:${k.provider}`}))`;
+      await tx`UPDATE provider_keys SET status = 'disabled', disabled_at = ${new Date(k.createdAt)} WHERE provider = ${k.provider} AND status = 'active'`;
+      await tx`INSERT INTO provider_keys (id, provider, ciphertext, suffix, status, created_at)
+        VALUES (${k.id}, ${k.provider}, ${Buffer.from(k.ciphertext)}, ${k.suffix}, 'active', ${new Date(k.createdAt)})`;
+    });
+  }
+  async listProviderKeys() {
+    const sql = await this.db();
+    return (await sql<KeyRow[]>`SELECT id, provider, suffix, status, created_at, disabled_at, last_used_at FROM provider_keys ORDER BY created_at DESC, id DESC`).map(toKey);
+  }
+  async activeProviderKeys() {
+    const sql = await this.db();
+    return (await sql<{ id: string; provider: string; ciphertext: Uint8Array }[]>`SELECT id, provider, ciphertext FROM provider_keys WHERE status = 'active'`)
+      .map((r) => ({ id: r.id, provider: r.provider, ciphertext: new Uint8Array(r.ciphertext) }));
+  }
+  async setProviderKeyStatus(id: string, status: ProviderKeyStatus) {
+    const sql = await this.db();
+    return sql.begin(async (tx) => {
+      const [p] = await tx<{ provider: string }[]>`SELECT provider FROM provider_keys WHERE id = ${id}`;
+      if (!p) return false;
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`provider_key:${p.provider}`}))`;
+      const [k] = await tx<{ provider: string; status: string }[]>`SELECT provider, status FROM provider_keys WHERE id = ${id} FOR UPDATE`;
+      if (!k) return false;
+      if (k.status === status) return true;
+      if (status === "active") await tx`UPDATE provider_keys SET status = 'disabled', disabled_at = now() WHERE provider = ${k.provider} AND status = 'active'`;
+      await tx`UPDATE provider_keys SET status = ${status}, disabled_at = ${status === "active" ? null : new Date()} WHERE id = ${id}`;
+      return true;
+    });
+  }
+  async deleteProviderKey(id: string) {
+    const sql = await this.db();
+    return (await sql`DELETE FROM provider_keys WHERE id = ${id}`).count > 0;
+  }
+  async markProviderKeyUsed(id: string, now: number) {
+    const sql = await this.db();
+    await sql`UPDATE provider_keys SET last_used_at = ${new Date(now)} WHERE id = ${id}`;
+  }
+  async addAudit(e: NewAuditEntry) {
+    const sql = await this.db();
+    // An account deleted meanwhile is recorded as null instead of failing the (already applied) action's entry.
+    await sql`INSERT INTO admin_audit (admin_id, action, account_id, target, detail)
+      VALUES (${e.adminId}, ${e.action}, (SELECT id FROM sessions WHERE id = ${e.accountId ?? null}), ${e.target ?? null}, ${e.detail ?? null})`;
+  }
+  async listAudit(limit: number) {
+    const sql = await this.db();
+    return (await sql<AuditRow[]>`SELECT * FROM admin_audit ORDER BY id DESC LIMIT ${limit}`).map(toAudit);
+  }
+  async addInvite(i: { id: string; codeHash: string; maxUses: number; createdAt: number }) {
+    const sql = await this.db();
+    await sql`INSERT INTO invite_codes (id, code_hash, max_uses, created_at) VALUES (${i.id}, ${i.codeHash}, ${i.maxUses}, ${new Date(i.createdAt)})`;
+  }
+  async listInvites() {
+    const sql = await this.db();
+    return (await sql<InviteRow[]>`SELECT id, max_uses, uses, created_at, revoked_at FROM invite_codes ORDER BY created_at DESC, id DESC`).map(toInvite);
+  }
+  async inviteUsable(codeHash: string) {
+    const sql = await this.db();
+    return (await sql`SELECT 1 FROM invite_codes WHERE code_hash = ${codeHash} AND revoked_at IS NULL AND uses < max_uses`).length > 0;
+  }
+  async redeemInvite(codeHash: string) {
+    const sql = await this.db();
+    return (await sql`UPDATE invite_codes SET uses = uses + 1 WHERE code_hash = ${codeHash} AND revoked_at IS NULL AND uses < max_uses`).count > 0;
+  }
+  async releaseInvite(codeHash: string) {
+    const sql = await this.db();
+    await sql`UPDATE invite_codes SET uses = uses - 1 WHERE code_hash = ${codeHash} AND uses > 0`;
+  }
+  async revokeInvite(id: string) {
+    const sql = await this.db();
+    return (await sql`UPDATE invite_codes SET revoked_at = COALESCE(revoked_at, now()) WHERE id = ${id}`).count > 0;
   }
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
   async close() { await this.sql.end({ timeout: 2 }); }

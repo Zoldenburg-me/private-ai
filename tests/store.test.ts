@@ -17,7 +17,7 @@ const pgUrl = process.env.TEST_DATABASE_URL;
 const pg = pgUrl ? new PgAccountStore(postgres(pgUrl, { max: 2, onnotice: () => {} }), false) : null;
 const backends: [string, () => Promise<AccountStore>][] = [["memory", async () => new MemoryAccountStore()]];
 if (pg) backends.push(["postgres", async () => {
-  await pg.sql.unsafe("DROP TABLE IF EXISTS erasures, devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
+  await pg.sql.unsafe("DROP TABLE IF EXISTS admin_audit, provider_keys, invite_codes, erasures, devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
   await migrate(pg.sql); return pg;
 }]);
 afterAll(async () => { await pg?.close(); });
@@ -195,6 +195,69 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.hasSignIn("acct_si_pk")).toBe(true);
     await s.addDevice({ id: "dev_si_cccccccccccc", accountId: "acct_si_dev", createdAt: Date.now() });
     expect(await s.hasSignIn("acct_si_dev")).toBe(true);
+  });
+  it("listAccounts: newest first, id prefix search, plan, paging", async () => {
+    await s.touchSession("acct_list_a1", Date.UTC(2026, 0, 1));
+    await new Promise((r) => setTimeout(r, 5));
+    await s.touchSession("acct_list_b2", Date.UTC(2026, 0, 2));
+    await s.setEntitlement("acct_list_b2", { tier: "pro", source: "manual", expiresAt: null });
+    const all = await s.listAccounts({ prefix: "acct_list_", limit: 10, offset: 0 });
+    expect(all.map((a) => a.id)).toEqual(["acct_list_b2", "acct_list_a1"]);
+    expect(all[0]).toMatchObject({ tier: "pro", lastSeenOn: expect.any(String), createdAt: expect.any(Number) });
+    expect(all[1].tier).toBeNull();
+    await s.setEntitlement("acct_list_b2", { tier: "pro", source: "manual", expiresAt: Date.UTC(2020, 0, 1) });
+    expect((await s.listAccounts({ prefix: "acct_list_b", limit: 10, offset: 0 }))[0].tier).toBeNull();
+    expect((await s.listAccounts({ prefix: "acct_list_a", limit: 10, offset: 0 })).map((a) => a.id)).toEqual(["acct_list_a1"]);
+    // "_" is a LIKE wildcard; the search is a literal prefix.
+    expect(await s.listAccounts({ prefix: "acct_list__", limit: 10, offset: 0 })).toEqual([]);
+    expect((await s.listAccounts({ prefix: "acct_list_", limit: 1, offset: 1 })).map((a) => a.id)).toEqual(["acct_list_a1"]);
+  });
+  it("provider keys: one active per provider, status changes, used-at, delete", async () => {
+    const key = (id: string, provider = "near") => ({ id, provider, ciphertext: new Uint8Array([1, 2, 3]), suffix: "abcd", createdAt: Date.now() });
+    await s.addProviderKey(key("pk_1"));
+    await s.addProviderKey(key("pk_2"));
+    await s.addProviderKey(key("pk_3", "phala"));
+    expect((await s.activeProviderKeys()).map((k) => k.id).sort()).toEqual(["pk_2", "pk_3"]);
+    const listed = await s.listProviderKeys();
+    expect(listed.find((k) => k.id === "pk_1")).toMatchObject({ status: "disabled", disabledAt: expect.any(Number) });
+    expect(JSON.stringify(listed)).not.toContain("ciphertext");
+    expect(await s.setProviderKeyStatus("pk_1", "active")).toBe(true);
+    expect((await s.activeProviderKeys()).filter((k) => k.provider === "near").map((k) => k.id)).toEqual(["pk_1"]);
+    expect(await s.setProviderKeyStatus("pk_nope", "active")).toBe(false);
+    await s.markProviderKeyUsed("pk_1", Date.UTC(2026, 5, 1));
+    expect((await s.listProviderKeys()).find((k) => k.id === "pk_1")?.lastUsedAt).toBe(Date.UTC(2026, 5, 1));
+    expect(await s.deleteProviderKey("pk_1")).toBe(true);
+    expect(await s.deleteProviderKey("pk_1")).toBe(false);
+    expect((await s.activeProviderKeys()).map((k) => k.id)).toEqual(["pk_3"]);
+  });
+  it("audit log: newest first; account ids go with the account", async () => {
+    await s.touchSession("acct_audit_1");
+    await s.addAudit({ adminId: "admin_1", action: "login" });
+    await s.addAudit({ adminId: "admin_1", action: "set_entitlement", accountId: "acct_audit_1", detail: "pro" });
+    const [e] = await s.listAudit(10);
+    expect(e).toMatchObject({ adminId: "admin_1", action: "set_entitlement", accountId: "acct_audit_1", target: null, detail: "pro" });
+    await s.deleteAccount("acct_audit_1");
+    expect((await s.listAudit(10))[0].accountId).toBeNull();
+    // An account deleted before the entry is written is recorded as null, not an error.
+    await s.addAudit({ adminId: "admin_1", action: "revoke_device", accountId: "acct_audit_1" });
+    expect((await s.listAudit(1))[0]).toMatchObject({ action: "revoke_device", accountId: null });
+  });
+  it("invite codes: redeem up to max uses, revoke", async () => {
+    await s.addInvite({ id: "inv_1", codeHash: "h1", maxUses: 2, createdAt: Date.now() });
+    expect(await s.inviteUsable("h1")).toBe(true);
+    expect(await s.redeemInvite("h1")).toBe(true);
+    expect(await s.redeemInvite("h1")).toBe(true);
+    expect(await s.inviteUsable("h1")).toBe(false);
+    expect(await s.redeemInvite("h1")).toBe(false);
+    await s.releaseInvite("h1");
+    expect(await s.redeemInvite("h1")).toBe(true);
+    expect(await s.redeemInvite("nope")).toBe(false);
+    await new Promise((r) => setTimeout(r, 5));
+    await s.addInvite({ id: "inv_2", codeHash: "h2", maxUses: 5, createdAt: Date.now() });
+    expect(await s.revokeInvite("inv_2")).toBe(true);
+    expect(await s.redeemInvite("h2")).toBe(false);
+    expect(await s.inviteUsable("h2")).toBe(false);
+    expect((await s.listInvites()).map((i) => [i.id, i.uses, i.revokedAt !== null])).toEqual([["inv_2", 0, true], ["inv_1", 2, false]]);
   });
 });
 

@@ -109,7 +109,30 @@ Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Event
 **Invite-only signup:** set `INVITE_CODES=code1,code2` (long random strings, e.g. `openssl rand -hex 12`). The first
 passkey (account creation) asks for a code; logins and extra passkeys do not. Codes are shared and reusable; remove one
 from INVITE_CODES and restart to revoke it (a signup already started with it can still finish within 5 minutes). While the gate is on, anonymous chat is off: chatting needs a signed-in
-passkey account. Failed codes are capped instance-wide (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
+passkey account. Panel codes count a use only when the passkey is created, so a cancelled prompt spends nothing. Failed codes are capped instance-wide (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
+
+**Admin panel (`/admin`):** operators only, not linked from the site and `noindex`. Set `ADMIN_ACCOUNT_IDS` to the
+account ids (Settings → Account) allowed in; they sign in with that account's passkey and get a separate 2-hour
+`pai_admin` cookie (scoped to `/api/admin`). Removing an id from the list ends its session on the next request. Every
+write (plan, device sign-out, account delete, keys, invites) needs a fresh passkey confirmation, and every action is
+written to the audit log (admin id, action, target, time; no IPs or secrets; kept 365 days). Admin API calls are
+limited per admin (`PAI_LIMIT_ADMIN_PER_MIN`, default 120) and admin logins instance-wide (`PAI_LIMIT_ADMIN_LOGINS_PER_MIN`, 30). The login
+limit is shared by everyone, so a flood of login attempts can delay an admin sign-in for up to a minute; Caddy's per-IP
+limits blunt that, and an existing admin session is not affected. An account listed in `ADMIN_ACCOUNT_IDS` cannot be
+deleted from the panel; remove it from the list first.
+- *Users:* search by account id prefix; see plan, Stripe status, usage, passkey count and devices; sign out a device;
+  set or clear a **manual** plan (Stripe plans stay with the webhooks); delete an account through the same erasure
+  path as the user's own delete (Stripe first, then the account, recorded in the erasure ledger).
+- *Provider keys:* set `ADMIN_KEY_KEK` (`openssl rand -base64 32`; keep it only in `.env`, never in the database or
+  backups' reach). Keys are stored AES-256-GCM encrypted and shown afterwards only as their last 4 characters.
+  **The stored key wins:** a provider with an active stored key uses it; without one it uses its env key
+  (`<PREFIX>_API_KEY`). Saving a new key rotates (the old one is disabled). A stored key that cannot be decrypted
+  (KEK missing or changed) switches that provider off rather than falling back to env; to retire stored keys, disable
+  or remove them. New providers in `lib/providers.ts` (e.g. Venice) appear in the panel automatically. Other app
+  instances pick up a change within 30 seconds.
+- *Invites:* codes created in the panel are shown once, stored only as a hash, have a use limit and can be revoked.
+  They are accepted alongside `INVITE_CODES` (which stay env-only and read-only in the panel). They never switch the gate
+  on by themselves: set `INVITE_CODES` or `INVITE_ONLY=1`.
 
 **Pro for testers:** run Stripe in test mode (above) and let testers check out with card `4242 4242 4242 4242`; the
 webhook grants Pro like a real payment. To comp one account without Checkout, add its full id (Settings → Account →

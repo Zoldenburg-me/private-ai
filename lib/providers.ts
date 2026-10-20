@@ -10,9 +10,11 @@ export interface ProviderConfig {
   defaultModel: string;
   /** From <PREFIX>_MODELS: if set, only these model ids are offered. */
   models?: string[];
+  /** Set when apiKey came from the admin key store (lib/provider-keys.ts) rather than env. */
+  keyId?: string;
 }
 
-const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
+export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
   { id: "near", name: "NEAR AI Cloud", prefix: "NEAR_AI", privacy: "tee-attested", baseUrl: "https://cloud-api.near.ai/v1" },
   { id: "phala", name: "Phala Confidential AI", prefix: "PHALA", privacy: "tee-attested", baseUrl: "https://inference.phala.com/v1" },
   { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested" },

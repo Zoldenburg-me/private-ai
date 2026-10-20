@@ -7,6 +7,13 @@ const directives = (csp: string) => Object.fromEntries(csp.split(";").map((d) =>
 describe("Content-Security-Policy", () => {
   afterEach(() => { vi.unstubAllEnvs(); });
 
+  it("/admin is noindex and gets the same strict CSP; other pages are not marked", () => {
+    const r = middleware(new NextRequest("https://chat.example.com/admin"));
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(r.headers.get("content-security-policy")).toMatch(/script-src 'self' 'nonce-/);
+    expect(middleware(new NextRequest("https://chat.example.com/chat")).headers.get("x-robots-tag")).toBeNull();
+  });
+
   it("production policy: nonce scripts only, no remote images or connections, no framing", () => {
     const d = directives(buildCsp("abc123", false));
     expect(d["default-src"]).toEqual(["'self'"]);

@@ -29,6 +29,7 @@ export function middleware(req: NextRequest) {
   headers.set("Content-Security-Policy", csp);
   const res = NextResponse.next({ request: { headers } });
   res.headers.set("Content-Security-Policy", csp);
+  if (req.nextUrl.pathname.startsWith("/admin")) res.headers.set("X-Robots-Tag", "noindex, nofollow");
   if (process.env.NODE_ENV === "production") res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
   return res;
 }

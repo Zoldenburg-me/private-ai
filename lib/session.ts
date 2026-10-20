@@ -1,12 +1,13 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { TIERS, type TierId } from "./tiers";
 import { stores } from "./store";
+import { kek } from "./keyvault";
 
 /**
  * Anonymous server-issued identity. Token = "pai_<id>.<hmac>". No email, no PII.
  * Tier comes from the server-side entitlement store, never from the client.
  */
-const secret = () => {
+export const sessionSecret = () => {
   const s = process.env.SESSION_SECRET;
   if (s && s.length >= 16) return s;
   if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET required in production");
@@ -21,9 +22,10 @@ export function assertProductionConfig(env: Record<string, string | undefined> =
   if (env.NODE_ENV !== "production") return;
   if ((env.SESSION_SECRET ?? "").length < 32) throw new Error("SESSION_SECRET must be at least 32 characters in production");
   if (env.MOCK_PROVIDER === "1" && env.PAI_ALLOW_MOCK_PROVIDER !== "1") throw new Error("MOCK_PROVIDER=1 is not allowed in production");
+  kek(env); // throws if ADMIN_KEY_KEK is set but not 32 bytes
 }
 
-const sign = (id: string) => createHmac("sha256", secret()).update(id).digest("base64url").slice(0, 32);
+const sign = (id: string) => createHmac("sha256", sessionSecret()).update(id).digest("base64url").slice(0, 32);
 
 export function issueToken(): { id: string; token: string } {
   const id = randomBytes(16).toString("base64url");
@@ -117,7 +119,12 @@ export async function setTier(id: string, tier: TierId): Promise<void> {
 }
 
 export async function tierOf(id: string, now = Date.now()): Promise<TierId> {
-  const e = await (await stores()).accounts.getEntitlement(id);
+  let e = await (await stores()).accounts.getEntitlement(id);
+  if (e?.source === "manual" && e.expiresAt != null && e.expiresAt <= now) {
+    // An expired ops override hands back to the Stripe subscription it may have replaced.
+    await (await import("./billing")).recomputeEntitlement(id, now);
+    e = await (await stores()).accounts.getEntitlement(id);
+  }
   if (e && (e.expiresAt == null || e.expiresAt > now)) return e.tier;
   try {
     const seed = JSON.parse(process.env.ENTITLEMENTS || "{}") as Record<string, TierId>;

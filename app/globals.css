@@ -317,3 +317,14 @@ details summary { cursor: pointer; color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Admin panel (/admin): reuses .page, .panel, .btn, .tag; only inputs and tables are new. */
+.admin.page { height: 100dvh; background: var(--bg); }
+.admin input:not([type=file]), .admin select { background: var(--bg); border: 1px solid var(--field-line); border-radius: 8px; padding: 8px 10px; color: var(--text); transition: border-color .2s var(--ease); }
+.admin input:focus, .admin select:focus { border-color: var(--accent); outline: none; }
+.admin-scroll { overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; white-space: nowrap; }
+.admin-table th { font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.admin-table tr.sel td { background: var(--panel2); }
+.admin-code { font: 500 15px var(--mono); padding: 8px 12px; border: 1px dashed var(--accent-line); border-radius: 8px; user-select: all; }

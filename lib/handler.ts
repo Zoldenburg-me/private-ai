@@ -2,8 +2,9 @@ import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { gate, recordFailure } from "./ratelimit";
 import { resolveIdentity, tierOf } from "./session";
-import { inviteCodes } from "./invite";
-import { loadProviders, parseModelRef } from "./providers";
+import { inviteGateOn } from "./invite";
+import { parseModelRef } from "./providers";
+import { liveProviders, markKeyUsed } from "./provider-keys";
 import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS } from "./tiers";
 import { relay } from "./relay";
 import { metaLogger, type Logger } from "./log";
@@ -32,7 +33,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
   // Invite-only: anonymous sessions would otherwise spend the shared provider key without an invite.
-  if (!me.deviceId && inviteCodes().length > 0)
+  if (!me.deviceId && inviteGateOn())
     return Response.json({ error: { message: "Create a passkey with your invite code (Account) to start chatting.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   const id = me.accountId;
   let input: Record<string, unknown>;
@@ -47,7 +48,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   if (!ref) { await recordFailure(id); return err(400, "model must be '<provider>:<model>' (see /api/v1/models)"); }
   const entry = findSelectable(await deps.catalog(), ref.provider, ref.model);
   if (!entry) { await recordFailure(id); return err(403, "model not available under the privacy policy (TEE, zero-retention or anonymized gateway only)"); }
-  const provider = loadProviders(deps.env ?? process.env).find((p) => p.id === ref.provider);
+  const provider = (await liveProviders(deps.env ?? process.env)).find((p) => p.id === ref.provider);
   if (!provider) return err(503, "provider not configured");
 
   const tier = await tierOf(id);
@@ -60,6 +61,8 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const g = await gate(id, tier, estimateTokens(JSON.stringify(body)));
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
 
+  // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
+  if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
   const res = await relay({ provider, body, log, route, fetchImpl: deps.fetchImpl, extraHeaders: g.headers });
   if (res.status >= 500) await recordFailure(id);
   return res;

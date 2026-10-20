@@ -1,5 +1,5 @@
-import type { AccountStore, ConsumeLimits, ConsumeResult, CounterStore, Device, Entitlement, EntitlementSource, HitResult, PasskeyCredential, Subscription } from "./types";
-import { dayKey, minuteStartOf, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
+import type { AccountStore, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import { dayKey, minuteStartOf, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
 export class MemoryAccountStore implements AccountStore {
@@ -9,6 +9,9 @@ export class MemoryAccountStore implements AccountStore {
   credentials = new Map<string, PasskeyCredential>();
   devices = new Map<string, Device>();
   erasures = new Map<string, string>();
+  providerKeys = new Map<string, ProviderKeyInfo & { ciphertext: Uint8Array }>();
+  audit: AuditEntry[] = [];
+  invites = new Map<string, InviteInfo & { codeHash: string }>();
   private seq = 0;
 
   async touchSession(id: string, now = Date.now()) {
@@ -34,6 +37,7 @@ export class MemoryAccountStore implements AccountStore {
     for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
     for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
     for (const [k, d] of this.devices) if (d.accountId === id) this.devices.delete(k);
+    this.audit = this.audit.map((e) => (e.accountId === id ? { ...e, accountId: null } : e));
     return true;
   }
   async getEntitlement(id: string) { return this.entitlements.get(id) ?? null; }
@@ -96,6 +100,7 @@ export class MemoryAccountStore implements AccountStore {
   async purgeInactive(cutoff: number, now = Date.now()) {
     const keepFrom = dayKey(now - ERASURE_LEDGER_DAYS * 86_400_000);
     for (const [h, d] of this.erasures) if (d < keepFrom) this.erasures.delete(h);
+    this.audit = this.audit.filter((e) => e.at >= now - AUDIT_LOG_DAYS * 86_400_000);
     const day = dayKey(cutoff); let n = 0;
     for (const [id, s] of this.sessions) {
       if (s.lastSeenOn >= day) continue;
@@ -104,6 +109,71 @@ export class MemoryAccountStore implements AccountStore {
       this.drop(id); n++;
     }
     return n;
+  }
+  async listAccounts(q: { prefix: string; limit: number; offset: number }) {
+    return [...this.sessions].filter(([id]) => id.startsWith(q.prefix))
+      .sort(([a, x], [b, y]) => y.createdAt - x.createdAt || a.localeCompare(b))
+      .slice(q.offset, q.offset + q.limit)
+      .map(([id, x]) => {
+        const e = this.entitlements.get(id);
+        return { id, createdAt: x.createdAt, lastSeenOn: x.lastSeenOn, tier: e && (e.expiresAt == null || e.expiresAt > Date.now()) ? e.tier : null };
+      });
+  }
+  private disableActive(provider: string, now: number) {
+    for (const [id, k] of this.providerKeys) if (k.provider === provider && k.status === "active") this.providerKeys.set(id, { ...k, status: "disabled", disabledAt: now });
+  }
+  async addProviderKey(k: { id: string; provider: string; ciphertext: Uint8Array; suffix: string; createdAt: number }) {
+    if (this.providerKeys.has(k.id)) throw new Error("key exists");
+    this.disableActive(k.provider, k.createdAt);
+    this.providerKeys.set(k.id, { ...k, ciphertext: new Uint8Array(k.ciphertext), status: "active", disabledAt: null, lastUsedAt: null });
+  }
+  async listProviderKeys(): Promise<ProviderKeyInfo[]> {
+    return [...this.providerKeys.values()].sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+      .map(({ ciphertext: _c, ...k }) => k);
+  }
+  async activeProviderKeys() {
+    return [...this.providerKeys.values()].filter((k) => k.status === "active").map((k) => ({ id: k.id, provider: k.provider, ciphertext: new Uint8Array(k.ciphertext) }));
+  }
+  async setProviderKeyStatus(id: string, status: ProviderKeyStatus) {
+    const k = this.providerKeys.get(id); if (!k) return false;
+    if (k.status === status) return true;
+    if (status === "active") this.disableActive(k.provider, Date.now());
+    this.providerKeys.set(id, { ...k, status, disabledAt: status === "active" ? null : Date.now() });
+    return true;
+  }
+  async deleteProviderKey(id: string) { return this.providerKeys.delete(id); }
+  async markProviderKeyUsed(id: string, now: number) { const k = this.providerKeys.get(id); if (k) this.providerKeys.set(id, { ...k, lastUsedAt: now }); }
+  async addAudit(e: NewAuditEntry) {
+    // Like Postgres: an account that no longer exists is recorded as null.
+    const accountId = e.accountId && this.sessions.has(e.accountId) ? e.accountId : null;
+    this.audit = [...this.audit, { id: ++this.seq, at: Date.now(), adminId: e.adminId, action: e.action, accountId, target: e.target ?? null, detail: e.detail ?? null }];
+  }
+  async listAudit(limit: number) { return [...this.audit].sort((a, b) => b.id - a.id).slice(0, limit).map((e) => ({ ...e })); }
+  async addInvite(i: { id: string; codeHash: string; maxUses: number; createdAt: number }) {
+    if ([...this.invites.values()].some((x) => x.codeHash === i.codeHash) || this.invites.has(i.id)) throw new Error("invite exists");
+    this.invites.set(i.id, { ...i, uses: 0, revokedAt: null });
+  }
+  async listInvites(): Promise<InviteInfo[]> {
+    return [...this.invites.values()].sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)).map(({ codeHash: _h, ...i }) => i);
+  }
+  async inviteUsable(codeHash: string) {
+    const i = [...this.invites.values()].find((x) => x.codeHash === codeHash);
+    return !!i && i.revokedAt === null && i.uses < i.maxUses;
+  }
+  async redeemInvite(codeHash: string) {
+    const i = [...this.invites.values()].find((x) => x.codeHash === codeHash);
+    if (!i || i.revokedAt !== null || i.uses >= i.maxUses) return false;
+    this.invites.set(i.id, { ...i, uses: i.uses + 1 });
+    return true;
+  }
+  async releaseInvite(codeHash: string) {
+    const i = [...this.invites.values()].find((x) => x.codeHash === codeHash);
+    if (i && i.uses > 0) this.invites.set(i.id, { ...i, uses: i.uses - 1 });
+  }
+  async revokeInvite(id: string) {
+    const i = this.invites.get(id); if (!i) return false;
+    if (i.revokedAt === null) this.invites.set(id, { ...i, revokedAt: Date.now() });
+    return true;
   }
   async ping() {}
 }

@@ -80,7 +80,8 @@ describe("invite gate: codes", () => {
     expect((await regOptions(post(token, { invite: "nope" }))).status).toBe(403);
     const fake = { challenge: "A".repeat(43), rp: { id: "localhost" }, user: { id: "dXNlcg" } };
     const v = await regVerify(post(token, new SoftAuthenticator().create(fake, ORIGIN)));
-    expect(v.status).toBe(400);
+    // Refused at the gate: no admission was recorded by a successful options call.
+    expect(v.status).toBe(403);
     expect(v.headers.get("set-cookie")).toBeNull();
     expect(await (await stores()).accounts.listCredentials(id)).toHaveLength(0);
   });

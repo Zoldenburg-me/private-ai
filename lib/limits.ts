@@ -21,6 +21,10 @@ export const LIMITS = {
   evidence: { env: "PAI_LIMIT_EVIDENCE_PER_MIN", fallback: 30, windowMs: 60_000 },
   /** Attestation / signature fetches per minute, whole instance (fresh anonymous sessions are free to mint). */
   evidenceAll: { env: "PAI_LIMIT_EVIDENCE_ALL_PER_MIN", fallback: 600, windowMs: 60_000 },
+  /** Admin API requests per admin account per minute. */
+  admin: { env: "PAI_LIMIT_ADMIN_PER_MIN", fallback: 120, windowMs: 60_000 },
+  /** Admin passkey login options per minute, whole instance. */
+  adminLogin: { env: "PAI_LIMIT_ADMIN_LOGINS_PER_MIN", fallback: 30, windowMs: 60_000 },
 } satisfies Record<string, LimitSpec>;
 
 function limitOf(spec: LimitSpec, env: Record<string, string | undefined>): number {

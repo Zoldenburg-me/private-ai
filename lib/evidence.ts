@@ -1,4 +1,5 @@
-import { loadProviders, parseModelRef } from "./providers";
+import { parseModelRef } from "./providers";
+import { liveProviders } from "./provider-keys";
 import { UPSTREAM_TIMEOUT_MS } from "./catalog";
 import { getCatalog } from "./catalog-cache";
 import { identityFrom } from "./session";
@@ -18,7 +19,7 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   const url = new URL(req.url);
   const ref = parseModelRef(url.searchParams.get("model") ?? "");
   if (!ref) return fail(400, "model=<provider>:<model> required");
-  const p = loadProviders().find((x) => x.id === ref.provider);
+  const p = (await liveProviders()).find((x) => x.id === ref.provider);
   if (!p) return fail(503, "provider not configured");
   const entry = (await getCatalog()).find((m) => m.provider === ref.provider && m.id === ref.model);
   if (!entry) return fail(400, "unknown model");

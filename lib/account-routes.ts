@@ -43,6 +43,15 @@ async function exportData(id: string): Promise<Response> {
 }
 
 /**
+ * Art. 17 erasure, shared by the user's own delete and the admin panel: Stripe customer(s) first,
+ * so a failure there leaves everything intact; then the account row, recorded in the erasure ledger.
+ */
+export async function eraseAccount(id: string): Promise<void> {
+  await deleteStripeCustomers(id);
+  await (await stores()).accounts.deleteAccount(id);
+}
+
+/**
  * Delete the account: Stripe customer(s) first, so a failure there leaves everything intact and
  * the user can retry; then the account row, which cascades to plan, subscriptions and passkeys.
  * Usage counters in Redis carry only the opaque id and expire within 2 days.
@@ -52,12 +61,11 @@ export const deleteAccount = withStores(async (req: Request) => {
   const id = me.accountId;
   const limited = await overLimit(LIMITS.accountAction, `acct:${id}`); if (limited) return limited;
   if (!(await consumeStepUp(me))) return stepUpRequired();
-  try { await deleteStripeCustomers(id); } catch (e) {
+  try { await eraseAccount(id); } catch (e) {
     await restoreStepUp(me);
     if (e instanceof BillingError) return fail(e.status, e.message);
     throw e;
   }
-  await (await stores()).accounts.deleteAccount(id);
   metaLogger({ route: "/api/account", event: "account_deleted", status: 200 });
   return json({ deleted: true }, 200, { "Set-Cookie": clearedSessionCookie() });
 });

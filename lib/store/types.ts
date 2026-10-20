@@ -22,6 +22,23 @@ export interface PasskeyCredential {
 /** A signed-in browser. Deleting it revokes that browser's token. */
 export interface Device { id: string; accountId: string; createdAt: number; lastSeenOn: string }
 
+/** One row of the admin account list. `tier` is the stored, unexpired entitlement, null if none. */
+export interface AccountSummary { id: string; createdAt: number; lastSeenOn: string; tier: TierId | null }
+
+export type ProviderKeyStatus = "active" | "disabled";
+/** Provider key metadata. The ciphertext never leaves the store except via activeProviderKeys(). */
+export interface ProviderKeyInfo {
+  id: string; provider: string; suffix: string; status: ProviderKeyStatus;
+  createdAt: number; disabledAt: number | null; lastUsedAt: number | null;
+}
+
+/** Admin audit entry. `accountId` is cleared when that account is deleted; no IPs, user agents or secrets. */
+export interface AuditEntry { id: number; at: number; adminId: string; action: string; accountId: string | null; target: string | null; detail: string | null }
+export type NewAuditEntry = { adminId: string; action: string; accountId?: string | null; target?: string | null; detail?: string | null };
+
+/** Invite code row: only the SHA-256 of the code is stored. */
+export interface InviteInfo { id: string; maxUses: number; uses: number; createdAt: number; revokedAt: number | null }
+
 /** Durable account data (Postgres in production). */
 export interface AccountStore {
   /** Create the session row if missing and bump last-seen (day granularity). */
@@ -67,8 +84,34 @@ export interface AccountStore {
    * purge deletes them again. Also prunes ledger entries older than ERASURE_LEDGER_DAYS before `now`.
    */
   purgeInactive(cutoff: number, now?: number): Promise<number>;
+
+  /** Admin: accounts whose id starts with `prefix` (literal), newest first. */
+  listAccounts(q: { prefix: string; limit: number; offset: number }): Promise<AccountSummary[]>;
+  /** Admin: store an encrypted provider key as the provider's active key; the previous active one is disabled (atomic). */
+  addProviderKey(k: { id: string; provider: string; ciphertext: Uint8Array; suffix: string; createdAt: number }): Promise<void>;
+  listProviderKeys(): Promise<ProviderKeyInfo[]>;
+  /** Active keys with their ciphertext, for building provider requests only. */
+  activeProviderKeys(): Promise<{ id: string; provider: string; ciphertext: Uint8Array }[]>;
+  /** Activating a key disables the provider's other active key (atomic). False if the key does not exist. */
+  setProviderKeyStatus(id: string, status: ProviderKeyStatus): Promise<boolean>;
+  deleteProviderKey(id: string): Promise<boolean>;
+  markProviderKeyUsed(id: string, now: number): Promise<void>;
+  addAudit(e: NewAuditEntry): Promise<void>;
+  listAudit(limit: number): Promise<AuditEntry[]>;
+  addInvite(i: { id: string; codeHash: string; maxUses: number; createdAt: number }): Promise<void>;
+  listInvites(): Promise<InviteInfo[]>;
+  /** True if the code exists, is not revoked and has uses left (nothing is counted). */
+  inviteUsable(codeHash: string): Promise<boolean>;
+  /** Count one use of the code if it exists, is not revoked and has uses left (atomic). */
+  redeemInvite(codeHash: string): Promise<boolean>;
+  /** Give back one use counted by redeemInvite (the signup it was for failed). */
+  releaseInvite(codeHash: string): Promise<void>;
+  revokeInvite(id: string): Promise<boolean>;
   ping(): Promise<void>;
 }
+
+/** Audit entries older than this are pruned by the retention job. */
+export const AUDIT_LOG_DAYS = 365;
 
 /** Subscription states that grant access (Stripe retries failed renewals while past_due). */
 export const ENTITLED_STATUSES = ["active", "trialing", "past_due"] as const;
