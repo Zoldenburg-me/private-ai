@@ -26,7 +26,7 @@ function Item({ i }: { i: ProofItem }) {
 // Plain-language status. "verified" is only reachable when the certificate chain is verified (lib/client/proof.ts).
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
-  "checks-passed": "Running in a sealed enclave. Hardware chain not yet verified.",
+  "checks-passed": "Enclave checks passed, but the hardware chain is not verified yet.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
   unavailable: "No enclave proof is available right now.",
   pending: "Checking…",

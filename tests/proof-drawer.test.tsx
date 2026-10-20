@@ -24,7 +24,9 @@ describe("proof badge (short, honest)", () => {
     const html = badge(p);
     expect(html).toContain(`aria-label="${p.label}"`);
     expect(html).toContain('data-testid="chain-status"');
-    expect(text(html).trim().length).toBeLessThanOrEqual(12);
+    expect(text(html)).toMatch(/unverified/); // the caveat is visible, not only a dot or tooltip
+    expect(text(html)).not.toContain("✓");
+    expect(text(html).replace(/\s+/g, " ").trim().length).toBeLessThanOrEqual(20);
     expect(claimsVerified(text(html))).toBe(false);
     expect(claimsVerified(html)).toBe(false);
   });
@@ -41,7 +43,8 @@ describe("proof drawer (summary first)", () => {
   it("leads with a plain status line, model, time and a check count", () => {
     const html = drawer(passing());
     const summary = html.slice(0, html.indexOf("<details"));
-    expect(summary).toContain("Running in a sealed enclave. Hardware chain not yet verified.");
+    expect(summary).toContain("Enclave checks passed, but the hardware chain is not verified yet.");
+    expect(summary).not.toMatch(/sealed|running in/i); // an unverified quote cannot prove where it runs
     expect(summary).toContain("mock:mock-tee-small");
     expect(summary).toContain("Checked");
     expect(text(summary)).toMatch(/14 of 14 checks passed/);
