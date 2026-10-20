@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build: deps -> build -> minimal non-root runtime with Next's standalone output.
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 
 FROM node:${NODE_VERSION}-bookworm-slim AS deps
 WORKDIR /app
