@@ -95,6 +95,47 @@ Open TCP 80 and 443, and UDP 443 (HTTP/3; no other UDP port is needed), then `do
 - **Check the config:** `docker compose --profile proxy build caddy && docker compose --profile proxy run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile` (CI runs the same).
 - **After the first deploy, check that Caddy sees real IPs and logs none:** temporarily add `respond /whoami "{remote_host}"` at the top of the site block, rebuild, and run `curl -4 https://chat.example.com/whoami` and `curl -6 https://chat.example.com/whoami` from outside (IPv6 if the box has an AAAA record). Each must print your own public address, not a `172.x` or `fe80::` Docker address. Remove the line again and rebuild. Then `docker compose logs caddy | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}|[0-9a-f]{0,4}::[0-9a-f:]+|([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}' | sort -u` must print nothing but `127.0.0.1` (the upstream app); look at any other hit by eye.
 
+**Production image (`Dockerfile`):** Node 24 (`node:24.x-bookworm-slim`, pinned by digest; the comment in the
+Dockerfile says how to bump it), Next standalone output, runs as the unprivileged `node` user (uid 1000) with
+`NODE_ENV=production`, npm/corepack removed from the runtime image, no source maps, no secrets in any layer (`.env` is in
+`.dockerignore`; all config comes from the environment at run time). Compose runs it read-only with all
+capabilities dropped. CI (`image` job) builds it on every PR and runs `scripts/smoke-image.sh` against Postgres 16 and
+Redis 7; run that script yourself before a release if you change the image.
+
+| Variable | Required in production | Purpose |
+|---|---|---|
+| `SESSION_SECRET` | yes, >= 32 chars | Signs session tokens. Changing it signs everyone out. |
+| `DATABASE_URL`, `REDIS_URL` | yes (compose sets both) | Accounts/plans in Postgres, counters/limits in Redis. Unset = refused (503) unless `PAI_ALLOW_MEMORY_STORE=1`. |
+| `POSTGRES_PASSWORD` | yes (compose) | Builds `DATABASE_URL` and initialises the `postgres` service. |
+| `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGIN` | yes | Passkeys; the public host name and `https://` origin. |
+| `APP_URL` | yes, with Stripe | Stripe return URLs. |
+| `ADMIN_KEY_KEK` | for stored provider keys | 32 random bytes, base64. Only in `.env`. |
+| `ADMIN_ACCOUNT_IDS` | for `/admin` | Account ids allowed into the admin panel. |
+| `INVITE_CODES` / `INVITE_ONLY` | recommended | Signup gate (see below). |
+| `NEAR_AI_API_KEY` etc., `DEFAULT_PROVIDER` | at least one provider | Inference providers (`.env.example` lists all). |
+| `STRIPE_*` | for payments | Secret key, webhook secret, price ids. |
+| `DOMAIN` | yes (Caddy) | Public host name for TLS. |
+| `PAI_AUTO_MIGRATE`, `PAI_RETENTION_JOB`, `PAI_LOG`, `PAI_LIMIT_*` | no | Defaults are fine (see `.env.example`). |
+
+- **Boot checks:** the server exits with code 1 and a one-line `boot check failed: …` message (the setting's name,
+  never its value) if `SESSION_SECRET` is missing or short, `ADMIN_KEY_KEK` is set but not 32 bytes, or
+  `MOCK_PROVIDER=1`. Compose's restart policy then retries it; `docker compose logs app` shows the reason.
+- **Migrations:** `migrations/*.sql` are applied in order on the first database use after start, inside one
+  transaction under a Postgres advisory lock, so several replicas starting at once are safe and each file runs once
+  (`schema_migrations`). To run them yourself, set `PAI_AUTO_MIGRATE=0`, create the ledger once with
+  `CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
+  then apply the files in order with `psql` and insert each file name into it. Migrations are forward-only.
+- **Health:** `GET /api/health` answers 200 only when Postgres and Redis answer, otherwise 503 (no details). The image's
+  `HEALTHCHECK` polls it every 15 s; Caddy waits for `healthy` before starting.
+- **Shutdown:** `docker compose stop` sends SIGTERM; the server stops accepting connections, finishes open requests
+  and exits 0 (Docker kills it after 10 s by default).
+- **Upgrade:** take a backup (`scripts/backup-db.sh`, runbook `docs/backup-restore.md`), keep the current image as
+  `docker tag private-ai:latest private-ai:previous`, then `git pull && docker compose up -d --build app` and check
+  `curl -fsS 127.0.0.1:3000/api/health`.
+- **Rollback:** `docker tag private-ai:previous private-ai:latest && docker compose up -d --no-build app`. An older image
+  runs against the newer schema only if the migrations since were additive; otherwise restore the backup taken before
+  the upgrade.
+
 **Integration tests against real backends** (the store and rate-limit contract tests run against both memory and the real service):
 ```
 docker compose up -d postgres redis   # or any Postgres 16 / Redis 7
