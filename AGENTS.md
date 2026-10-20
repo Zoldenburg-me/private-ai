@@ -91,8 +91,10 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
        `$P pg_restore -U pai -d pai_restore --no-owner --no-acl --exit-on-error < data/pre-upgrade.dump`;
        `$P psql -U pai -d pai_restore -v ON_ERROR_STOP=1 -c 'create temp table incoming (id_hash text, deleted_on date)' -c '\copy incoming from pstdin' -c "$(cat src/scripts/reerase.sql)" < data/erasures.tsv`;
        `$P psql -U pai -d postgres -c 'ALTER DATABASE pai RENAME TO pai_old' -c 'ALTER DATABASE pai_restore RENAME TO pai'`;
-       `rm -f data/erasures.tsv data/pre-upgrade.dump`; `docker compose up -d app`.
-     - Check sign-in, then `$P dropdb -U pai pai_old` within 7 days, as `scripts/restore-db.sh` does
+       `rm -f data/erasures.tsv`; `docker compose up -d --wait app`.
+     - Keep `data/pre-upgrade.dump` until the old version is up and sign-in works: `pai_old` has the
+       new schema, so the dump is the only way back to the old one. Then, within 7 days,
+       `$P dropdb -U pai pai_old` and `rm data/pre-upgrade.dump`, as `scripts/restore-db.sh` does
        (it runs these steps from restic snapshots, once off-site backups exist). If any step fails
        before the rename, `rm -f data/erasures.tsv` and `$P dropdb -U pai --if-exists pai_restore`.
 
