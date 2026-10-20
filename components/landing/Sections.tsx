@@ -1,58 +1,129 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowUp, ArrowsLeftRight, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Shield, Tag, UserFocus, Vault,
+  ArrowRight, ArrowUp, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Shield, Tag, UserFocus, Vault,
 } from "@phosphor-icons/react/dist/ssr";
 import { LEVEL_LABEL, NOT_VERIFIED } from "@/lib/client/proof";
+import { inviteCodes } from "@/lib/invite";
+import { loadProviders } from "@/lib/providers";
 import { TIERS, type TierId } from "@/lib/tiers";
 import { HeroSilk } from "./HeroSilk";
+import { HeroSky } from "./HeroSky";
+import { MotionToggle } from "./MotionToggle";
 import { ProofDemo } from "./ProofDemo";
 
-const START = "Start chatting, no signup";
+export const BRAND = "Hiddensee";
+/** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
+const gated = () => inviteCodes().length > 0;
+/** Anonymized frontier models are only offered when the gateway is configured (VENICE_API_KEY + VENICE_MODELS). */
+const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
+const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 
 function Mark({ size = 28 }: { size?: number }) {
-  return <Image src="/brand/narwhal.svg" alt="" width={size} height={Math.round(size * 132 / 244)} unoptimized />;
+  return <span className="mark-tile" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={size} height={Math.round(size * 132 / 244)} unoptimized /></span>;
 }
+
+/** Label that rolls up on hover (Jiro "Roamer" nav); the top copy is decorative. */
+function Roll({ children }: { children: string }) {
+  return <span className="roll"><span className="roll-top" aria-hidden>{children}</span><span className="roll-main">{children}</span></span>;
+}
+
+const NAV: readonly { href: string; label: string }[] = [
+  { href: "#compare", label: "Compare" }, { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" },
+  { href: "#pricing", label: "Pricing" }, { href: "#faq", label: "FAQ" },
+];
 
 export function SiteNav() {
   return (
     <header className="l-nav">
-      <Link href="/" className="wordmark" aria-label="Private AI home"><Mark />Private AI<span className="sq" aria-hidden /></Link>
-      <nav aria-label="Main">
-        <a href="#how">How it works</a><a href="#proof">Proof</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a>
-      </nav>
-      <Link href="/chat" className="btn-accent">Start chatting</Link>
+      <div className="nav-pill">
+        <Link href="/" className="wordmark" aria-label={`${BRAND} home`}><Mark size={22} />{BRAND}</Link>
+        <nav aria-label="Main">{NAV.map(({ href, label }) => <a key={href} href={href}><Roll>{label}</Roll></a>)}</nav>
+        <Link href="/chat" className="btn-solid"><Roll>Start chatting</Roll></Link>
+      </div>
     </header>
   );
 }
 
+/** Full-screen night hero: star canvas, sea-coloured silk on the horizon, ambient glow, centred composer (Stitch "Ambient Hero"). */
 export function Hero() {
   return (
-    <section className="l-hero" aria-labelledby="hero-h">
+    <section className="l-hero l-band theme-dark" aria-labelledby="hero-h">
+      <div className="glow" aria-hidden />
+      <HeroSky />
       <HeroSilk />
       <div className="hero-copy">
-        <span className="hero-mark" aria-hidden><Mark size={44} /></span>
-        <h1 id="hero-h">How can I help,<em>privately?</em></h1>
-        <p className="lead">Open models run inside hardware enclaves. Your history stays encrypted in your browser.</p>
-        <Link href="/chat" className="composer-preview" aria-label={`Ask anything privately… ${START}`}>
+        <span className="hero-mark" aria-hidden><Mark size={40} /><span className="live" /></span>
+        <h1 id="hero-h">How can I help,{" "}<em>privately?</em></h1>
+        <p className="lead">Your chats stay on your device, locked. We never store a copy.</p>
+        <Link href="/chat" className="composer-preview">
           <span className="cp-input">Ask anything privately…</span>
-          <span className="cp-row">
+          <span className="cp-row" aria-hidden>
             <span className="demo-model">Open model <span className="tag-ok">TEE</span></span>
             <span className="badge tone-warn"><Shield weight="duotone" aria-hidden />Enclave checks passed<span className="chain">chain unverified</span></span>
             <span className="cp-send" aria-hidden><ArrowUp weight="bold" /></span>
           </span>
         </Link>
         <div className="hero-ctas">
-          <Link href="/chat" className="btn-accent lg">{START}</Link>
+          <Link href="/chat" className="btn-solid lg">{start()} <ArrowRight aria-hidden /></Link>
           <a href="#proof" className="link-arrow">How the proof works <ArrowRight aria-hidden /></a>
         </div>
       </div>
+      <MotionToggle />
     </section>
   );
 }
 
-export function Statement({ quiet, point }: { quiet: string; point: string }) {
-  return <section className="l-statement"><p><span>{quiet}</span> <em>{point}</em></p></section>;
+/** Large statement whose words ink in as they scroll into view (CSS scroll timeline; static where unsupported). */
+export function Statement({ text }: { text: string }) {
+  return (
+    <section className="l-statement">
+      <p className="reveal">{text.split(" ").map((w, i) => <span key={i} className="w">{w} </span>)}</p>
+    </section>
+  );
+}
+
+type Mark3 = "yes" | "part" | "no";
+type Cell = readonly [Mark3, string];
+/** One cell per rival, in RIVALS order; a wrong-length row does not compile. */
+type Row = { label: string; cells: readonly [us: Cell, chatgpt: Cell, lumo: Cell, duck: Cell] };
+const RIVALS = [BRAND, "ChatGPT", "Lumo", "Duck.ai"] as const;
+// Competitor facts from each provider's public privacy pages; re-check before each release.
+const compareRows = (): readonly Row[] => [
+  { label: "Use it without an account", cells: [gated() ? ["part", "Invite-only beta"] : ["yes", "No signup"], ["part", "Limited"], ["part", "Limited"], ["yes", "No signup"]] },
+  { label: "Chat history kept off their servers", cells: [["yes", "Only in your browser"], ["no", "Saved to your account"], ["part", "Saved, encrypted"], ["yes", "On your device"]] },
+  { label: "Your chats never train models", cells: [["yes", "Never"], ["part", "Opt-out needed"], ["yes", "Never"], ["yes", "Never"]] },
+  { label: "Shows what ran your chat", cells: [["part", "Enclave proof per model, every reply signed"], ["no", "No"], ["no", "No"], ["no", "No"]] },
+  { label: "Open models", cells: [["yes", "Yes"], ["no", "No"], ["yes", "Yes"], ["part", "Some"]] },
+  { label: "Frontier models (GPT, Claude, Gemini)", cells: [frontier() ? ["yes", "Anonymized"] : ["part", "Coming soon, anonymized"], ["part", "OpenAI only"], ["no", "No"], ["yes", "Anonymized"]] },
+];
+const MARK_ICON = { yes: Check, part: Minus, no: X };
+
+export function Compare() {
+  return (
+    <section id="compare" className="l-section" aria-labelledby="cmp-h">
+      <SectionHead id="cmp-h" eyebrow="Compare" title={<>How it <em>stacks up</em></>} />
+      {/* Focusable so keyboard users can scroll the table on narrow screens. */}
+      <div className="cmp-wrap" tabIndex={0} role="region" aria-labelledby="cmp-h">
+        <table className="cmp">
+          <thead><tr><th scope="col"><span className="sr-only">Feature</span></th>{RIVALS.map((r, i) => <th key={r} scope="col" className={i === 0 ? "us" : undefined}>{r}</th>)}</tr></thead>
+          <tbody>
+            {compareRows().map(({ label, cells }) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                {cells.map(([m, note], i) => {
+                  const Icon = MARK_ICON[m];
+                  return <td key={RIVALS[i]} className={`${i === 0 ? "us " : ""}m-${m}`}><Icon weight="bold" aria-hidden /><span>{note}</span></td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="fine">Based on each provider&rsquo;s public privacy information, October 2026.</p>
+    </section>
+  );
 }
 
 const HOPS = [
@@ -61,14 +132,20 @@ const HOPS = [
   { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs each reply.", note: "attested" },
 ];
 
+function SectionHead({ id, eyebrow, title }: { id: string; eyebrow: string; title: ReactNode }) {
+  return <div className="s-head"><p className="eyebrow">{eyebrow}</p><h2 id={id}>{title}</h2></div>;
+}
+
 export function HowItWorks() {
   return (
     <section id="how" className="l-section" aria-labelledby="how-h">
-      <span className="pill">How it works</span>
-      <h2 id="how-h">Where your words go</h2>
+      <SectionHead id="how-h" eyebrow="How it works" title={<>Where your words <em>go</em></>} />
       <ol className="hops">
-        {HOPS.map(({ icon: Icon, title, body, note }) => (
-          <li key={title}><Icon className="hop-icon" aria-hidden /><h3>{title}</h3><p>{body}</p><span className="l-note">{note}</span></li>
+        {HOPS.map(({ icon: Icon, title, body, note }, i) => (
+          <li key={title} className="card">
+            <span className="num" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
+            <Icon className="hop-icon" aria-hidden /><h3>{title}</h3><p>{body}</p><span className="l-note">{note}</span>
+          </li>
         ))}
       </ol>
     </section>
@@ -78,16 +155,19 @@ export function HowItWorks() {
 export function Proof() {
   const labels = { verified: LEVEL_LABEL.verified, "checks-passed": LEVEL_LABEL["checks-passed"], failed: LEVEL_LABEL.failed, unavailable: LEVEL_LABEL.unavailable };
   return (
-    <section id="proof" className="l-section l-proof" aria-labelledby="proof-h">
-      <div className="proof-copy">
-        <h2 id="proof-h">Proof, not promises</h2>
-        <p>Every chat shows what the app checked about the enclave, and every reply carries a signature line. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified.</p>
-        <details className="not-yet">
-          <summary>What we do not verify yet ({NOT_VERIFIED.length})</summary>
-          <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
-        </details>
+    <section id="proof" className="l-section" aria-labelledby="proof-h">
+      <div className="l-proof card">
+        <div className="proof-copy">
+          <p className="eyebrow">Proof</p>
+          <h2 id="proof-h">Proof, not <em>promises</em></h2>
+          <p>Every chat shows what the app checked about the enclave, and every reply carries a signature line. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified.</p>
+          <details className="not-yet">
+            <summary>What we do not verify yet ({NOT_VERIFIED.length})</summary>
+            <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
+          </details>
+        </div>
+        <ProofDemo labels={labels} />
       </div>
-      <ProofDemo labels={labels} />
     </section>
   );
 }
@@ -98,10 +178,10 @@ const NEVER = ["Chat content (encrypted in your browser)", "Your email (passkeys
 export function ServerSees() {
   return (
     <section className="l-section" aria-labelledby="sees-h">
-      <h2 id="sees-h">What the server sees</h2>
+      <SectionHead id="sees-h" eyebrow="Transparency" title={<>What the server <em>sees</em></>} />
       <div className="ledger">
-        <div><h3><Eye aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
-        <div><h3><EyeSlash aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
+        <div className="card"><h3><Eye aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
+        <div className="card"><h3><EyeSlash aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
       </div>
       <Link href="/privacy/metadata" className="link-arrow">Every stored field, listed <ArrowRight aria-hidden /></Link>
     </section>
@@ -120,9 +200,9 @@ const FEATURES = [
 export function Features() {
   return (
     <section className="l-section" aria-labelledby="feat-h">
-      <h2 id="feat-h">Also in the box</h2>
+      <SectionHead id="feat-h" eyebrow="Features" title={<>Also in <em>the box</em></>} />
       <ul className="features">
-        {FEATURES.map(({ icon: Icon, title, body }) => <li key={title}><Icon aria-hidden /><h3>{title}</h3><p>{body}</p></li>)}
+        {FEATURES.map(({ icon: Icon, title, body }) => <li key={title} className="card"><Icon aria-hidden /><h3>{title}</h3><p>{body}</p></li>)}
       </ul>
     </section>
   );
@@ -137,15 +217,14 @@ const PLAN_LINES: Record<TierId, string[]> = {
 export function Pricing() {
   return (
     <section id="pricing" className="l-section" aria-labelledby="price-h">
-      <span className="pill">Pricing</span>
-      <h2 id="price-h">Plans</h2>
+      <SectionHead id="price-h" eyebrow="Pricing" title={<>Simple <em>plans</em></>} />
       <div className="plans-row">
         {(Object.keys(TIERS) as TierId[]).map((id) => (
-          <div key={id} className={`l-plan ${id === "pro" ? "featured" : ""}`}>
+          <div key={id} className={`l-plan card ${id === "pro" ? "featured l-band theme-dark" : ""}`}>
             <h3>{TIERS[id].name}</h3>
             <p className="l-price">€{TIERS[id].priceEurMonth}<span>/ month</span></p>
             <ul>{PLAN_LINES[id].map((l) => <li key={l}>{l}</li>)}</ul>
-            <Link href="/chat" className={id === "pro" ? "btn-accent" : "btn-quiet"}>{id === "free" ? "Start free" : `Choose ${TIERS[id].name}`}</Link>
+            <Link href="/chat" className={id === "pro" ? "btn-solid" : "btn-outline"}>{id === "free" ? "Start free" : `Choose ${TIERS[id].name}`}</Link>
           </div>
         ))}
       </div>
@@ -165,7 +244,7 @@ const FAQ = [
 export function Faq() {
   return (
     <section id="faq" className="l-section l-faq" aria-labelledby="faq-h">
-      <h2 id="faq-h">Questions</h2>
+      <SectionHead id="faq-h" eyebrow="FAQ" title={<>Questions, <em>answered</em></>} />
       {FAQ.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}
     </section>
   );
@@ -173,9 +252,12 @@ export function Faq() {
 
 export function Closing() {
   return (
-    <section className="l-closing">
-      <p><span>No account.</span> <em>No email.</em></p>
-      <Link href="/chat" className="btn-accent lg">{START}</Link>
+    <section className="l-closing l-band theme-dark" aria-label="Get started">
+      {gated() ? <p><span>No email.</span> <em>Just an invite.</em></p> : <p><span>No account.</span> <em>No email.</em></p>}
+      <div className="hero-ctas">
+        <Link href="/chat" className="btn-solid lg">{start()} <ArrowRight aria-hidden /></Link>
+        <Link href="/privacy/metadata" className="btn-outline lg">What the server stores</Link>
+      </div>
     </section>
   );
 }
@@ -183,11 +265,14 @@ export function Closing() {
 export function SiteFooter() {
   return (
     <footer className="l-footer">
-      <span className="wordmark"><Mark size={22} />Private AI<span className="sq" aria-hidden /></span>
-      <nav aria-label="Legal">
-        <Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/agb">AGB</Link><Link href="/privacy/metadata">What the server stores</Link>
-      </nav>
-      <span className="copy">© 2026 Private AI</span>
+      <div className="foot-row">
+        <span className="wordmark"><Mark size={18} />{BRAND}</span>
+        <nav aria-label="Legal">
+          <Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/agb">AGB</Link><Link href="/privacy/metadata">What the server stores</Link>
+        </nav>
+        <span className="copy">© 2026 Zoldenburg UG · {BRAND}</span>
+      </div>
+      <p className="giant" aria-hidden>{BRAND}</p>
     </footer>
   );
 }

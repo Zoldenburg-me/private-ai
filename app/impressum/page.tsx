@@ -10,18 +10,18 @@ export default function Impressum() {
         <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG)</p>
         <p>
           Zoldenburg UG (haftungsbeschränkt)<br />
-          <Todo>Straße, Hausnummer</Todo><br />
-          <Todo>PLZ, Ort</Todo>, Deutschland
+          Franz-Josef-Straße 11<br />
+          80801 München, Deutschland
         </p>
-        <p>Vertreten durch die Geschäftsführung: <Todo>Name(n) der Geschäftsführer</Todo></p>
+        <p>Vertreten durch den Geschäftsführer: Tony Thomas</p>
         <h3>Kontakt</h3>
-        <p>E-Mail: <Todo>kontakt@…</Todo><br />Telefon: <Todo>optional, sonst zweiter schneller Kontaktweg</Todo></p>
+        <p>E-Mail: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a><br />Telefon: <Todo>optional, sonst zweiter schneller Kontaktweg</Todo></p>
         <h3>Registereintrag</h3>
-        <p>Registergericht: <Todo>Amtsgericht …</Todo><br />Registernummer: <Todo>HRB …</Todo></p>
+        <p>Sitz: München<br />Registergericht: Amtsgericht München<br />Registernummer: HRB 317115</p>
         <h3>Umsatzsteuer</h3>
         <p>Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: <Todo>DE…</Todo></p>
         <h3>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h3>
-        <p><Todo>Name, Anschrift wie oben</Todo></p>
+        <p>Tony Thomas, Franz-Josef-Straße 11, 80801 München</p>
         <h3>Verbraucherstreitbeilegung</h3>
         <p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen. <Todo>Formulierung und Hinweis zur EU-OS-Plattform anwaltlich prüfen</Todo></p>
         <h3>Hinweis zu KI-Ausgaben</h3>
@@ -32,18 +32,18 @@ export default function Impressum() {
         <p>Information pursuant to § 5 of the German Digital Services Act (DDG)</p>
         <p>
           Zoldenburg UG (haftungsbeschränkt)<br />
-          <Todo>street, number</Todo><br />
-          <Todo>postcode, city</Todo>, Germany
+          Franz-Josef-Straße 11<br />
+          80801 München, Germany
         </p>
-        <p>Represented by the managing director(s): <Todo>name(s)</Todo></p>
+        <p>Represented by the managing director: Tony Thomas</p>
         <h3>Contact</h3>
-        <p>Email: <Todo>contact@…</Todo></p>
+        <p>Email: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a></p>
         <h3>Commercial register</h3>
-        <p>Register court: <Todo>Amtsgericht …</Todo>, register number: <Todo>HRB …</Todo></p>
+        <p>Registered office: München. Register court: Amtsgericht München, register number: HRB 317115</p>
         <h3>VAT</h3>
         <p>VAT identification number (§ 27a UStG): <Todo>DE…</Todo></p>
         <h3>Responsible for content (§ 18(2) MStV)</h3>
-        <p><Todo>name, address as above</Todo></p>
+        <p>Tony Thomas, Franz-Josef-Straße 11, 80801 München, Germany</p>
         <h3>Consumer dispute resolution</h3>
         <p>We are neither willing nor obliged to take part in dispute resolution proceedings before a consumer arbitration board. <Todo>lawyer to confirm wording</Todo></p>
         <h3>AI output</h3>

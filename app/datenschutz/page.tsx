@@ -10,7 +10,7 @@ export default function Datenschutz() {
       <Lang id="de">
         <h2>Datenschutzerklärung</h2>
         <h3>1. Verantwortlicher</h3>
-        <p>Zoldenburg UG (haftungsbeschränkt), Anschrift siehe <a href="/impressum">Impressum</a>. E-Mail: <Todo>datenschutz@…</Todo>.
+        <p>Zoldenburg UG (haftungsbeschränkt), Anschrift siehe <a href="/impressum">Impressum</a>. E-Mail: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.
           Datenschutzbeauftragter: <Todo>falls erforderlich benennen, sonst Satz streichen</Todo></p>
         <h3>2. Grundsatz</h3>
         <p>Wir speichern keine Chat-Inhalte, keine IP-Adressen, keine User-Agents und keine E-Mail-Adressen. Ihr Chatverlauf liegt nur in Ihrem Browser.
@@ -45,13 +45,13 @@ export default function Datenschutz() {
           <Todo>handels- und steuerrechtliche Aufbewahrungspflichten (Rechnungen bei Stripe) ergänzen</Todo></p>
         <h3>9. Ihre Rechte</h3>
         <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO),
-          z. B. <Todo>zuständige Landesdatenschutzbehörde</Todo>. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys, angemeldete Geräte und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
+          z. B. beim Bayerischen Landesamt für Datenschutzaufsicht (BayLDA), Ansbach. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys, angemeldete Geräte und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
           Eine automatisierte Entscheidungsfindung oder Profilbildung findet nicht statt.</p>
       </Lang>
       <Lang id="en">
         <h2>Privacy policy</h2>
         <h3>1. Controller</h3>
-        <p>Zoldenburg UG (haftungsbeschränkt), address see <a href="/impressum">legal notice</a>. Email: <Todo>privacy@…</Todo>.</p>
+        <p>Zoldenburg UG (haftungsbeschränkt), address see <a href="/impressum">legal notice</a>. Email: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.</p>
         <h3>2. Principle</h3>
         <p>We do not store chat content, IP addresses, user agents or email addresses. Your chat history lives only in your browser.
           A complete list of every stored field and its retention, checked against the code automatically, is at <a href="/privacy/metadata">/privacy/metadata</a>.</p>

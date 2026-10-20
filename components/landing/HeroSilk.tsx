@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { motionPaused } from "./MotionToggle";
 
 /**
  * Slow silk band behind the hero, ported from the Amber Study HeroSilk component.
@@ -38,6 +39,7 @@ void main(){
   c *= 1. - smoothstep(.42, .72, uv.y);
   gl_FragColor = vec4(c, 1.);
 }`;
+const SPEED = .5; // half speed keeps the hero calm
 const FRAME_MS = 1000 / 30; // the silk moves slowly; 30 fps looks the same and halves GPU work
 const VERT = "attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}";
 const UNIFORMS = [["cA", "art-a"], ["cB", "art-b"], ["cC", "art-c"], ["cD", "art-d"], ["cR", "art-ridge"]] as const;
@@ -54,7 +56,8 @@ export function HeroSilk() {
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`);
+    // Read from the canvas: the hero band overrides the --art-* palette, the root does not.
+    const token = (name: string) => getComputedStyle(canvas).getPropertyValue(`--${name}`);
     const fallback = () => { canvas.style.background = `radial-gradient(60% 40% at 40% 80%, ${token("art-a")}, transparent 70%)`; };
     const gl = canvas.getContext("webgl");
     if (!gl) { fallback(); return; }
@@ -89,7 +92,7 @@ export function HeroSilk() {
       canvas.width = Math.max(1, Math.round(r.width * .5)); canvas.height = Math.max(1, Math.round(r.height * .5));
       gl.viewport(0, 0, canvas.width, canvas.height);
     };
-    const draw = (ms: number) => { gl.uniform2f(uRes, canvas.width, canvas.height); gl.uniform1f(uT, ms / 1000); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
+    const draw = (ms: number) => { gl.uniform2f(uRes, canvas.width, canvas.height); gl.uniform1f(uT, ms / 1000 * SPEED); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
     size();
     // StrictMode and hot reload reuse the same context, so free what this run created.
     const release = () => { gl.deleteBuffer(buf); gl.deleteProgram(prog); };
@@ -101,16 +104,18 @@ export function HeroSilk() {
     }
     let raf = 0;
     let last = 0;
-    const loop = (ms: number) => { if (ms - last >= FRAME_MS) { last = ms; draw(ms); } raf = requestAnimationFrame(loop); };
+    const loop = (ms: number) => { if (ms - last >= FRAME_MS && !motionPaused()) { last = ms; draw(ms); } raf = requestAnimationFrame(loop); };
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting && !raf) raf = requestAnimationFrame(loop);
       if (!e.isIntersecting) { cancelAnimationFrame(raf); raf = 0; }
     });
     const lost = (e: Event) => { e.preventDefault(); io.disconnect(); cancelAnimationFrame(raf); fallback(); };
+    // Resizing clears the WebGL buffer; redraw at once so a paused hero never goes blank.
+    const resized = () => { size(); draw(last); };
     io.observe(canvas);
-    addEventListener("resize", size);
+    addEventListener("resize", resized);
     canvas.addEventListener("webglcontextlost", lost);
-    return () => { io.disconnect(); cancelAnimationFrame(raf); removeEventListener("resize", size); canvas.removeEventListener("webglcontextlost", lost); release(); };
+    return () => { io.disconnect(); cancelAnimationFrame(raf); removeEventListener("resize", resized); canvas.removeEventListener("webglcontextlost", lost); release(); };
   }, []);
 
   return <canvas ref={ref} className="silk" aria-hidden />;
