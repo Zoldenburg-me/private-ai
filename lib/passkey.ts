@@ -47,7 +47,7 @@ export async function registrationOptions(accountId: string, rp: RpConfig) {
   const options = await generateRegistrationOptions({
     rpName: rp.rpName, rpID: rp.rpID,
     // Not shown as PII: a fixed label plus a short prefix of the opaque id so users can tell accounts apart.
-    userName: `Hiddensee ${accountId.slice(0, 6)}`, userID: new TextEncoder().encode(accountId),
+    userName: `${rp.rpName} ${accountId.slice(0, 6)}`, userID: new TextEncoder().encode(accountId),
     attestationType: "none",
     excludeCredentials: existing.map((c) => ({ id: c.credentialId, transports: transports(c.transports) })),
     authenticatorSelection: { residentKey: "required", userVerification: "required" },
