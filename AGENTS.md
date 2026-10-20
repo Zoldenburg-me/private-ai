@@ -67,25 +67,34 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
   (owner email only), then the app's passkey login and `ADMIN_ACCOUNT_IDS`.
 - **Deploy an update** (the README's Upgrade steps, adapted; steps 1, 3 and 4 run on the box in
   `/opt/stacks/private-ai`, step 2 from a checkout):
-  1. Back up: `docker compose exec -T postgres pg_dump -U pai -Fc pai > data/pre-upgrade.dump`
+  1. Back up: `(umask 077 && docker compose exec -T postgres pg_dump -U pai -Fc pai > data/pre-upgrade.dump)`
      and `docker tag private-ai:latest private-ai:previous`.
   2. `git fetch origin`, note the commit (`git rev-parse --short origin/main`), then replace the
      source as a whole, so files deleted upstream do not stay in the build:
      `git archive <commit> | ssh homeserver 'cd /opt/stacks/private-ai && rm -rf src.new src.old && mkdir src.new && tar -x -C src.new && mv src src.old && mv src.new src'`.
      `compose.yaml`, `.env` and `data/` live outside `src/` and are not touched.
   3. `docker compose up -d --build app`, then check `https://hiddensee.app/api/health` and that
-     `docker compose logs app` shows a fresh start.
+     `docker compose logs app` shows a fresh start. Once the new version is confirmed (within 7
+     days), `rm data/pre-upgrade.dump`: it still holds accounts deleted since.
   4. Rollback: `mv src src.bad && mv src.old src`, `docker tag private-ai:previous private-ai:latest`,
      `docker compose up -d --no-build app`. Restore the dump only if a migration since was not
      additive, and never straight into `pai`: accounts deleted after the dump would come back
-     (GDPR Art. 17). With `P="docker compose exec -T postgres"`: `docker compose stop app`;
-     `$P psql -U pai -d pai -Atc '\copy erasures to stdout' > data/erasures.tsv`;
-     `$P sh -c 'dropdb -U pai --if-exists pai_restore && createdb -U pai pai_restore'`;
-     `$P pg_restore -U pai -d pai_restore --no-owner --no-acl --exit-on-error < data/pre-upgrade.dump`;
-     `$P psql -U pai -d pai_restore -v ON_ERROR_STOP=1 -c 'create temp table incoming (id_hash text, deleted_on date)' -c '\copy incoming from pstdin' -c "$(cat src/scripts/reerase.sql)" < data/erasures.tsv`;
-     `$P psql -U pai -d postgres -c 'ALTER DATABASE pai RENAME TO pai_bad' -c 'ALTER DATABASE pai_restore RENAME TO pai'`;
-     `docker compose up -d app`. (`scripts/restore-db.sh` does this from restic snapshots, once
-     off-site backups exist.)
+     (GDPR Art. 17). With `P="docker compose exec -T postgres"`:
+     - Preconditions, stop if either fails: the dump is the one from step 1 of this upgrade and at
+       most 115 days old (the erasure ledger keeps 120, so older deletions are no longer listed):
+       `find data/pre-upgrade.dump -mtime -115 | grep -q . || echo TOO OLD`; and no `pai_old` is left
+       from an earlier restore: `$P psql -U pai -d postgres -Atc "select datname from pg_database where datname = 'pai_old'"`
+       prints nothing (otherwise check that restore, then `$P dropdb -U pai pai_old`).
+     - `docker compose stop app`;
+       `(umask 077 && $P psql -U pai -d pai -Atc '\copy erasures to stdout' > data/erasures.tsv)`;
+       `$P sh -c 'dropdb -U pai --if-exists pai_restore && createdb -U pai pai_restore'`;
+       `$P pg_restore -U pai -d pai_restore --no-owner --no-acl --exit-on-error < data/pre-upgrade.dump`;
+       `$P psql -U pai -d pai_restore -v ON_ERROR_STOP=1 -c 'create temp table incoming (id_hash text, deleted_on date)' -c '\copy incoming from pstdin' -c "$(cat src/scripts/reerase.sql)" < data/erasures.tsv`;
+       `$P psql -U pai -d postgres -c 'ALTER DATABASE pai RENAME TO pai_old' -c 'ALTER DATABASE pai_restore RENAME TO pai'`;
+       `rm -f data/erasures.tsv data/pre-upgrade.dump`; `docker compose up -d app`.
+     - Check sign-in, then `$P dropdb -U pai pai_old` within 7 days, as `scripts/restore-db.sh` does
+       (it runs these steps from restic snapshots, once off-site backups exist). If any step fails
+       before the rename, `rm -f data/erasures.tsv` and `$P dropdb -U pai --if-exists pai_restore`.
 
   The Caddy setup (`deploy/caddy`) is for a Hetzner box and is not used here, so there are no
   per-IP limits.
