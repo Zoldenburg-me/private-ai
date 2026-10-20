@@ -17,7 +17,7 @@ describe("anonymized frontier models in the UI", () => {
   });
 
   it("an anonymized model is never the default: the user has to pick it", () => {
-    const tee = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "q" });
+    const tee = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "q" }, true);
     expect(defaultModelRef([fable, tee])).toBe("near:q");
     expect(defaultModelRef([fable])).toBe("");
   });

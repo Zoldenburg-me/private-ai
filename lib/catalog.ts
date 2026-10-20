@@ -14,18 +14,24 @@ export interface ModelEntry {
   selectable: boolean;
 }
 
-/** Providers whose entire catalogue runs in attested TEEs (per their public docs). */
-const ALL_TEE = new Set(["near", "phala", "tinfoil", "privatemode", "mock"]);
+/** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
+const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
 
 type Raw = Record<string, unknown>;
 
 const bool = (v: unknown) => v === true || v === "true";
 
-/** Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes. */
-export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw): ModelEntry {
+/**
+ * Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes.
+ * `nearAttested` is NEAR's /model/list verdict for this model; NEAR's own /models hints are never trusted.
+ */
+export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw, nearAttested = false): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
+  const name = String(raw.name ?? raw.display_name ?? id);
   // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
-  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name: String(raw.name ?? raw.display_name ?? id), privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name, privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  if (provider.id === "near")
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
@@ -39,7 +45,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   return {
     id,
     provider: provider.id,
-    name: String(raw.name ?? raw.display_name ?? id),
+    name,
     privacy,
     tee,
     e2ee,
@@ -68,8 +74,23 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { data?: Raw[] } | Raw[];
-  const arr = Array.isArray(j) ? j : j.data ?? [];
-  return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id && (!p.models || p.models.includes(m.id)));
+  const listed = Array.isArray(j) ? j : j.data ?? [];
+  const attested = p.id === "near" ? await nearAttested(p, fetchImpl) : undefined;
+  return listed
+    .map((m) => normaliseModel(p, m, attested?.has(String(m.id ?? m.model_id ?? m.modelId))))
+    .filter((m) => m.id && (!p.models || p.models.includes(m.id)));
+}
+
+/**
+ * NEAR's /models also lists externally proxied closed models with no field telling them apart;
+ * only /model/list says which ones run attested. Throws if it is unreachable, so NEAR fails closed.
+ */
+async function nearAttested(p: ProviderConfig, fetchImpl: typeof fetch): Promise<Set<string>> {
+  // shortcut: one page of 1000; models past it count as not attested, which is the safe side.
+  const r = await fetchImpl(`${p.baseUrl}/model/list?limit=1000`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+  if (!r.ok) throw new Error(String(r.status));
+  const j = (await r.json()) as { models?: Raw[] };
+  return new Set((j.models ?? []).filter((m) => ((m.metadata ?? {}) as Raw).attestationSupported === true).map((m) => String(m.modelId)));
 }
 
 /** What a provider offers when its /models call fails: its allowlist if set, else its configured default model. */
