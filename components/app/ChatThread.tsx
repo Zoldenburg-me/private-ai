@@ -44,6 +44,8 @@ function textOf(content: readonly { type: string; text?: string }[]) {
 }
 
 const httpUrl = (u: string) => /^https?:\/\//i.test(u);
+/** The real host, shown next to the page-chosen title so a title cannot pass for another site. */
+const hostOf = (u: string) => { try { return new URL(u).hostname; } catch { return ""; } };
 
 /** Agent tool steps above a reply: what was searched and which pages came back (links only, nothing loads). */
 function ToolSteps({ tools }: { tools: ToolEvent[] }) {
@@ -56,7 +58,7 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
             <span className="tool-query"><MagnifyingGlass aria-hidden /> {t.query ?? t.name}{t.status === "error" && " · failed"}</span>
             {t.results && t.results.length > 0 && (
               <ul>{t.results.filter((r) => httpUrl(r.url)).map((r, i) => (
-                <li key={`${i}:${r.url}`}><a href={r.url} target="_blank" rel="noopener noreferrer nofollow">{r.title || r.url}<span className="sr-only"> (opens in a new tab)</span></a></li>
+                <li key={`${i}:${r.url}`}><a href={r.url} target="_blank" rel="noopener noreferrer nofollow">{r.title || r.url}<span className="sr-only"> (opens in a new tab)</span></a> <span>· {hostOf(r.url)}</span></li>
               ))}</ul>
             )}
           </li>

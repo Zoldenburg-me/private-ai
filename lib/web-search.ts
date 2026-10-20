@@ -8,6 +8,7 @@ type Env = Record<string, string | undefined>;
 export const SEARCH_TIMEOUT_MS = 10_000;
 export const SEARCH_RESULTS = 5;
 const MAX_QUERY_CHARS = 400;
+const MAX_URL_CHARS = 2_000;
 const BRAVE_URL = "https://api.search.brave.com/res/v1/web/search";
 
 export interface SearchResult { title: string; url: string; snippet: string }
@@ -43,7 +44,7 @@ export async function webSearch(query: string, env: Env, fetchImpl: typeof fetch
   if (!res.ok) throw Object.assign(new Error(`search provider error ${res.status}`), { status: res.status });
   const j = (await res.json()) as { web?: { results?: { title?: unknown; url?: unknown; description?: unknown }[] } };
   return (j.web?.results ?? [])
-    .filter((r) => typeof r.url === "string" && /^https?:\/\//.test(r.url))
+    .filter((r) => typeof r.url === "string" && r.url.length <= MAX_URL_CHARS && /^https?:\/\//.test(r.url))
     .slice(0, SEARCH_RESULTS)
     .map((r) => ({ title: String(r.title ?? "").slice(0, 200), url: String(r.url), snippet: String(r.description ?? "").slice(0, 500) }));
 }

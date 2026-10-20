@@ -4,6 +4,10 @@ import { issueToken, setTier } from "../lib/session";
 import { _reset } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { parseSseChunk } from "../lib/sse";
+import { createHash } from "node:crypto";
+import { MAX_SEARCHES_PER_RUN } from "../lib/agent";
+import { FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS } from "../lib/relay";
+import { GET as sessionGET } from "../app/api/session/route";
 
 const PROMPT = "SECRET-QUESTION-5d1e";
 const QUERY = "SECRET-QUERY-a71c";
@@ -172,5 +176,71 @@ describe("agent loop", () => {
     const { token } = issueToken();
     const u = upstream(() => answerStream("c"));
     expect((await handleChat(req(token, ask), "/api/chat", { catalog, env, fetchImpl: u.fetchImpl })).status).toBe(400);
+  });
+});
+
+describe("agent limits, receipts and timeouts", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it(`stops calling the search provider after ${MAX_SEARCHES_PER_RUN} searches in one run, whatever the tier allows`, async () => {
+    const { id, token } = issueToken(); await setTier(id, "max");
+    const two = (cid: string) => sse([{ id: cid, choices: [{ delta: { tool_calls: [
+      { index: 0, function: { name: "web_search", arguments: '{"query":"a"}' } }, { index: 1, function: { name: "web_search", arguments: '{"query":"b"}' } },
+    ] }, finish_reason: "tool_calls" }] }]);
+    const u = upstream((n, body) => (body.tools ? two(`c${n}`) : answerStream(`c${n}`)));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(u.searches).toHaveLength(MAX_SEARCHES_PER_RUN);
+    expect(out.tools.filter((t) => t.status === "error").length).toBeGreaterThan(0);
+    expect(out.text).toBe("Answer [1]");
+  });
+
+  it("the receipt hashes are the exact bytes sent to and received from the answering step", async () => {
+    const { token } = issueToken();
+    const sent: string[] = []; const received: string[] = [];
+    const answer = 'data: {"id":"c2","choices":[{"delta":{"content":"Answer"}}]}\n\ndata: [DONE]\n\n';
+    const u = upstream((n) => (n === 1 ? toolCallStream("c1") : new Response(answer)));
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      if (!url.startsWith("https://api.search.brave.com/")) { sent.push(String(init.body)); received.push(answer); }
+      return u.fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl }));
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+    expect(out.receipt).toMatchObject({ chat_id: "c2", req_sha256: sha(sent.at(-1)!), resp_sha256: sha(received.at(-1)!) });
+  });
+
+  it("a provider that never answers times out after the first-byte limit", async () => {
+    vi.useFakeTimers();
+    const { token } = issueToken();
+    const hang = (() => new Promise(() => {})) as unknown as typeof fetch;
+    const logged: { event?: string }[] = [];
+    const res = await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: hang, log: (m) => logged.push(m) });
+    const out = events(res);
+    await vi.advanceTimersByTimeAsync(FIRST_BYTE_TIMEOUT_MS.stream + 1);
+    expect((await out).error).toBe("provider timeout");
+    expect(logged.map((m) => m.event)).toContain("upstream_timeout");
+  });
+
+  it("a stream that goes silent times out after the idle limit", async () => {
+    vi.useFakeTimers();
+    const { token } = issueToken();
+    const silent = (async () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"id":"c","choices":[{"delta":{"content":"par"}}]}\n\n')); } }))) as unknown as typeof fetch;
+    const res = await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: silent });
+    const out = events(res);
+    await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS + 1);
+    const r = await out;
+    expect(r.text).toBe("par");
+    expect(r.error).toBe("provider timeout");
+  });
+
+  it("under the invite gate a signed-out visitor gets signup_required, and the session hides the toggle", async () => {
+    vi.stubEnv("INVITE_ONLY", "1"); vi.stubEnv("BRAVE_SEARCH_API_KEY", "k"); vi.stubEnv("MOCK_PROVIDER", "");
+    const { token } = issueToken();
+    const res = await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: upstream(() => answerStream("c")).fetchImpl });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe("signup_required");
+    const s = await (await sessionGET(new Request("http://app/api/session"))).json();
+    expect(s.features).toEqual({ webSearch: false });
+    vi.stubEnv("INVITE_ONLY", "");
+    expect((await (await sessionGET(new Request("http://app/api/session"))).json()).features).toEqual({ webSearch: true });
   });
 });
