@@ -18,7 +18,8 @@ export function HeroComposer() {
   return (
     <>
       <form className="composer" onSubmit={submit}>
-        <textarea name="q" rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
+        {/* No name: a pre-hydration native submit must not put the prompt in a query string. */}
+        <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
           placeholder="Ask anything privately…" aria-label="Ask anything privately" enterKeyHint="send" autoComplete="off" />
         <button type="submit" className="composer-send" disabled={!text.trim()} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></button>
       </form>

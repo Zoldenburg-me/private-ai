@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { chatUrl } from "../components/landing/chat-url";
+import { HeroComposer } from "../components/landing/HeroComposer";
 
 // The hero prompt travels in the URL fragment, which browsers never send to the server (AGENTS.md: no content on the server).
 describe("hero chat bar URL", () => {
@@ -20,5 +23,14 @@ describe("hero chat bar URL", () => {
   it("trims, and gives nothing for a blank prompt", () => {
     expect(chatUrl("  hi \n")).toBe("/chat?ghost=1#q=hi");
     expect(chatUrl("   \n ")).toBeNull();
+  });
+});
+
+// Before hydration a native submit would serialize named fields into a GET query (Devin review on #26).
+describe("hero chat bar before hydration", () => {
+  it("has no named field a native submit could send to the server", () => {
+    const html = renderToStaticMarkup(createElement(HeroComposer));
+    expect(html).toContain("<textarea");
+    expect(html).not.toMatch(/<(textarea|input|select|button)[^>]*\sname=/);
   });
 });
