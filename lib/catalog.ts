@@ -21,11 +21,17 @@ type Raw = Record<string, unknown>;
 
 const bool = (v: unknown) => v === true || v === "true";
 
-/** Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes. */
-export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw): ModelEntry {
+/**
+ * Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes.
+ * `nearAttested` is NEAR's /model/list verdict for this model; NEAR's own /models hints are never trusted.
+ */
+export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw, nearAttested = false): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
+  const name = String(raw.name ?? raw.display_name ?? id);
   // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
-  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name: String(raw.name ?? raw.display_name ?? id), privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name, privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  if (provider.id === "near")
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
@@ -39,7 +45,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   return {
     id,
     provider: provider.id,
-    name: String(raw.name ?? raw.display_name ?? id),
+    name,
     privacy,
     tee,
     e2ee,
@@ -70,11 +76,8 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   const j = (await r.json()) as { data?: Raw[] } | Raw[];
   const listed = Array.isArray(j) ? j : j.data ?? [];
   const attested = p.id === "near" ? await nearAttested(p, fetchImpl) : undefined;
-  const arr = attested ? listed.map((m) => (attested.has(String(m.id)) ? { ...m, tee: true } : m)) : listed;
-  return arr
-    .map((m) => normaliseModel(p, m))
-    // Applied after normalising so no other TEE or zero-retention hint in /models can override NEAR's own answer.
-    .map((m) => (attested && !attested.has(m.id) ? { ...m, privacy: "anonymized" as const, tee: false, e2ee: false, selectable: false } : m))
+  return listed
+    .map((m) => normaliseModel(p, m, attested?.has(String(m.id ?? m.model_id ?? m.modelId))))
     .filter((m) => m.id && (!p.models || p.models.includes(m.id)));
 }
 

@@ -27,7 +27,7 @@ describe("model catalog + privacy policy", () => {
     expect(fallback.map((m) => [m.id, m.privacy, m.selectable])).toEqual([["gpt-x", "anonymized", true], ["claude-fable-5-1", "anonymized", true]]);
   });
   it("e2ee and zdr flags", () => {
-    expect(normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
+    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "plain" }).selectable).toBe(false);
   });
@@ -47,7 +47,7 @@ describe("model catalog + privacy policy", () => {
             { modelId: "moonshotai/kimi-k3", metadata: { attestationSupported: true, providerType: "chutes" } },
             { modelId: "anthropic/claude-fable-5", metadata: { attestationSupported: false, providerType: "external" } },
           ] })
-        : Response.json({ data: [{ id: "moonshotai/kimi-k3" }, { id: "anthropic/claude-fable-5", confidential: true, privacy: "private" }, { id: "new/unlisted" }] })) as unknown as typeof fetch;
+        : Response.json({ data: [{ id: "moonshotai/kimi-k3" }, { id: "anthropic/claude-fable-5", tee: true, confidential: true, privacy: "private" }, { id: "new/unlisted" }] })) as unknown as typeof fetch;
     const cat = await fetchCatalog(providers, fake);
     // /model/list has the last word: other TEE or zero-retention hints in /models cannot override it.
     expect(cat.map((m) => [m.id, m.tee, m.selectable])).toEqual([
@@ -58,5 +58,11 @@ describe("model catalog + privacy policy", () => {
     // /model/list down: nothing from NEAR is claimed as TEE.
     const listDown = (async (url: string) => (String(url).includes("/model/list") ? new Response("", { status: 500 }) : fake(url))) as unknown as typeof fetch;
     expect((await fetchCatalog(providers, listDown)).some((m) => m.selectable)).toBe(false);
+  });
+  it("normaliseModel never trusts NEAR's own hints: only the /model/list verdict counts", () => {
+    const near = { id: "near", privacy: "tee-attested" } as const;
+    const hinted = normaliseModel(near, { id: "anthropic/claude-fable-5", tee: true, confidential: true, privacy: "private", zdr: true, capabilities: { tee: true, e2ee: true } });
+    expect(hinted).toMatchObject({ privacy: "anonymized", tee: false, e2ee: false, selectable: false });
+    expect(normaliseModel(near, { id: "moonshotai/kimi-k3" }, true)).toMatchObject({ privacy: "tee", tee: true, selectable: true });
   });
 });
