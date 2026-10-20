@@ -157,10 +157,10 @@ details summary { cursor: pointer; color: var(--text); }
 .t-ctx { color: var(--muted); }
 .t-current { color: var(--accent); border-color: var(--accent-line); }
 
-.proof-badge { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 5px 0 10px; border: 1px solid; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: filter .2s var(--ease); }
+.proof-badge { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid; border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: filter .2s var(--ease); }
 .proof-badge:hover { filter: brightness(1.12); }
 .proof-badge > svg { font-size: 16px; flex: none; }
-.chain-pill { padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); font: 400 11px var(--mono); }
+.chain-pill { margin-right: -5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); font-size: 11.5px; font-weight: 400; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -283,6 +283,9 @@ details summary { cursor: pointer; color: var(--text); }
 .not-verified li { display: flex; gap: 8px; padding: 5px 0; font-size: 13px; color: var(--ink-soft); }
 .not-verified svg { flex: none; margin-top: 4px; font-size: 11px; color: var(--muted); }
 .drawer-actions { margin-top: 22px; }
+.tech { margin-top: 22px; border-top: 1px solid var(--line-card); }
+.tech > summary { padding: 14px 0 4px; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.tech > .facts { margin-top: 10px; }
 .raw { max-height: 320px; overflow: auto; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-deep); font: 11px/1.5 var(--mono); }
 
 .site-footer { position: fixed; right: 12px; bottom: 6px; font-size: 11px; color: var(--muted); }
@@ -310,7 +313,7 @@ details summary { cursor: pointer; color: var(--text); }
   .site-footer { display: none; }
 }
 @media (max-width: 480px) {
-  .pb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .proof-badge[data-level="checks-passed"] .pb-label:has(+ .chain-pill) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* shield + "unverified" on phones */
   .ghost-chip { padding: 0 8px; font-size: 0; gap: 0; }
   .ghost-chip > svg { font-size: 14px; }
 }
