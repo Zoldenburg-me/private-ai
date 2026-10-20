@@ -40,6 +40,13 @@ async function login(auth: SoftAuthenticator, origin = ORIGIN) {
 describe("passkey login", () => {
   beforeEach(() => { _setStores(); });
 
+  it("registration options carry the Hiddensee name, not the old working title", async () => {
+    const { token } = await createSession();
+    const opts = await (await regOptions(post("/api/auth/passkey/register/options", {}, token))).json();
+    expect(opts.rp.name).toBe("Hiddensee");
+    expect(opts.user.name).toMatch(/^Hiddensee [A-Za-z0-9_-]{1,6}$/);
+  });
+
   it("register on device A, log in from a fresh browser: same account, same plan", async () => {
     const { id, token } = await createSession();
     await setTier(id, "pro");
