@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Pause, Play } from "@phosphor-icons/react";
 
-/** Is the hero's background motion paused? Read every frame by HeroSky and HeroSilk. */
+/** Is the hero's background motion paused? Read every frame by HeroSky. */
 export const motionPaused = () => document.documentElement.dataset.motion === "paused";
 
 /** Pause/resume for the hero's looping background motion (WCAG 2.2.2). The CSS loops key off the same attribute. */

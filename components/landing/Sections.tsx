@@ -2,13 +2,13 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowUp, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Shield, Tag, UserFocus, Vault,
+  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Shield, Tag, UserFocus, Vault,
 } from "@phosphor-icons/react/dist/ssr";
 import { LEVEL_LABEL, NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { loadProviders } from "@/lib/providers";
 import { TIERS, type TierId } from "@/lib/tiers";
-import { HeroSilk } from "./HeroSilk";
+import { HeroComposer } from "./HeroComposer";
 import { HeroSky } from "./HeroSky";
 import { MotionToggle } from "./MotionToggle";
 import { ProofDemo } from "./ProofDemo";
@@ -46,29 +46,21 @@ export function SiteNav() {
   );
 }
 
-/** Full-screen night hero: star canvas, sea-coloured silk on the horizon, ambient glow, centred composer (Stitch "Ambient Hero"). */
+/** Full-screen night lake (Venice-style): stars and moon glitter on the water, centred mark, headline and a working chat bar. */
 export function Hero() {
   return (
     <section className="l-hero l-band theme-dark" aria-labelledby="hero-h">
-      <div className="glow" aria-hidden />
+      <div className="lake" aria-hidden />
       <HeroSky />
-      <HeroSilk />
       <div className="hero-copy">
-        <span className="hero-mark" aria-hidden><Mark size={40} /><span className="live" /></span>
-        <h1 id="hero-h">How can I help,{" "}<em>privately?</em></h1>
-        <p className="lead">Your chats stay on your device, locked. We never store a copy.</p>
-        <Link href="/chat" className="composer-preview">
-          <span className="cp-input">Ask anything privately…</span>
-          <span className="cp-row" aria-hidden>
-            <span className="demo-model">Open model <span className="tag-ok">TEE</span></span>
-            <span className="badge tone-warn"><Shield weight="duotone" aria-hidden />Enclave checks passed<span className="chain">chain unverified</span></span>
-            <span className="cp-send" aria-hidden><ArrowUp weight="bold" /></span>
-          </span>
-        </Link>
-        <div className="hero-ctas">
-          <Link href="/chat" className="btn-solid lg">{start()} <ArrowRight aria-hidden /></Link>
-          <a href="#proof" className="link-arrow">How the proof works <ArrowRight aria-hidden /></a>
-        </div>
+        <span className="hero-mark" aria-hidden><Mark size={56} /></span>
+        <h1 id="hero-h">Ask anything, <em>privately.</em></h1>
+        <p className="lead">Private by design. We never store a copy of your chats.</p>
+        <HeroComposer />
+        <p className="hero-trust">
+          <span className="badge tone-warn"><Shield weight="duotone" aria-hidden />Enclave checks passed<span className="chain">chain unverified</span></span>
+          <Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link>
+        </p>
       </div>
       <MotionToggle />
     </section>
