@@ -58,14 +58,27 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
   Cloudflare; the apex is a CNAME to the Cloudflare Tunnel `private-ai`. No open ports.
 - **Host:** the owner's home server (`ssh homeserver`, Tailscale only), Compose stack
   `/opt/stacks/private-ai`: `app`, `postgres`, `redis`, `cloudflared`. Source in `src/`, data in
-  `data/`, secrets in `.env` (mode 600, generated on the box; never copy them off it). The box has
-  its own rules in its README: read them before changing anything there.
+  `data/`, secrets in `.env` (mode 600, generated on the box). Keep one copy of `.env` in the
+  owner's password manager, off the box (`docs/backup-restore.md`): without it a lost box takes
+  `SESSION_SECRET` (all sessions) and `ADMIN_KEY_KEK` (all stored provider keys) with it. Never put
+  it in the repo, a PR or a chat. The box has its own rules in its README: read them before
+  changing anything there.
 - **Admin:** `/admin` and `/api/admin` sit behind the Cloudflare Access app "Hiddensee admin"
   (owner email only), then the app's passkey login and `ADMIN_ACCOUNT_IDS`.
-- **Deploy an update:** `git archive <branch> | ssh homeserver 'tar -x -C /opt/stacks/private-ai/src'`,
-  then `ssh homeserver 'cd /opt/stacks/private-ai && docker compose up -d --build app'` and check
-  `https://hiddensee.app/api/health`. The Caddy setup (`deploy/caddy`) is for a Hetzner box and is
-  not used here, so there are no per-IP limits.
+- **Deploy an update** (the README's Upgrade steps, adapted; steps 1, 3 and 4 run on the box in
+  `/opt/stacks/private-ai`, step 2 from a checkout):
+  1. Back up: `docker compose exec -T postgres pg_dump -U pai -Fc pai > data/pre-upgrade.dump`
+     and `docker tag private-ai:latest private-ai:previous`.
+  2. Replace the source as a whole, so files deleted upstream do not stay in the build:
+     `git archive origin/main | ssh homeserver 'cd /opt/stacks/private-ai && rm -rf src.new src.old && mkdir src.new && tar -x -C src.new && mv src src.old && mv src.new src'`.
+     `compose.yaml`, `.env` and `data/` live outside `src/` and are not touched.
+  3. `docker compose up -d --build app`, then check `https://hiddensee.app/api/health`.
+  4. Rollback: `mv src src.bad && mv src.old src`, `docker tag private-ai:previous private-ai:latest`,
+     `docker compose up -d --no-build app`; restore `data/pre-upgrade.dump` if a migration since was
+     not additive.
+
+  The Caddy setup (`deploy/caddy`) is for a Hetzner box and is not used here, so there are no
+  per-IP limits.
 - **Not yet:** off-site Postgres backups (`docs/backup-restore.md` needs a storage target).
 
 ## Workflow
