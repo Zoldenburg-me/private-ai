@@ -1,5 +1,6 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
+import { cheapestRoute } from "./routing";
 import { gate, recordFailure } from "./ratelimit";
 import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
@@ -50,9 +51,11 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
 
   const ref = parseModelRef(String(input.model ?? ""));
   if (!ref) { await recordFailure(id); return err(400, "model must be '<provider>:<model>' (see /api/v1/models)"); }
-  const entry = findSelectable(await deps.catalog(), ref.provider, ref.model);
-  if (!entry) { await recordFailure(id); return err(403, "model not available under the privacy policy (TEE, zero-retention or anonymized gateway only)"); }
-  const provider = (await liveProviders(deps.env ?? process.env)).find((p) => p.id === ref.provider);
+  const catalog = await deps.catalog();
+  // "auto:<curated model>" goes to the cheapest TEE provider currently serving it (lib/routing.ts).
+  const entry = ref.provider === "auto" ? cheapestRoute(catalog, ref.model) : findSelectable(catalog, ref.provider, ref.model);
+  if (!entry) { await recordFailure(id); return err(403, ref.provider === "auto" ? "no TEE provider currently serves this model" : "model not available under the privacy policy (TEE, zero-retention or anonymized gateway only)"); }
+  const provider = (await liveProviders(deps.env ?? process.env)).find((p) => p.id === entry.provider);
   if (!provider) return err(503, "provider not configured");
 
   const tier = await tierOf(id);
@@ -63,7 +66,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const field = max_completion_tokens != null ? "max_completion_tokens" : "max_tokens";
   // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
   const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
-  const prompt = { ...rest, model: ref.model, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
+  const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
   const g = await gate(id, tier, estimateTokens(JSON.stringify(prompt))); // the cache secret uses no model context
   const body = { ...prompt, ...cacheScope };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
