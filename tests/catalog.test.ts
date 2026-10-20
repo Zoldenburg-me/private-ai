@@ -4,7 +4,7 @@ import { loadProviders } from "../lib/providers";
 
 describe("model catalog + privacy policy", () => {
   it("TEE provider models are tee + selectable", () => {
-    const m = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "Qwen/Qwen3.8-27B" });
+    const m = normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "Qwen/Qwen3.8-27B" });
     expect(m).toMatchObject({ privacy: "tee", tee: true, selectable: true });
   });
   it("anonymized models are selectable only through the anonymizing gateway", () => {
@@ -38,5 +38,24 @@ describe("model catalog + privacy policy", () => {
     expect(cat.map((m) => [m.id, m.selectable])).toEqual([["a", true], ["b", false]]);
     expect(findSelectable(cat, "mock", "a")).toBeTruthy();
     expect(findSelectable(cat, "mock", "b")).toBeUndefined();
+  });
+  it("NEAR models are TEE only when NEAR's /model/list says attestation is supported", async () => {
+    const providers = loadProviders({ NEAR_AI_API_KEY: "k" });
+    const fake = (async (url: string) =>
+      String(url).includes("/model/list")
+        ? Response.json({ models: [
+            { modelId: "moonshotai/kimi-k3", metadata: { attestationSupported: true, providerType: "chutes" } },
+            { modelId: "anthropic/claude-fable-5", metadata: { attestationSupported: false, providerType: "external" } },
+          ] })
+        : Response.json({ data: [{ id: "moonshotai/kimi-k3" }, { id: "anthropic/claude-fable-5" }, { id: "new/unlisted" }] })) as unknown as typeof fetch;
+    const cat = await fetchCatalog(providers, fake);
+    expect(cat.map((m) => [m.id, m.tee, m.selectable])).toEqual([
+      ["moonshotai/kimi-k3", true, true],
+      ["anthropic/claude-fable-5", false, false],
+      ["new/unlisted", false, false],
+    ]);
+    // /model/list down: nothing from NEAR is claimed as TEE.
+    const listDown = (async (url: string) => (String(url).includes("/model/list") ? new Response("", { status: 500 }) : fake(url))) as unknown as typeof fetch;
+    expect((await fetchCatalog(providers, listDown)).some((m) => m.selectable)).toBe(false);
   });
 });
