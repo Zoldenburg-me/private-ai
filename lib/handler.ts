@@ -35,12 +35,9 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   if (!me) return err(401, "missing or invalid session token");
   // Invite-only: signed-out visitors may try the web app under one whole-instance cap (fresh sessions
   // are free to mint, so a per-account limit alone would not bound the shared provider key); the API needs an account.
-  if (!me.deviceId && inviteGateOn()) {
-    if (route !== "/api/chat")
-      return Response.json({ error: { message: "Sign up with a passkey to use the API.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
-    const limited = await overLimit(LIMITS.anonChat, "anon-chat");
-    if (limited) return limited;
-  }
+  const anonGated = !me.deviceId && inviteGateOn();
+  if (anonGated && route !== "/api/chat")
+    return Response.json({ error: { message: "Sign up with a passkey to use the API.", code: "signup_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   const id = me.accountId;
   let input: Record<string, unknown>;
   const raw = await readCapped(req, MAX_BODY_BYTES);
@@ -66,6 +63,10 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   const body = { ...rest, model: ref.model, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
   const g = await gate(id, tier, estimateTokens(JSON.stringify(body)));
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
+  if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget
+    const limited = await overLimit(LIMITS.anonChat, "anon-chat");
+    if (limited) return limited;
+  }
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { _setStores, stores } from "../lib/store";
 import { createSession, signInDevice } from "../lib/session";
 import { handleChat } from "../lib/handler";
@@ -54,6 +56,30 @@ describe("invite gate: anonymous web chat", () => {
     expect((await chat(a)).status).toBe(401); // the OpenAI-compatible API still needs an account
     const device = await signInDevice((await createSession()).id);
     expect((await webChat(device)).status).toBe(200); // accounts are not counted against the anonymous cap
+  });
+
+  it("gate off: anonymous web chat is never capped by the anonymous budget", async () => {
+    vi.stubEnv("INVITE_CODES", ""); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "1");
+    for (let i = 0; i < 3; i++) expect((await webChat((await createSession()).token)).status).toBe(200);
+  });
+
+  it("invalid requests do not use up the anonymous budget", async () => {
+    vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "1");
+    const token = (await createSession()).token;
+    expect((await handleChat(raw(token, "{"), "/api/chat", deps)).status).toBe(400);
+    expect((await handleChat(post(token, { model: "nope:x", messages: [] }), "/api/chat", deps)).status).toBe(400);
+    expect((await webChat(token)).status).toBe(200);
+  });
+
+  it("requests the per-account gate rejects do not use up the anonymous budget", async () => {
+    vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "1");
+    const huge = { model: "mock:m", messages: [{ role: "user", content: "x".repeat(200_000) }] }; // over the free context limit
+    expect((await handleChat(post((await createSession()).token, huge), "/api/chat", deps)).status).toBe(413);
+    expect((await webChat((await createSession()).token)).status).toBe(200);
+  });
+
+  it("the web route passes the route name the anonymous cap keys on", () => {
+    expect(readFileSync(join(__dirname, "../app/api/chat/route.ts"), "utf8")).toContain('handleChat(req, "/api/chat"');
   });
 });
 

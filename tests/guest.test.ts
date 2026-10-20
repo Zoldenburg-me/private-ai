@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { openHistory, readHandoff } from "../lib/client/guest";
 import { MANAGED, type KeyStore } from "../lib/client/vault";
 import type { KV } from "../lib/storage";
-import { SIDEBAR_KEY } from "../lib/client/ui-prefs";
+import { SIDEBAR_KEY, sidebarHidden } from "../lib/client/ui-prefs";
 import { DATA_INVENTORY } from "../lib/data-inventory";
 
 const spyKV = (init: Record<string, string> = {}) => {
@@ -50,6 +50,22 @@ describe("sidebar preference", () => {
   });
 });
 
+describe("sidebar visibility on wide screens", () => {
+  const wide = { narrow: false, cramped: false, drawer: false, collapsed: false };
+  it("1025-1279px: an open proof drawer takes the sidebar's place so the header fits", () => {
+    expect(sidebarHidden({ ...wide, cramped: true, drawer: true })).toBe(true);
+    expect(sidebarHidden({ ...wide, cramped: true, drawer: false })).toBe(false);
+  });
+  it("1280px and up: the sidebar stays next to the drawer unless the user collapsed it", () => {
+    expect(sidebarHidden({ ...wide, drawer: true })).toBe(false);
+    expect(sidebarHidden({ ...wide, drawer: true, collapsed: true })).toBe(true);
+  });
+  it("narrow screens use the off-canvas drawer instead", () => {
+    expect(sidebarHidden({ ...wide, narrow: true, cramped: true, drawer: true })).toBe(false);
+    expect(sidebarHidden({ ...wide, narrow: true, collapsed: true })).toBe(false); // the desktop preference does not apply
+  });
+});
+
 describe("homepage hand-off: /chat?ghost=1#q=<prompt>", () => {
   it("reads ghost from the query and the prompt from the fragment", () => {
     expect(readHandoff({ search: "?ghost=1", hash: `#q=${encodeURIComponent("Hi & bye + 100% ü")}` }))
@@ -66,6 +82,6 @@ describe("homepage hand-off: /chat?ghost=1#q=<prompt>", () => {
   });
 
   it("malformed percent-encoding does not throw", () => {
-    expect(readHandoff({ search: "", hash: "#q=%E0%A4%A" }).prompt).toBeTypeOf("string");
+    expect(readHandoff({ search: "", hash: "#q=%E0%A4%A" }).prompt).toBe("\uFFFD%A"); // replacement char, no exception
   });
 });

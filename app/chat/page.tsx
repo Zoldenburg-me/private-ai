@@ -13,7 +13,7 @@ import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff } from "@/lib/client/guest";
-import { readSidebarCollapsed, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
+import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
 import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
@@ -33,6 +33,8 @@ const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messa
 const NAV_MQ = "(max-width: 1024px)";
 /** Below this width the proof drawer is a bottom sheet over the chat. */
 const SHEET_MQ = "(max-width: 820px)";
+/** Up to this width an open proof drawer leaves too little room for the header next to the sidebar. */
+const CRAMPED_MQ = "(max-width: 1279px)";
 /** Homepage hand-off: how long to wait for a model and its enclave check before only prefilling the prompt. */
 const HANDOFF_WAIT_MS = 10_000;
 const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
@@ -56,6 +58,7 @@ export default function Home() {
   const [navOpen, setNavOpen] = useState(false); // narrow only: rail + sidebar as a drawer
   const [narrow, setNarrow] = useState(false);
   const [sheet, setSheet] = useState(false); // proof drawer is a bottom sheet
+  const [cramped, setCramped] = useState(false);
   const [collapsed, setCollapsed] = useState(false); // wide only: sidebar hidden, rail stays
   const [sessionDone, setSessionDone] = useState(false);
   const [pending, setPending] = useState(""); // hand-off prompt waiting for a model and its proof
@@ -86,16 +89,16 @@ export default function Home() {
 
   // Open the encrypted local vault (non-extractable key in IndexedDB) once we know who this is. A signed-out
   // first visit gets no vault and chats in ghost mode: nothing is written to this browser until they sign up.
-  const opening = useRef(false);
   const signedIn = !!account?.signedIn;
   useEffect(() => {
-    if (!sessionDone || kv || opening.current) return;
-    opening.current = true;
+    if (!sessionDone || kv) return;
+    let stale = false; // signing in meanwhile re-runs this with signedIn=true; the older answer is dropped
     openHistory(localStorage, idbKeyStore(), signedIn, { onError: (e) => setNotice(`Not saved to encrypted history: ${e.message}`) }).then((v) => {
+      if (stale) return;
       if (!v) { setGhost(true); return; }
       setKv(v); setChats(loadChats(v)); setPersonas(loadPersonas(v));
-    }).catch((e) => setVaultError(`Encrypted storage unavailable (${(e as Error).message}). Use ghost chat.`))
-      .finally(() => { opening.current = false; });
+    }).catch((e) => { if (!stale) setVaultError(`Encrypted storage unavailable (${(e as Error).message}). Use ghost chat.`); });
+    return () => { stale = true; };
   }, [sessionDone, signedIn, kv]);
 
   // Vault writes finish asynchronously; warn before a reload or close would drop one.
@@ -313,22 +316,28 @@ export default function Home() {
   }, [pending, modelRef, sessionReady, proofReady]);
 
   useEffect(() => {
-    const mq = matchMedia(NAV_MQ); const sq = matchMedia(SHEET_MQ);
-    const apply = () => { setNarrow(mq.matches); setSheet(sq.matches); if (!mq.matches) setNavOpen(false); };
-    apply(); mq.addEventListener("change", apply); sq.addEventListener("change", apply);
-    return () => { mq.removeEventListener("change", apply); sq.removeEventListener("change", apply); };
+    const mq = matchMedia(NAV_MQ); const sq = matchMedia(SHEET_MQ); const cq = matchMedia(CRAMPED_MQ);
+    const apply = () => { setNarrow(mq.matches); setSheet(sq.matches); setCramped(cq.matches); if (!mq.matches) setNavOpen(false); };
+    const all = [mq, sq, cq];
+    apply(); all.forEach((q) => q.addEventListener("change", apply));
+    return () => all.forEach((q) => q.removeEventListener("change", apply));
   }, []);
-  const navShown = narrow ? navOpen : !collapsed;
+  // Wide but cramped: the open proof drawer takes the sidebar's place (the saved preference is untouched).
+  const drawerHidesSide = sidebarHidden({ narrow, cramped, drawer, collapsed: false });
+  const sideHidden = sidebarHidden({ narrow, cramped, drawer, collapsed });
+  const navShown = narrow ? navOpen : !sideHidden;
   function toggleNav() {
     if (narrow) { setNavOpen((o) => !o); return; }
+    if (drawerHidesSide) { setDrawer(false); if (!collapsed) return; } // closing the drawer brings the sidebar back
     setCollapsed(!collapsed); sidebarTouched.current = true;
   }
-  // Remember the user's choice, but only outside ghost chat (it writes nothing, not even a display setting);
+  // Remember the user's choice, only outside ghost chat and once this browser keeps history (a signed-out
+  // first visit writes nothing, not even a display setting);
   // a choice made in ghost chat is saved once they leave it.
   const sidebarTouched = useRef(false);
   useEffect(() => { // saved once per toggle, so a stale value never overwrites another tab's later choice
-    if (!ghost && sidebarTouched.current) { writeSidebarCollapsed(collapsed); sidebarTouched.current = false; }
-  }, [ghost, collapsed]);
+    if (!ghost && kv && sidebarTouched.current) { writeSidebarCollapsed(collapsed); sidebarTouched.current = false; }
+  }, [ghost, kv, collapsed]);
 
   // Narrow: the nav is an off-canvas drawer (and below 820px the proof drawer a bottom sheet): keep focus out of
   // whatever is hidden or covered, move it into the drawer on open and back to the menu button on close.
@@ -343,7 +352,7 @@ export default function Home() {
   }, [navOpen, drawer, narrow, sheet]);
   useEffect(() => {
     if (navOpen && narrow) sheetRef.current?.querySelector<HTMLElement>(".rail-btn")?.focus();
-    if (!navOpen && navWasOpen.current) menuRef.current?.focus();
+    if (!navOpen && navWasOpen.current && narrow) menuRef.current?.focus(); // not when widening closed it
     navWasOpen.current = navOpen;
   }, [navOpen, narrow]);
   const NAV = [
@@ -356,7 +365,7 @@ export default function Home() {
   );
 
   return (
-    <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""} ${collapsed ? "side-collapsed" : ""}`}>
+    <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""} ${sideHidden ? "side-collapsed" : ""}`}>
       <div className="nav-sheet" id="app-nav" ref={sheetRef}>
         <nav className="rail" aria-label="Main">
           <Link href="/" className="brand" aria-label="Private AI home"><Image src="/brand/narwhal.svg" alt="" width={28} height={15} unoptimized /></Link>
@@ -374,7 +383,7 @@ export default function Home() {
           onOpen={(c) => { openChat(c, false); go("chat"); }}
           onDelete={(c) => { if (!kv) return; scope.forget(c.id); const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }} />
       </div>
-      <button type="button" className="nav-scrim" aria-label="Close menu" tabIndex={navOpen ? 0 : -1} onClick={() => setNavOpen(false)} />
+      <button type="button" className="nav-scrim" aria-label="Close menu" inert={!navOpen} onClick={() => setNavOpen(false)} />
 
       <main className="main" ref={mainRef}>
         <header className="topbar">
