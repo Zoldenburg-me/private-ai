@@ -42,6 +42,20 @@ describe("client chat stream", () => {
     expect(body.pai_options).toEqual({ persona: { name: "T", system_prompt: "be nice" } });
   });
 
+  it("agent mode posts to /api/agent with web_search and keeps the newest state of each tool step", async () => {
+    let url = ""; let body: Record<string, unknown> = {};
+    const tool = (status: string, extra = {}) => `event: agent_tool\ndata: ${JSON.stringify({ id: "t1", name: "web_search", status, query: "q", ...extra })}\n\n`;
+    const fetchImpl = (async (u: string, init: RequestInit) => { url = u; body = JSON.parse(String(init.body)); return sse([
+      tool("running"), tool("done", { results: [{ title: "A", url: "https://a.example" }] }), 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+    ]); }) as unknown as typeof fetch;
+    const out = [];
+    for await (const u of streamChat({ model: "near:m", messages: [{ role: "user", content: "x" }], agent: true, fetchImpl })) out.push(u);
+    expect(url).toBe("/api/agent");
+    expect(body.pai_options).toEqual({ web_search: true });
+    expect(out.at(-1)!.tools).toEqual([{ id: "t1", name: "web_search", status: "done", query: "q", results: [{ title: "A", url: "https://a.example" }] }]);
+    expect(out.at(-1)!.text).toBe("ok");
+  });
+
   it("surfaces server errors (e.g. tier limit)", async () => {
     const fetchImpl = (async () => Response.json({ error: { message: "daily limit reached" } }, { status: 429 })) as unknown as typeof fetch;
     await expect((async () => { for await (const _ of streamChat({ model: "near:m", messages: [], fetchImpl })) void _; })()).rejects.toThrow("daily limit reached");

@@ -1,8 +1,8 @@
-import { parseSseChunk, type Receipt } from "@/lib/sse";
+import { parseSseChunk, type Receipt, type ToolEvent } from "@/lib/sse";
 import type { ChatMessage } from "@/lib/providers";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 
-export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null }
+export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null; tools: ToolEvent[] }
 
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
 export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
@@ -33,14 +33,21 @@ export interface StreamOpts {
   persona?: { name: string; system_prompt: string };
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  /** Agent mode: /api/agent with web search; tool steps arrive in `tools`. */
+  agent?: boolean;
 }
 
-/** Streams /api/chat (server relay -> NEAR AI). Yields the accumulated text; the last update carries the receipt. */
-export async function* streamChat({ model, messages, persona, signal, fetchImpl = fetch }: StreamOpts): AsyncGenerator<StreamUpdate> {
-  const res = await fetchImpl("/api/chat", {
+/** Newest event per tool call id, in first-seen order. */
+const mergeTools = (prev: ToolEvent[], next: ToolEvent[]) =>
+  next.reduce((acc, e) => (acc.some((t) => t.id === e.id) ? acc.map((t) => (t.id === e.id ? e : t)) : [...acc, e]), prev);
+
+/** Streams /api/chat (or /api/agent in agent mode). Yields the accumulated text; the last update carries the receipt. */
+export async function* streamChat({ model, messages, persona, signal, fetchImpl = fetch, agent = false }: StreamOpts): AsyncGenerator<StreamUpdate> {
+  const opts = { ...(persona ? { persona } : {}), ...(agent ? { web_search: true } : {}) };
+  const res = await fetchImpl(agent ? "/api/agent" : "/api/chat", {
     method: "POST", signal,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, stream: true, messages, ...(persona ? { pai_options: { persona } } : {}) }),
+    body: JSON.stringify({ model, stream: true, messages, ...(Object.keys(opts).length ? { pai_options: opts } : {}) }),
   });
   const remaining = res.headers.get("x-usage-remaining-daily");
   if (!res.ok || !res.body) {
@@ -48,14 +55,16 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     throw new Error(j.error?.message || `HTTP ${res.status}`);
   }
   const reader = res.body.getReader(); const dec = new TextDecoder();
-  let buf = ""; let text = ""; let receipt: Receipt | undefined;
+  let buf = ""; let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
-    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt;
-    yield { text, remaining };
+    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools);
+    if (p.error) throw new Error(p.error);
+    yield { text, remaining, tools };
   }
-  const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt;
-  yield { text, receipt, remaining };
+  const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools);
+  if (p.error) throw new Error(p.error);
+  yield { text, receipt, remaining, tools };
 }

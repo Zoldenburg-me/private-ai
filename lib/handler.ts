@@ -6,10 +6,12 @@ import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit } from "./limits";
-import { parseModelRef } from "./providers";
+import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
-import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS } from "./tiers";
+import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS, type TierId } from "./tiers";
 import { relay } from "./relay";
+import { runAgent } from "./agent";
+import { searchConfigured } from "./web-search";
 import { metaLogger, type Logger } from "./log";
 import { isUnavailable, unavailableResponse } from "./store";
 
@@ -24,14 +26,43 @@ const err = (status: number, message: string, headers: Record<string, string> = 
 
 /** Shared handler for the web app (/api/chat) and the OpenAI-compatible API (/api/v1/chat/completions). */
 export async function handleChat(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
-  try { return await handle(req, route, deps); } catch (e) {
+  return failClosed(route, deps, async () => {
+    const p = await prepareChat(req, route, deps, {});
+    if (p instanceof Response) return p;
+    const res = await relay({ provider: p.provider, body: p.body, log: p.log, route, fetchImpl: deps.fetchImpl, extraHeaders: p.headers });
+    if (res.status >= 500) await recordFailure(p.id);
+    return res;
+  });
+}
+
+/** Agent mode for the web app (/api/agent): the same checks, then the tool loop in lib/agent.ts. */
+export async function handleAgent(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
+  const env = deps.env ?? process.env;
+  if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
+  return failClosed(route, deps, async () => {
+    const p = await prepareChat(req, route, deps, { webSearch: true });
+    if (p instanceof Response) return p;
+    const beforeStep = async (body: Record<string, unknown>) => {
+      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify(body)));
+      return g.allowed ? null : g.reason!;
+    };
+    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onFailure: () => recordFailure(p.id),
+      env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
+  });
+}
+
+async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<Response>): Promise<Response> {
+  try { return await run(); } catch (e) {
     // Fail closed: a configured Postgres/Redis that is down means 503, never an unmetered fallback.
     if (isUnavailable(e)) { (deps.log ?? metaLogger)({ route, event: "store_unavailable", status: 503 }); return unavailableResponse(); }
     throw e;
   }
 }
 
-async function handle(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
+interface Prepared { id: string; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
+
+/** Identity, body, model, tier and the first rate-limit check: everything before the upstream call. */
+async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow: { webSearch?: boolean }): Promise<Prepared | Response> {
   const log = deps.log ?? metaLogger;
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
@@ -46,7 +77,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   if (raw instanceof Response) { await recordFailure(id); return raw; }
   try { input = JSON.parse(raw) as Record<string, unknown>; } catch { await recordFailure(id); return err(400, "invalid JSON"); }
 
-  const parsed = applyExtensions(input);
+  const parsed = applyExtensions(input, allow);
   if (parsed.error) { await recordFailure(id); return err(400, parsed.error); }
 
   const ref = parseModelRef(String(input.model ?? ""));
@@ -77,9 +108,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  const res = await relay({ provider, body, log, route, fetchImpl: deps.fetchImpl, extraHeaders: g.headers });
-  if (res.status >= 500) await recordFailure(id);
-  return res;
+  return { id, tier, provider, body, headers: g.headers, log };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */

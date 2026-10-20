@@ -20,9 +20,15 @@ export function mockModels() {
 export async function mockChat(req: Request) {
   if (!mockEnabled()) return off();
   const raw = await req.text();
-  const body = JSON.parse(raw) as { stream?: boolean; messages: { content: string }[] };
+  const body = JSON.parse(raw) as { stream?: boolean; messages: { role?: string; content: string }[]; tools?: unknown[] };
   const id = "chatcmpl-" + randomBytes(8).toString("hex");
   const words = ["This", " is", " a", " mock", " enclave", " reply", "."];
+  // Agent mode: call web_search once, then answer (a fixed query, so no prompt content is echoed).
+  if (body.stream && body.tools?.length && body.messages.at(-1)?.role !== "tool") {
+    const call = { index: 0, id: "call_mock", type: "function", function: { name: "web_search", arguments: '{"query":"mock search"}' } };
+    const out = [`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { tool_calls: [call] }, finish_reason: "tool_calls" }] })}\n\n`, "data: [DONE]\n\n"].join("");
+    return new Response(out, { headers: { "Content-Type": "text/event-stream" } });
+  }
   const reqHash = createHash("sha256").update(raw).digest("hex");
   if (!body.stream) {
     const out = JSON.stringify({ id, object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: words.join("") }, finish_reason: "stop" }] });
@@ -35,6 +41,12 @@ export async function mockChat(req: Request) {
   receipts.set(id, `${reqHash}:${createHash("sha256").update(full).digest("hex")}`);
   const enc = new TextEncoder();
   return new Response(new ReadableStream({ start(c) { for (const ch of chunks) c.enqueue(enc.encode(ch)); c.close(); } }), { headers: { "Content-Type": "text/event-stream" } });
+}
+
+/** Brave-shaped search results for agent mode in dev/e2e. */
+export function mockSearch() {
+  if (!mockEnabled()) return off();
+  return Response.json({ web: { results: [{ title: "Mock result", url: "https://example.org/mock", description: "A mock search snippet." }] } });
 }
 
 export function mockAttestation(req: Request) {
