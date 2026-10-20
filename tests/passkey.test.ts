@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setStores } from "../lib/store";
+import { registrationOptions } from "../lib/passkey";
 import { createSession, setTier, verifyToken } from "../lib/session";
 import { POST as regOptions } from "../app/api/auth/passkey/register/options/route";
 import { POST as regVerify } from "../app/api/auth/passkey/register/verify/route";
@@ -39,6 +40,21 @@ async function login(auth: SoftAuthenticator, origin = ORIGIN) {
 
 describe("passkey login", () => {
   beforeEach(() => { _setStores(); });
+
+  it("registration options carry the Hiddensee name, not the old working title", async () => {
+    const { token } = await createSession();
+    const opts = await (await regOptions(post("/api/auth/passkey/register/options", {}, token))).json();
+    expect(opts.rp.name).toBe("Hiddensee");
+    expect(opts.user.name).toMatch(/^Hiddensee [A-Za-z0-9_-]{1,6}$/);
+  });
+
+  it("a configured WEBAUTHN_RP_NAME names the user too, so both labels agree", async () => {
+    const { id } = await createSession();
+    const r = await registrationOptions(id, { rpID: "localhost", rpName: "Acme", origins: [ORIGIN] });
+    if (!r.ok) throw new Error("registration options refused");
+    expect(r.options.rp.name).toBe("Acme");
+    expect(r.options.user.name).toBe(`Acme ${id.slice(0, 6)}`);
+  });
 
   it("register on device A, log in from a fresh browser: same account, same plan", async () => {
     const { id, token } = await createSession();
