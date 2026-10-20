@@ -12,6 +12,8 @@ export interface ModelEntry {
   e2ee: boolean;
   contextLength?: number;
   selectable: boolean;
+  /** USD per 1M tokens, from the provider's own /models listing. */
+  price?: { in: number; out: number };
 }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). */
@@ -20,6 +22,16 @@ const ALL_TEE = new Set(["near", "phala", "tinfoil", "privatemode", "mock"]);
 type Raw = Record<string, unknown>;
 
 const bool = (v: unknown) => v === true || v === "true";
+/** A missing or blank price is unknown, never free. */
+const num = (v: unknown) => (typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
+
+/** Tinfoil lists USD per 1M tokens; NEAR and Phala use OpenRouter's USD-per-token strings. */
+function priceOf(raw: Raw): ModelEntry["price"] {
+  if (!raw.pricing || typeof raw.pricing !== "object") return undefined; // `in` below throws on a string or number
+  const p = raw.pricing as Raw;
+  const [i, o] = "inputTokenPricePer1M" in p ? [num(p.inputTokenPricePer1M), num(p.outputTokenPricePer1M)] : [num(p.prompt) * 1e6, num(p.completion) * 1e6];
+  return i >= 0 && o >= 0 ? { in: i, out: o } : undefined;
+}
 
 /** Normalise one provider /models entry into our catalog entry using whatever privacy metadata it exposes. */
 export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw): ModelEntry {
@@ -45,6 +57,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     e2ee,
     contextLength: ctxOf(raw),
     selectable: isSelectable(privacy),
+    price: priceOf(raw),
   };
 }
 
