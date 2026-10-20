@@ -47,8 +47,9 @@ describe("model catalog + privacy policy", () => {
             { modelId: "moonshotai/kimi-k3", metadata: { attestationSupported: true, providerType: "chutes" } },
             { modelId: "anthropic/claude-fable-5", metadata: { attestationSupported: false, providerType: "external" } },
           ] })
-        : Response.json({ data: [{ id: "moonshotai/kimi-k3" }, { id: "anthropic/claude-fable-5" }, { id: "new/unlisted" }] })) as unknown as typeof fetch;
+        : Response.json({ data: [{ id: "moonshotai/kimi-k3" }, { id: "anthropic/claude-fable-5", confidential: true, privacy: "private" }, { id: "new/unlisted" }] })) as unknown as typeof fetch;
     const cat = await fetchCatalog(providers, fake);
+    // /model/list has the last word: other TEE or zero-retention hints in /models cannot override it.
     expect(cat.map((m) => [m.id, m.tee, m.selectable])).toEqual([
       ["moonshotai/kimi-k3", true, true],
       ["anthropic/claude-fable-5", false, false],

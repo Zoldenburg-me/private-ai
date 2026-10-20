@@ -71,7 +71,11 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   const listed = Array.isArray(j) ? j : j.data ?? [];
   const attested = p.id === "near" ? await nearAttested(p, fetchImpl) : undefined;
   const arr = attested ? listed.map((m) => ({ ...m, tee: attested.has(String(m.id)) })) : listed;
-  return arr.map((m) => normaliseModel(p, m)).filter((m) => m.id && (!p.models || p.models.includes(m.id)));
+  return arr
+    .map((m) => normaliseModel(p, m))
+    // Applied after normalising so no other TEE or zero-retention hint in /models can override NEAR's own answer.
+    .map((m) => (attested && !attested.has(m.id) ? { ...m, privacy: "anonymized" as const, tee: false, e2ee: false, selectable: false } : m))
+    .filter((m) => m.id && (!p.models || p.models.includes(m.id)));
 }
 
 /**
