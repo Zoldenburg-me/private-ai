@@ -6,8 +6,8 @@ import { issueToken } from "../lib/session";
 import { _reset } from "../lib/ratelimit";
 
 const tee = (provider: string, raw: Record<string, unknown>) => normaliseModel({ id: provider, privacy: "tee-attested" }, raw);
-// Real price shapes from each provider's /models (2026-10-20).
-const near = tee("near", { id: "moonshotai/kimi-k3", pricing: { prompt: "0.0000033", completion: "0.0000165" } });
+// Real price shapes from each provider's /models (2026-10-20). NEAR entries carry tee: true only when /model/list attests them.
+const near = tee("near", { id: "moonshotai/kimi-k3", tee: true, pricing: { prompt: "0.0000033", completion: "0.0000165" } });
 const phala = tee("phala", { id: "moonshotai/kimi-k3", pricing: { prompt: "0.000003", completion: "0.000015" } });
 const tinfoil = tee("tinfoil", { id: "kimi-k3", pricing: { inputTokenPricePer1M: 4, outputTokenPricePer1M: 20 } });
 
