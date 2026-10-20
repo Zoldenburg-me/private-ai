@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { ClockCounterClockwise, Fingerprint, Key, MagnifyingGlass, SignOut, Ticket, Trash, Users, WarningCircle } from "@phosphor-icons/react";
 import { TIERS } from "@/lib/tiers";
+import { inviteLink } from "@/lib/client/guest";
 
 /** Operator console. Every call goes to /api/admin/*, which enforces auth, step-up and limits server-side. */
 type Tab = "accounts" | "keys" | "invites" | "audit";
@@ -269,6 +270,10 @@ function InvitesTab({ write, report }: TabProps) {
   const [data, setData] = useState<{ invites: InviteRow[]; envCodes: number; gateOn: boolean } | null>(null);
   const [maxUses, setMaxUses] = useState(1);
   const [fresh, setFresh] = useState<string | null>(null);
+  const [copied, setCopied] = useState("");
+  // The code is shown once, so say whether the copy worked (no clipboard on plain http, or permission denied).
+  const copy = (text: string, what: string) => Promise.resolve().then(() => navigator.clipboard.writeText(text))
+    .then(() => setCopied(`${what} copied.`), () => setCopied("Copy failed: select the code and copy it by hand."));
   const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
     const r = await call("invites");
@@ -278,7 +283,7 @@ function InvitesTab({ write, report }: TabProps) {
 
   async function create() {
     const r = await write("invites", "POST", { maxUses });
-    if (await report(r.clone(), "Invite created: copy the code now, it is not shown again")) { setFresh((await r.json()).code); await load(); }
+    if (await report(r.clone(), "Invite created: copy the code now, it is not shown again")) { setFresh((await r.json()).code); setCopied(""); await load(); }
   }
   async function revoke(id: string) { if (await report(await write("invites", "DELETE", { id }), "Invite revoked")) await load(); }
   if (!data) return <p className="muted">{failed ? "Could not load invites." : "Loading…"}</p>;
@@ -292,7 +297,9 @@ function InvitesTab({ write, report }: TabProps) {
         <button type="button" className="btn" onClick={create}>Create code</button>
       </div>
       {fresh && <p role="status" className="row gap wrap small">New code, shown only once: <code className="admin-code">{fresh}</code>
-        <button type="button" className="btn ghost" onClick={() => navigator.clipboard?.writeText(fresh)}>Copy</button></p>}
+        <button type="button" className="btn ghost" onClick={() => copy(fresh, "Code")}>Copy code</button>
+        <button type="button" className="btn ghost" data-testid="copy-invite-link" onClick={() => copy(inviteLink(window.location.origin, fresh), "Invite link")}>Copy invite link</button>
+        {copied && <span className="muted">{copied}</span>}</p>}
       <div className="admin-scroll"><table className="admin-table">
         <thead><tr><th>Id</th><th>Used</th><th>Created</th><th>Revoked</th><th /></tr></thead>
         <tbody>{data.invites.map((i) => (

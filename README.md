@@ -174,7 +174,9 @@ deleted from the panel; remove it from the list first.
   instances pick up a change within 30 seconds.
 - *Invites:* codes created in the panel are shown once, stored only as a hash, have a use limit and can be revoked.
   They are accepted alongside `INVITE_CODES` (which stay env-only and read-only in the panel). They never switch the gate
-  on by themselves: set `INVITE_CODES` or `INVITE_ONLY=1`.
+  on by themselves: set `INVITE_CODES` or `INVITE_ONLY=1`. Next to a new code, "Copy invite link" copies
+  `https://<host>/chat#invite=<code>`: the code sits in the URL fragment, which browsers never send to the server, and
+  /chat keeps it in memory only and fills it in at signup (a rejected code falls back to the prompt).
 
 **Pro for testers:** run Stripe in test mode (above) and let testers check out with card `4242 4242 4242 4242`; the
 webhook grants Pro like a real payment. To comp one account without Checkout, add its full id (Settings → Account →

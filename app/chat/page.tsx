@@ -12,7 +12,7 @@ import type { Tier } from "@/lib/tiers";
 import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
-import { openHistory, readHandoff } from "@/lib/client/guest";
+import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
 import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
@@ -64,6 +64,7 @@ export default function Home() {
   const [pending, setPending] = useState(""); // hand-off prompt waiting for a model and its proof
   const [handoff, setHandoff] = useState<{ text: string; send: boolean } | null>(null);
   const [notice, setNotice] = useState("");
+  const [invite, setInvite] = useState(""); // from an invite link; memory only, never stored
   const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -79,6 +80,7 @@ export default function Home() {
     const h = readHandoff(location);
     if (h.ghost) setGhost(true);
     if (h.prompt) setPending(h.prompt);
+    if (h.invite) setInvite(h.invite);
     if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
     setCollapsed(readSidebarCollapsed());
     refreshSession();
@@ -236,17 +238,14 @@ export default function Home() {
   /** The first passkey creates the account (this browser becomes a signed-in device); no email or username. */
   async function addPasskey() {
     try {
-      const options = (invite?: string) => fetch("/api/auth/passkey/register/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invite }) });
-      let o = await withStepUp(() => options());
-      if (o.status === 403 && (await o.clone().json().catch(() => null))?.error?.code === "invite_required") {
-        const code = window.prompt("Invite code");
-        if (code === null) { setNotice("Invite code required"); return; }
-        o = await options(code);
-      }
+      const options = (code?: string) => fetch("/api/auth/passkey/register/options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invite: code }) });
+      const o = await withInvite((code) => withStepUp(() => options(code)), invite, (m) => window.prompt(m), () => setInvite(""));
+      if (!o) { setNotice("Invite code required"); return; }
       if (!o.ok) throw new Error((await o.json()).error?.message ?? `HTTP ${o.status}`);
       const att = await startRegistration({ optionsJSON: await o.json() });
       const v = await fetch("/api/auth/passkey/register/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(att) });
       if (!v.ok) throw new Error((await v.json()).error?.message ?? `HTTP ${v.status}`);
+      setInvite("");
       setNotice(account?.signedIn ? "Passkey added." : "Account created. Sign in with this passkey on your other devices."); refreshSession();
     } catch (e) { setNotice(`Passkey: ${(e as Error).message}`); }
   }
@@ -411,7 +410,8 @@ export default function Home() {
             ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
-                hint={sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
+                hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>
+                  : sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
                 anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/enclave/i.test(s)) : SUGGESTIONS} />
             : <div className="loading muted">Unlocking encrypted history…</div>
         )}
