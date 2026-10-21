@@ -26,6 +26,14 @@ describe("model catalog + privacy policy", () => {
     const fallback = await fetchCatalog(loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, claude-fable-5-1", VENICE_MODEL: "llama-y" }), down);
     expect(fallback.map((m) => [m.id, m.privacy, m.selectable])).toEqual([["gpt-x", "anonymized", true], ["claude-fable-5-1", "anonymized", true]]);
   });
+  it("only Tinfoil's chat models are selectable, by the type its /models lists", () => {
+    const tinfoil = { id: "tinfoil", privacy: "tee-attested" } as const;
+    expect(normaliseModel(tinfoil, { id: "gpt-oss-120b", type: "chat" }).selectable).toBe(true);
+    for (const [id, type] of [["nomic-embed-text", "embedding"], ["qwen3-tts", "tts"], ["gpt-oss-safeguard-120b", "safety"], ["websearch", "tool"]])
+      expect(normaliseModel(tinfoil, { id, type })).toMatchObject({ privacy: "tee", selectable: false });
+    // No type (the allowlist fallback when /models is down): the operator picked it, keep it.
+    expect(normaliseModel(tinfoil, { id: "gpt-oss-120b" }).selectable).toBe(true);
+  });
   it("e2ee and zdr flags", () => {
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
