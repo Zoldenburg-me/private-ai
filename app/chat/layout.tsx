@@ -1,4 +1,4 @@
-export const metadata = { title: "Chat · Private AI" };
+export const metadata = { title: "Chat · Hiddensee" };
 /** viewport-fit=cover makes env(safe-area-inset-*) work, so the composer clears the iPhone home bar. */
 export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
