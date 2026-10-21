@@ -67,6 +67,7 @@ export default function Home() {
   const [invite, setInvite] = useState(""); // from an invite link; memory only, never stored
   const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
   const [account, setAccount] = useState<AccountInfo | null>(null);
+  const [webSearch, setWebSearch] = useState(false);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [ghost, setGhost] = useState(false);
   const [billing, setBilling] = useState<Billing | null>(null);
@@ -131,7 +132,7 @@ export default function Home() {
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
       if (!s.error) setSessionReady(true); // a 429/503 sets no cookie, so evidence would only 401
-      setTier(s.tier); setAccount(s.account ?? null);
+      setTier(s.tier); setAccount(s.account ?? null); setWebSearch(s.features?.webSearch === true);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.tier?.dailyMessages });
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
       if (s.account?.signedIn) fetch("/api/account/devices").then((r) => r.json()).then((d) => setDevices(d.devices ?? [])).catch(() => {});
@@ -423,7 +424,7 @@ export default function Home() {
 
         {view === "chat" && (
           kv || ghost
-            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost}
+            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost} webSearch={webSearch}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
                 hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>

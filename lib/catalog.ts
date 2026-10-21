@@ -48,7 +48,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
   const tee =
-    bool(raw.tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
+    bool(raw.tee) || bool(raw.is_tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
     privacyText.includes("tee") || privacyText.includes("confidential") ||
     (ALL_TEE.has(provider.id) && !privacyText.includes("anonym"));
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
@@ -62,7 +62,8 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     tee,
     e2ee,
     contextLength: ctxOf(raw),
-    selectable: isSelectable(privacy),
+    // Tinfoil also lists embedding, speech, safety and tool models; only type "chat" can answer a chat.
+    selectable: isSelectable(privacy) && !(provider.id === "tinfoil" && raw.type !== undefined && raw.type !== "chat"),
     price: priceOf(raw),
   };
 }

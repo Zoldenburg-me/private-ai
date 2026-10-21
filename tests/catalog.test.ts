@@ -26,10 +26,23 @@ describe("model catalog + privacy policy", () => {
     const fallback = await fetchCatalog(loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, claude-fable-5-1", VENICE_MODEL: "llama-y" }), down);
     expect(fallback.map((m) => [m.id, m.privacy, m.selectable])).toEqual([["gpt-x", "anonymized", true], ["claude-fable-5-1", "anonymized", true]]);
   });
+  it("only Tinfoil's chat models are selectable, by the type its /models lists", () => {
+    const tinfoil = { id: "tinfoil", privacy: "tee-attested" } as const;
+    expect(normaliseModel(tinfoil, { id: "gpt-oss-120b", type: "chat" }).selectable).toBe(true);
+    for (const [id, type] of [["nomic-embed-text", "embedding"], ["qwen3-tts", "tts"], ["gpt-oss-safeguard-120b", "safety"], ["websearch", "tool"]])
+      expect(normaliseModel(tinfoil, { id, type })).toMatchObject({ privacy: "tee", selectable: false });
+    // No type (the allowlist fallback when /models is down): the operator picked it, keep it.
+    expect(normaliseModel(tinfoil, { id: "gpt-oss-120b" }).selectable).toBe(true);
+    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", type: "embedding" }).selectable).toBe(true);
+  });
   it("e2ee and zdr flags", () => {
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "plain" }).selectable).toBe(false);
+    // RedPill's /models marks confidential models with is_tee; standard ones stay unselectable.
+    expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "deepseek/v4", is_tee: true })).toMatchObject({ privacy: "tee", selectable: true });
+    expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "openai/o3", is_tee: false }).selectable).toBe(false);
+    expect(loadProviders({ REDPILL_API_KEY: "k" }).map((p) => p.baseUrl)).toEqual(["https://api.redpill.ai/v1"]);
   });
   it("fetches /models and applies policy", async () => {
     const providers = loadProviders({ MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://m/v1" });

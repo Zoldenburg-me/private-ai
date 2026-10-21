@@ -223,6 +223,16 @@ details summary { cursor: pointer; color: var(--text); }
 .send-btn { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 18px; cursor: pointer; }
 .send-btn:disabled { opacity: .35; cursor: not-allowed; }
 .send-btn.stop { background: var(--text); color: var(--bg); }
+.tool-toggle { display: inline-flex; align-items: center; gap: 5px; flex: none; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: transparent; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+.tool-toggle.on { border-color: var(--accent); background: var(--chip-bg); color: var(--text); }
+.tool-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tool-steps { margin-bottom: 8px; font-size: 12.5px; color: var(--muted); }
+.tool-steps summary { cursor: pointer; }
+.tool-steps ul { margin: 4px 0 0; padding-left: 18px; }
+.tool-steps a { color: var(--accent); overflow-wrap: anywhere; }
+.tool-query { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 480px) { .tool-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 
 /* Ghost chat: a cooler, slate surface plus a dashed composer. Nothing about it looks like an error. */
 .app.is-ghost { --bg: var(--g-bg); --bg-raised: var(--g-raised); --panel2: var(--g-panel2); --line: var(--g-line); }
