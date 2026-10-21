@@ -94,6 +94,13 @@ describe("Venice private routes", () => {
     expect(shown.map((m) => `${m.provider}:${m.privacy}`)).toEqual(["venice:private", "liquid:anonymized"]);
   });
 
+  it("models are matched by id, never by display name", () => {
+    const glmPrivate = normaliseModel(venice, { id: "z-ai-glm-5-3", model_spec: { name: "GLM 5.3 (latest)", privacy: "private" } });
+    const lookalike = normaliseModel(venice, { id: "kimi-k3-long", model_spec: { name: "Kimi K3", privacy: "anonymized" } });
+    const shown = visibleModels([normaliseModel(liquid, { id: "glm-5.3" }), kimiLiquid, glmPrivate, lookalike]);
+    expect(shown.map((m) => `${m.provider}:${m.id}`)).toEqual(["venice:z-ai-glm-5-3", "liquid:kimi-k3", "venice:kimi-k3-long"]);
+  });
+
   it("private models count against the incognito quota and are never the default", async () => {
     expect(defaultModelRef([kimiPrivate])).toBe("");
     const { token } = issueToken();

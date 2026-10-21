@@ -24,11 +24,14 @@ export const LIQUID_MODELS: Record<string, string> = {
   "gemini-4-argon": "Gemini 4 Argon", "claude-fable-5-1": "Claude Fable 5.1", "gpt-6-astra": "GPT-6 Astra",
 };
 
-/** Venice's default line-up: open-weight models and Grok that Venice runs itself ("private", zero retention), then anonymized frontier. */
-const VENICE_MODELS = [
-  "deepseek-v4-1-flash", "kimi-k3", "z-ai-glm-5-3", "qwen-3-8-27b", "grok-4-7",
-  "claude-opus-5-5", "gemini-4-argon", "claude-fable-5-1", "openai-gpt-6-astra",
-];
+/**
+ * Venice's default line-up (Venice id -> the same model's Liquid id): open-weight models and Grok that Venice runs itself
+ * ("private", zero retention), then anonymized frontier. The picker shows a model offered by both once (lib/client/providers.ts).
+ */
+export const VENICE_MODELS: Record<string, string> = {
+  "deepseek-v4-1-flash": "deepseek-v4.1-flash", "kimi-k3": "kimi-k3", "z-ai-glm-5-3": "glm-5.3", "qwen-3-8-27b": "qwen3.8-27b", "grok-4-7": "grok-4.7",
+  "claude-opus-5-5": "claude-opus-5-5", "gemini-4-argon": "gemini-4-argon", "claude-fable-5-1": "claude-fable-5-1", "openai-gpt-6-astra": "gpt-6-astra",
+};
 
 /** Liquid is listed before Venice: when both offer a model anonymized, the picker keeps Liquid's zero-retention route. */
 export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string; models?: string[] }[] = [
@@ -39,7 +42,7 @@ export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyM
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway", baseUrl: "https://api.redpill.ai/v1" },
   { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },
   { id: "liquid", name: "Liquid Inference (zero-retention exchange)", prefix: "LIQUID", privacy: "anon-gateway", baseUrl: "https://router.inference.ai.exchange/v1", models: Object.keys(LIQUID_MODELS) },
-  { id: "venice", name: "Venice (private open-weight, anonymized frontier)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", models: VENICE_MODELS },
+  { id: "venice", name: "Venice (private open-weight, anonymized frontier)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", models: Object.keys(VENICE_MODELS) },
   { id: "custom", name: "Custom OpenAI-compatible", prefix: "CUSTOM", privacy: "zdr-contract" },
 ];
 

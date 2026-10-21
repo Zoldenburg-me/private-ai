@@ -1,4 +1,5 @@
 import type { ModelEntry } from "@/lib/catalog";
+import { VENICE_MODELS } from "@/lib/providers";
 
 /**
  * Client-side provider allowlist: NEAR AI (TEE), Venice and Liquid (incognito: anonymized, non-TEE); "mock" is the dev/test enclave
@@ -19,11 +20,15 @@ export function visibleModels(all: ModelEntry[], enabled: readonly string[] = EN
   return oneRowPerModel(all.filter((m) => enabled.includes(m.provider)));
 }
 
+/** Same model across gateways: Liquid ids, and the Venice ids mapped to them in VENICE_MODELS; anything else is its own model. */
+const modelKey = (m: ModelEntry) =>
+  m.provider === "liquid" ? m.id : m.provider === "venice" && Object.hasOwn(VENICE_MODELS, m.id) ? VENICE_MODELS[m.id] : `${m.provider}:${m.id}`;
+
 /** Incognito shows each model once: a private (zero-retention) route replaces an anonymized one in place; otherwise the first listed stays. */
 function oneRowPerModel(models: ModelEntry[]): ModelEntry[] {
   const out: ModelEntry[] = [];
   for (const m of models) {
-    const i = pickerGroup(m) === "incognito" ? out.findIndex((x) => pickerGroup(x) === "incognito" && x.name === m.name) : -1;
+    const i = pickerGroup(m) === "incognito" ? out.findIndex((x) => pickerGroup(x) === "incognito" && modelKey(x) === modelKey(m)) : -1;
     if (i < 0) out.push(m);
     else if (m.privacy === "private" && out[i].privacy !== "private") out[i] = m;
   }
