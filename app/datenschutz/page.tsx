@@ -12,7 +12,7 @@ export default function Datenschutz() {
         <h2>Datenschutzerklärung</h2>
         <h3>1. Verantwortlicher</h3>
         <p>Zoldenburg UG (haftungsbeschränkt), Anschrift siehe <a href="/impressum">Impressum</a>. E-Mail: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.
-          Datenschutzbeauftragter: Tony Thomas, erreichbar unter derselben E-Mail-Adresse.</p>
+          Datenschutzbeauftragter: Tony Thomas, erreichbar unter derselben E-Mail-Adresse. <Todo>Prüfen, ob eine Benennungspflicht besteht (Art. 37 DSGVO, § 38 BDSG), und die Benennung bestätigen</Todo></p>
         <h3>2. Grundsatz</h3>
         <p>Wir speichern keine Chat-Inhalte, keine IP-Adressen, keine User-Agents und keine E-Mail-Adressen. Ihr Chatverlauf liegt nur in Ihrem Browser.
           Eine vollständige, automatisch mit dem Code abgeglichene Liste aller gespeicherten Felder und Fristen finden Sie unter <a href="/privacy/metadata">/privacy/metadata</a>.</p>
@@ -57,7 +57,7 @@ export default function Datenschutz() {
           <Todo>Annahme des Cloudflare-DPA im Cloudflare-Konto bestätigen</Todo></p>
         <h3>8. Speicherdauer</h3>
         <p>Konten ohne aktives Abo werden {RETENTION_DAYS} Tage nach der letzten Nutzung automatisch gelöscht. Zähler laufen nach spätestens 2 Tagen ab. Ändert ein Betreiber Ihr Konto (z. B. Tarif setzen, Gerät abmelden, Konto löschen), protokollieren wir Aktion, Zeitpunkt und Ihre Konto-ID {AUDIT_LOG_DAYS} Tage lang (Art. 6 Abs. 1 lit. f DSGVO, Nachvollziehbarkeit); löschen Sie Ihr Konto, wird die ID aus dem Protokoll entfernt. Einzelheiten: <a href="/privacy/metadata">/privacy/metadata</a>.
-          Rechnungen zu bezahlten Tarifen (bei Stripe) werden 10 Jahre aufbewahrt (handels- und steuerrechtliche Aufbewahrungspflicht, Art. 6 Abs. 1 lit. c DSGVO).</p>
+          Rechnungen zu bezahlten Tarifen (bei Stripe) werden 10 Jahre aufbewahrt (handels- und steuerrechtliche Aufbewahrungspflicht, Art. 6 Abs. 1 lit. c DSGVO). <Todo>Frist (§ 147 AO, § 257 HGB) und Rolle von Stripe rechtlich prüfen</Todo></p>
         <h3>9. Ihre Rechte</h3>
         <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO),
           z. B. beim Bayerischen Landesamt für Datenschutzaufsicht (BayLDA), Ansbach. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys, angemeldete Geräte und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
@@ -67,7 +67,7 @@ export default function Datenschutz() {
         <h2>Privacy policy</h2>
         <h3>1. Controller</h3>
         <p>Zoldenburg UG (haftungsbeschränkt), address see <a href="/impressum">legal notice</a>. Email: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.
-          Data protection officer: Tony Thomas, reachable at the same email address.</p>
+          Data protection officer: Tony Thomas, reachable at the same email address. <Todo>check whether a designation is required (Art. 37 GDPR, § 38 BDSG) and confirm it</Todo></p>
         <h3>2. Principle</h3>
         <p>We do not store chat content, IP addresses, user agents or email addresses. Your chat history lives only in your browser.
           A complete list of every stored field and its retention, checked against the code automatically, is at <a href="/privacy/metadata">/privacy/metadata</a>.</p>
@@ -107,7 +107,7 @@ export default function Datenschutz() {
           <Todo>confirm the Cloudflare DPA is accepted in the Cloudflare account</Todo></p>
         <h3>8. Retention</h3>
         <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. If an operator changes your account (e.g. sets a plan, signs out a device, deletes the account), we log the action, its time and your account id for {AUDIT_LOG_DAYS} days (Art. 6(1)(f) GDPR, accountability); deleting your account removes the id from that log. Details: <a href="/privacy/metadata">/privacy/metadata</a>.
-          Invoices for paid plans (held at Stripe) are kept for 10 years (commercial and tax retention duty, Art. 6(1)(c) GDPR).</p>
+          Invoices for paid plans (held at Stripe) are kept for 10 years (commercial and tax retention duty, Art. 6(1)(c) GDPR). <Todo>legal review of the period (§ 147 AO, § 257 HGB) and Stripe&apos;s role</Todo></p>
         <h3>9. Your rights</h3>
         <p>You have the rights of access, rectification, erasure, restriction, portability and objection (Art. 15–21 GDPR) and may complain to a supervisory authority (Art. 77 GDPR).
           Access and portability: in Settings (⚙︎) under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys, signed-in devices and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>
