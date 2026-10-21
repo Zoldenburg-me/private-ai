@@ -71,7 +71,7 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
 function Message({ role, content, signed, tools }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[] }) {
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
-      {role === "assistant" && <div className="avatar" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={20} height={11} unoptimized /></div>}
+      {role === "assistant" && <div className="avatar" aria-hidden><Image src="/brand/narwhal-avatar.png" alt="" width={32} height={32} unoptimized /></div>}
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {tools && tools.length > 0 && <ToolSteps tools={tools} />}
