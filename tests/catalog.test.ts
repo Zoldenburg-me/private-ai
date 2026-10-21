@@ -33,6 +33,7 @@ describe("model catalog + privacy policy", () => {
       expect(normaliseModel(tinfoil, { id, type })).toMatchObject({ privacy: "tee", selectable: false });
     // No type (the allowlist fallback when /models is down): the operator picked it, keep it.
     expect(normaliseModel(tinfoil, { id: "gpt-oss-120b" }).selectable).toBe(true);
+    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", type: "embedding" }).selectable).toBe(true);
   });
   it("e2ee and zdr flags", () => {
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
