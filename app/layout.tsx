@@ -9,7 +9,8 @@ const serif = Instrument_Serif({ subsets: ["latin", "latin-ext"], weight: "400",
 const body = Source_Serif_4({ subsets: ["latin", "latin-ext"], style: ["normal", "italic"], variable: "--font-body", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin", "latin-ext"], variable: "--font-mono", display: "swap" });
 
-export const metadata = { title: "Private AI (working title)", description: "Private AI chat on attested TEE inference" };
+// metadataBase makes every page's og:image URL absolute, so WhatsApp and Facebook previews work site-wide.
+export const metadata = { metadataBase: new URL("https://hiddensee.app"), title: "Private AI (working title)", description: "Private AI chat on attested TEE inference" };
 /** Reading the request headers renders every page per request, so Next.js can stamp the CSP nonce from middleware.ts on its scripts. */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await headers();
