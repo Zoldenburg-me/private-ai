@@ -6,7 +6,7 @@ import {
 } from "@assistant-ui/react";
 import { ArrowCounterClockwise, ArrowUp, CheckCircle, Copy, EyeSlash, Lightbulb, MagnifyingGlass, MinusCircle, Paperclip, Stop, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
-import { ProviderFailure, streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
+import { ProviderFailure, normalizeIncognito, streamChat, toChatMessages, toStoredMessages, type Incognito, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt, ToolEvent } from "@/lib/sse";
 import { publicHttpUrl } from "@/lib/web-search";
@@ -49,8 +49,8 @@ export interface ThreadProps {
   modelSlot?: ReactNode;
   /** Opens the enclave proof sheet (from a reply's signature line). */
   onOpenProof?: () => void;
-  /** The selected model has no enclave: replies without a signature show this line instead (the design's incognito label). */
-  incognitoLine?: string;
+  /** The selected model's incognito route (no enclave), recorded on each reply it sends so the reply keeps its own label. */
+  incognito?: Incognito;
   /** Send through /api/agent: the model may search the web. A standing line under the composer says so. */
   webSearch?: boolean;
   /** The composer's "+" tools menu; without one the design's "coming soon" icons show. */
@@ -107,13 +107,18 @@ export function replyView(content: string, running: boolean, isLast: boolean) {
   return { body: content ? "text" : running ? "writing" : "empty", copy: done && !!content, retry: done && isLast, sig: done && !!content } as const;
 }
 
-/** The history to store after a turn, or null when the reply is empty (nothing to keep). */
-export function turnToStore(stored: StoredMsg[], text: string, signed?: Signed): StoredMsg[] | null {
-  return text ? [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}) }] : null;
+/** The history to store after a turn. An empty reply stores no assistant message, but the submitted prompt is kept. */
+export function turnToStore(stored: StoredMsg[], text: string, signed?: Signed, incognito?: Incognito): StoredMsg[] {
+  return text ? [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}), ...(incognito ? { incognito } : {}) }] : stored;
 }
 
-function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognitoLine }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognitoLine?: string }) {
+/** The design's incognito label for a reply without a signature, from the route that reply used (none if unknown). */
+export const incognitoLine = (incognito: Incognito | undefined) =>
+  incognito === "private" ? "Incognito · zero-retention" : incognito === "anonymized" ? "Incognito · anonymized" : undefined;
+
+function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognito }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognito?: Incognito }) {
   const sig = signed ? SIG[signed] : undefined;
+  const line = incognitoLine(incognito);
   const view = replyView(content, running, isLast);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
@@ -128,7 +133,7 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
             {view.copy && <ActionBarPrimitive.Copy className="icon-btn" title="Copy" aria-label="Copy"><Copy weight="duotone" aria-hidden /></ActionBarPrimitive.Copy>}
             {view.retry && <ActionBarPrimitive.Reload className="icon-btn" title="Try again" aria-label="Try again"><ArrowCounterClockwise weight="duotone" aria-hidden /></ActionBarPrimitive.Reload>}
             {view.sig && sig && <button type="button" className={`sig ${sig.cls}`} data-testid={sig.testid} onClick={onOpenProof}><sig.Icon weight="duotone" aria-hidden />{sig.text}</button>}
-            {view.sig && !sig && incognitoLine && <button type="button" className="sig muted" data-testid="sig-incognito" onClick={onOpenProof}><EyeSlash weight="duotone" aria-hidden />{incognitoLine}</button>}
+            {view.sig && !sig && line && <button type="button" className="sig muted" data-testid="sig-incognito" onClick={onOpenProof}><EyeSlash weight="duotone" aria-hidden />{line}</button>}
           </div>
         )}
       </div>
@@ -162,12 +167,13 @@ export function ChatThread(props: ThreadProps) {
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       const agent = !!p.webSearch; // the model decides per message whether to search
+      const incognito = p.incognito; // the route this turn is sent to, kept with the reply
       // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
       const settled = () => tools.map((t) => (t.status === "running" ? { ...t, status: "error" as const } : t));
       const save = (signed?: Signed) => {
-        const msgs = turnToStore(stored, text, signed);
-        if (!msgs || turn.discarded()) return; // empty reply, or the chat was deleted or wiped meanwhile
+        if (turn.discarded()) return; // the chat was deleted or wiped meanwhile
+        const msgs = turnToStore(stored, text, signed, incognito);
         const first = history.find((m) => m.role === "user")?.content ?? "New chat";
         p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost, turn.current());
       };
@@ -175,29 +181,31 @@ export function ChatThread(props: ThreadProps) {
         try {
           for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent })) {
             text = u.text; tools = u.tools; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining, u.limit, u.quota);
-            yield { content: [{ type: "text", text }], metadata: { custom: { tools } } };
+            yield { content: [{ type: "text", text }], metadata: { custom: { tools, incognito } } };
           }
         } catch (e) {
-          if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } } }; return; } // keep what streamed so far, no error text
+          if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled(), incognito } } }; return; } // keep what streamed so far, no error text
           if (e instanceof ProviderFailure) p.onProviderFailure(p.modelRef);
           text = `⚠️ ${(e as Error).message}`; save();
-          yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
+          yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled(), incognito } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
           return;
         }
         save();
         if (receipt) {
           const signed = await p.verifySignature(receipt).catch(() => "n/a" as const);
           save(signed);
-          yield { content: [{ type: "text", text }], metadata: { custom: { signed, tools } } };
+          yield { content: [{ type: "text", text }], metadata: { custom: { signed, tools, incognito } } };
         }
       };
       try { yield* reply(); } finally { turn.end(); }
     },
   }), []);
 
-  const initialMessages = useMemo<ThreadMessageLike[]>(() => (props.chat.messages as StoredMsg[]).map((m) => ({
-    role: m.role, content: m.content, ...(m.role === "assistant" && normalizeSigned(m.signed) ? { metadata: { custom: { signed: normalizeSigned(m.signed) } } } : {}),
-  })), [props.chat.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const initialMessages = useMemo<ThreadMessageLike[]>(() => (props.chat.messages as StoredMsg[]).map((m) => {
+    const signed = m.role === "assistant" ? normalizeSigned(m.signed) : undefined;
+    const incognito = m.role === "assistant" ? normalizeIncognito(m.incognito) : undefined;
+    return { role: m.role, content: m.content, ...(signed || incognito ? { metadata: { custom: { ...(signed ? { signed } : {}), ...(incognito ? { incognito } : {}) } } } : {}) };
+  }), [props.chat.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runtime = useLocalRuntime(adapter, { initialMessages });
 
@@ -261,7 +269,8 @@ export function ChatThread(props: ThreadProps) {
               {({ message }) => (
                 <Message role={message.role} content={textOf(message.content as never)} running={message.status?.type === "running"} isLast={message.isLast}
                   signed={normalizeSigned((message.metadata?.custom as { signed?: unknown } | undefined)?.signed)}
-                  tools={(message.metadata?.custom as { tools?: ToolEvent[] } | undefined)?.tools} onOpenProof={props.onOpenProof} incognitoLine={props.incognitoLine} />
+                  tools={(message.metadata?.custom as { tools?: ToolEvent[] } | undefined)?.tools} onOpenProof={props.onOpenProof}
+                  incognito={normalizeIncognito((message.metadata?.custom as { incognito?: unknown } | undefined)?.incognito)} />
               )}
             </ThreadPrimitive.Messages>
           </ThreadPrimitive.Viewport>

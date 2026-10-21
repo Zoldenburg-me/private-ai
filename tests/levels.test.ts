@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ModelEntry } from "../lib/catalog";
-import { AUTO, autoRef, autoRouteNote, levelModels, levelOf, resolveRef } from "../lib/client/levels";
+import { AUTO, autoRef, autoRouteNote, levelModels, levelOf, nextUnbench, resolveRef } from "../lib/client/levels";
 import { summarise, ROUTE_COOLDOWN_MS, type Proof } from "../lib/client/proof";
 
 const m = (provider: string, id: string, privacy: ModelEntry["privacy"], extra: Partial<ModelEntry> = {}): ModelEntry =>
@@ -42,6 +42,16 @@ describe("privacy levels", () => {
     expect(autoRef(models, "anon", {}, NOW)).toBe("liquid:deepseek-v4.1-flash");
     expect(autoRef(models, "anon", { "liquid:deepseek-v4.1-flash": NOW - 1000 }, NOW)).toBe("liquid:qwen3.8-27b");
     expect(autoRef(models, "anon", { "liquid:deepseek-v4.1-flash": NOW - ROUTE_COOLDOWN_MS - 1 }, NOW)).toBe("liquid:deepseek-v4.1-flash");
+  });
+
+  it("Medium/Anon Auto sends nowhere while every candidate is benched, and says when it tries again", () => {
+    const allFailed = Object.fromEntries(models.filter((x) => levelOf(x) === "medium").map((x) => [`${x.provider}:${x.id}`, NOW - 1000]));
+    expect(autoRef(models, "medium", allFailed, NOW)).toBe("");
+    expect(resolveRef(models, "medium", AUTO, false, allFailed, NOW)).toBe("");
+    expect(nextUnbench(allFailed, NOW)).toBe(ROUTE_COOLDOWN_MS - 1000);
+    expect(nextUnbench({ x: NOW - ROUTE_COOLDOWN_MS - 1 }, NOW)).toBeUndefined();
+    expect(autoRouteNote({ models, ref: "", auto: true, proof: undefined, failedAt: allFailed, level: "medium", now: NOW })).toMatch(/every model.*failed/i);
+    expect(autoRouteNote({ models, ref: "", auto: true, proof: undefined, failedAt: {}, now: NOW })).toBeUndefined();
   });
 
   it("a remembered pick holds only while that level's list still offers it; otherwise Auto", () => {

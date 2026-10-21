@@ -14,7 +14,11 @@ export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: str
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
 export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
 
-export type StoredMsg = ChatMessage & { signed?: Signed };
+/** The incognito route an assistant reply came from (zero-retention or anonymized gateway); enclave replies have none. */
+export type Incognito = "private" | "anonymized";
+export const normalizeIncognito = (v: unknown): Incognito | undefined => (v === "private" || v === "anonymized" ? v : undefined);
+
+export type StoredMsg = ChatMessage & { signed?: Signed; incognito?: Incognito };
 
 export function toChatMessages(msgs: readonly UiMessage[]): ChatMessage[] {
   return msgs
@@ -22,14 +26,15 @@ export function toChatMessages(msgs: readonly UiMessage[]): ChatMessage[] {
     .map((m) => ({ role: m.role as ChatMessage["role"], content: m.content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("") }));
 }
 
-/** Like toChatMessages, but keeps each assistant reply's signature status for local history. */
+/** Like toChatMessages, but keeps each assistant reply's signature status and incognito route for local history. */
 export function toStoredMessages(msgs: readonly UiMessage[]): StoredMsg[] {
   const out: StoredMsg[] = [];
   for (const m of msgs) {
     const [chat] = toChatMessages([m]);
     if (!chat) continue;
     const signed = m.role === "assistant" ? normalizeSigned(m.metadata?.custom?.signed) : undefined;
-    out.push(signed ? { ...chat, signed } : chat);
+    const incognito = m.role === "assistant" ? normalizeIncognito(m.metadata?.custom?.incognito) : undefined;
+    out.push({ ...chat, ...(signed ? { signed } : {}), ...(incognito ? { incognito } : {}) });
   }
   return out;
 }

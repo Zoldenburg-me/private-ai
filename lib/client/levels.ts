@@ -1,6 +1,6 @@
 import type { ModelEntry } from "@/lib/catalog";
 import { canonicalModelId } from "@/lib/provider-models";
-import { fallbackOf, isBenched, type Proof } from "./proof";
+import { ROUTE_COOLDOWN_MS, fallbackOf, isBenched, type Proof } from "./proof";
 import { PROVIDER_LABEL, autoEntryOf, type AutoEntry } from "./providers";
 
 /** Privacy levels in the chat bar: where a prompt runs. Max = attested enclave, Medium = zero-retention, Anon = anonymized gateway. */
@@ -43,13 +43,22 @@ export function levelModels(models: ModelEntry[], level: Level, pickProvider: bo
   return fixed.filter((m, i) => fixed.findIndex((x) => canonicalModelId(x.id) === canonicalModelId(m.id)) === i);
 }
 
-/** What Auto sends to on a level: Max = the first curated Auto entry; Medium/Anon = the first listed model that has not failed recently. */
+/**
+ * What Auto sends to on a level: Max = the first curated Auto entry; Medium/Anon = the first listed model that has not
+ * failed recently, or "" (nothing to send to) while every one of them is benched.
+ */
 export function autoRef(models: ModelEntry[], level: Level, failedAt: Record<string, number>, now = Date.now()): string {
   const rows = models.filter((m) => levelOf(m) === level && m.selectable && !m.paid);
   if (level === "max") { const m = rows.find((x) => x.provider === "auto") ?? rows[0]; return m ? refOf(m) : ""; }
   const ranked = [...INCOGNITO_AUTO.flatMap((id) => rows.filter((m) => canonicalModelId(m.id) === id)), ...rows];
-  const m = ranked.find((x) => !isBenched(refOf(x), failedAt, now)) ?? ranked[0];
+  const m = ranked.find((x) => !isBenched(refOf(x), failedAt, now));
   return m ? refOf(m) : "";
+}
+
+/** Milliseconds until the next benched route is back, or undefined when none is benched. */
+export function nextUnbench(failedAt: Record<string, number>, now = Date.now()): number | undefined {
+  const left = Object.values(failedAt).map((t) => t + ROUTE_COOLDOWN_MS - now).filter((ms) => ms > 0);
+  return left.length ? Math.min(...left) : undefined;
 }
 
 /** The model ref a level's pick sends to: the pick while the picker offers it (Pick a provider included), otherwise Auto. */
@@ -59,10 +68,12 @@ export function resolveRef(models: ModelEntry[], level: Level, pick: string, pic
 }
 
 /** One line on which route Auto is using and why, for the picker and the proof sheet; undefined when Auto is off. */
-export function autoRouteNote(o: { models: ModelEntry[]; ref: string; auto: boolean; proof: Proof | undefined; failedAt: Record<string, number>; now?: number }): string | undefined {
+export function autoRouteNote(o: { models: ModelEntry[]; ref: string; auto: boolean; proof: Proof | undefined; failedAt: Record<string, number>; level?: Level; now?: number }): string | undefined {
   const now = o.now ?? Date.now();
   const entry = autoEntryOf(o.models, o.ref);
   if (!entry) {
+    if (o.auto && !o.ref && o.level && o.level !== "max" && o.models.some((m) => levelOf(m) === o.level && m.selectable && !m.paid))
+      return `Auto: every model on ${LEVELS.find((l) => l.id === o.level)?.label} failed at its provider in the last few minutes. It tries again in about ${Math.ceil((nextUnbench(o.failedAt, now) ?? 0) / 60_000)} min.`;
     if (!o.auto || !o.ref) return undefined;
     const m = o.models.find((x) => refOf(x) === o.ref);
     return `Auto picked ${m?.name ?? o.ref} via ${label(providerOf(o.ref))}: first on our list (price, speed, uptime) that has not failed in the last few minutes.`;
