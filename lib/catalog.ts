@@ -62,7 +62,8 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     tee,
     e2ee,
     contextLength: ctxOf(raw),
-    selectable: isSelectable(privacy),
+    // Tinfoil also lists embedding, speech, safety and tool models; only type "chat" can answer a chat.
+    selectable: isSelectable(privacy) && !(provider.id === "tinfoil" && raw.type !== undefined && raw.type !== "chat"),
     price: priceOf(raw),
   };
 }
