@@ -5,13 +5,15 @@ export interface Tier {
   dailyMessages: number; maxContextTokens: number; maxOutputTokens: number; requestsPerMinute: number;
   /** Separate daily quota for incognito (anonymized, non-TEE) models. */
   incognitoDailyMessages: number;
+  /** Model calls per agent run (/api/agent); each one counts against the limits above. */
+  agentMaxSteps: number;
 }
 
 /** PROPOSAL - not final pricing. Max "unlimited" is fair-use. */
 export const TIERS: Record<TierId, Tier> = {
-  free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5, incognitoDailyMessages: 50 },
-  pro: { id: "pro", name: "Pro", priceEurMonth: 15, dailyMessages: 1_000, maxContextTokens: 128_000, maxOutputTokens: 8_192, requestsPerMinute: 30, incognitoDailyMessages: 1_000 },
-  max: { id: "max", name: "Max", priceEurMonth: 49, dailyMessages: 5_000, maxContextTokens: 1_000_000, maxOutputTokens: 16_384, requestsPerMinute: 60, incognitoDailyMessages: 5_000 },
+  free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5, incognitoDailyMessages: 50, agentMaxSteps: 3 },
+  pro: { id: "pro", name: "Pro", priceEurMonth: 15, dailyMessages: 1_000, maxContextTokens: 128_000, maxOutputTokens: 8_192, requestsPerMinute: 30, incognitoDailyMessages: 1_000, agentMaxSteps: 8 },
+  max: { id: "max", name: "Max", priceEurMonth: 49, dailyMessages: 5_000, maxContextTokens: 1_000_000, maxOutputTokens: 16_384, requestsPerMinute: 60, incognitoDailyMessages: 5_000, agentMaxSteps: 15 },
 };
 
 /** Top frontier models: paid plans only, from any provider. */

@@ -90,6 +90,7 @@ export const DATA_INVENTORY: DataField[] = [
     ["route", "API route called", "aufgerufene API-Route"], ["provider", "inference provider id", "ID des Inferenz-Anbieters"], ["model", "model id", "Modell-ID"],
     ["status", "HTTP status", "HTTP-Status"], ["ms", "duration in ms", "Dauer in ms"], ["tier", "plan", "Tarif"], ["event", "event name, e.g. gated", "Ereignisname, z. B. gated"],
     ["inputChars", "length of input (a number)", "Länge der Eingabe (eine Zahl)"], ["outputBytes", "size of the reply (a number)", "Größe der Antwort (eine Zahl)"],
+    ["tool", "name of the agent tool used, e.g. web_search (never the search query)", "Name des genutzten Agenten-Werkzeugs, z. B. web_search (nie die Suchanfrage)"], ["steps", "number of agent steps (a number)", "Anzahl der Agenten-Schritte (eine Zahl)"],
   ] as const).map(([field, en, de]): DataField => ({
     store: "server-log", container: "stdout (metadata log)", field, en: `${en}; never the content`, de: `${de}; nie der Inhalt`,
     retentionEn: "rotated, at most 30 MB per container (TODO: confirm host log retention)", retentionDe: "rotierend, höchstens 30 MB je Container (TODO: Log-Aufbewahrung des Hosts bestätigen)",

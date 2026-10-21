@@ -3,6 +3,11 @@ import { usage } from "@/lib/ratelimit";
 import { withStores } from "@/lib/store";
 import { LIMITS, overLimit } from "@/lib/limits";
 import { TIERS } from "@/lib/tiers";
+import { inviteGateOn } from "@/lib/invite";
+import { searchConfigured } from "@/lib/web-search";
+
+/** Agent mode (web search) needs a search key, and under the invite gate an account (see handler.ts). */
+const features = (signedIn: boolean) => ({ webSearch: searchConfigured(process.env) && (signedIn || !inviteGateOn()) });
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,14 +21,14 @@ export const GET = withStores(async (req: Request) => {
   if (me) {
     const existing = me.accountId;
     const tier = await tierOf(existing);
-    return Response.json({ tier: TIERS[tier], usage: await usage(existing, tier), account: { signedIn: me.deviceId !== null, id: existing.slice(0, 6) } },
+    return Response.json({ tier: TIERS[tier], usage: await usage(existing, tier), account: { signedIn: me.deviceId !== null, id: existing.slice(0, 6) }, features: features(me.deviceId !== null) },
       { headers: { "Cache-Control": "no-store" } });
   }
   const limited = await overLimit(LIMITS.newSession, "new-session");
   if (limited) return limited;
   const { id, token } = await createSession();
   const tier = await tierOf(id);
-  return Response.json({ tier: TIERS[tier], usage: await usage(id, tier), apiToken: token, account: { signedIn: false, id: id.slice(0, 6) } }, {
+  return Response.json({ tier: TIERS[tier], usage: await usage(id, tier), apiToken: token, account: { signedIn: false, id: id.slice(0, 6) }, features: features(false) }, {
     headers: { "Cache-Control": "no-store", "Set-Cookie": sessionCookie(token) },
   });
 });
