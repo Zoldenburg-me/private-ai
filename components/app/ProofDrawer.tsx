@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, CheckCircle, Circle, Code, MinusCircle, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
 import type { Proof, ProofItem } from "@/lib/client/proof";
-import { ANONYMIZED_NOTE } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
 import { CopyHash } from "./CopyHash";
 
 const STATE_TEXT = { pass: "passed", fail: "failed", "not-checked": "not checked" } as const;
@@ -68,6 +68,8 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
   if (!open) return null;
   const title = proof?.level === "no-enclave" ? "Privacy details" : "Enclave proof";
   const items = proof?.reports.flatMap((r) => r.items) ?? [];
+  const provider = proof?.modelRef.split(":")[0] ?? "";
+  const gatewayName = PROVIDER_LABEL[provider] ?? provider;
   const failed = items.filter((i) => i.state === "fail");
   return (
     <aside className="drawer" data-testid="proof-drawer" aria-label={title}>
@@ -120,7 +122,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
             {proof.reports.map((r, idx) => (
               <section key={idx} className="report">
-                <h3>{r.role === "gateway" ? "NEAR AI gateway (TDX)" : "Model enclave (TDX + GPU)"}</h3>
+                <h3>{r.role === "gateway" ? `${gatewayName} gateway (TDX)` : "Model enclave (TDX + GPU)"}</h3>
                 <ul className="proof-list">{r.items.map((i) => <Item key={i.id} i={i} />)}</ul>
                 {r.measurements.length > 0 && (
                   <details className="measure">

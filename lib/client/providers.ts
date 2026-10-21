@@ -8,7 +8,7 @@ import { CURATED, routesByPrice } from "@/lib/routing";
  */
 export const ENABLED_PROVIDERS = ["near", "venice", "mock"] as const;
 
-export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", venice: "Frontier · anonymized", mock: "Mock enclave (dev)" };
+export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", redpill: "RedPill", venice: "Frontier · anonymized", mock: "Mock enclave (dev)" };
 
 /** One-line explanation shown wherever an anonymized model is offered or selected. */
 export const ANONYMIZED_NOTE = "Your prompt leaves the enclave path and goes to the model vendor without your identity (no account, IP or session).";

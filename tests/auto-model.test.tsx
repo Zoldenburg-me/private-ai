@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { normaliseModel } from "@/lib/catalog";
 import { routesByPrice } from "@/lib/routing";
 import { autoModels, defaultModelRef, visibleModels } from "@/lib/client/providers";
-import { firstPassing, serverCheckedProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { firstPassing, serverCheckedProof, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ModelPicker } from "@/components/app/ModelPicker";
 import { enclaveLine } from "@/components/app/ChatThread";
@@ -47,6 +47,13 @@ describe("auto model in the app", () => {
     expect(got?.modelRef).toBe("c");
     expect(tried).toEqual(["a", "b", "c"]);
     expect(await firstPassing(["a", "b"], async (r) => proof(r, levels[r]))).toBeUndefined();
+  });
+
+  it("Tinfoil passes only when our server's SDK check passed, so a broken Tinfoil route lets Auto fall through", async () => {
+    expect(tinfoilProof("tinfoil:kimi-k3", { server_checked: true }).level).toBe("server-checked");
+    for (const body of [{}, null, { server_checked: "true" }, { model_attestations: [] }]) expect(tinfoilProof("tinfoil:kimi-k3", body).level).toBe("unavailable");
+    const got = await firstPassing(["tinfoil:kimi-k3", "phala:kimi"], async (r) => (r.startsWith("tinfoil:") ? tinfoilProof(r, {}) : proof(r, "checks-passed")));
+    expect(got?.modelRef).toBe("phala:kimi");
   });
 
   it("Tinfoil says who checked it and never claims Verified", () => {

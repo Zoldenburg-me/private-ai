@@ -40,6 +40,8 @@ export function expectedMrConfigId(appCompose: string): string {
 
 export interface NearReport extends AttestationReport {
   event_log?: unknown;
+  /** RedPill's legacy report ("aci/…") attests its gateway, not the upstream model. */
+  api_version?: unknown;
   info?: { tcb_info?: string | { app_compose?: string } };
 }
 
@@ -144,10 +146,17 @@ export function noEnclaveProof(modelRef: string, now = Date.now()): Proof {
 /**
  * Tinfoil: lib/tinfoil.ts sends nothing until the Tinfoil SDK on our server has verified the enclave's attestation
  * and code provenance, and its reports are not NEAR-shaped, so this browser cannot re-check them. Say exactly that.
+ * Only for a `server_checked: true` answer from /api/attestation, i.e. after the SDK passed on our server.
  */
 export function serverCheckedProof(modelRef: string, now = Date.now()): Proof {
   return { modelRef, level: "server-checked", label: LEVEL_LABEL["server-checked"], chainVerified: false, checkedAt: now, reports: [],
-    notVerified: ["Tinfoil's attestation and code provenance: checked by the Tinfoil SDK on our server before each request, not in this browser"] };
+    notVerified: ["Tinfoil's attestation and code provenance: verified by the Tinfoil SDK on our server, which keeps the result until a request fails and then attests again; not checked in this browser"] };
+}
+
+/** Our server's /api/attestation answer for a Tinfoil model: passing only if the SDK check ran and passed there. */
+export function tinfoilProof(modelRef: string, body: unknown, now = Date.now()): Proof {
+  return (body as { server_checked?: unknown } | null)?.server_checked === true ? serverCheckedProof(modelRef, now)
+    : { modelRef, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: now, reports: [], notVerified: [] };
 }
 
 const PASSING: ProofLevel[] = ["verified", "checks-passed", "server-checked"];
@@ -165,8 +174,11 @@ export function proofFromResponse(modelRef: string, body: unknown, nonce: string
   const j = (body ?? {}) as { gateway_attestation?: NearReport; model_attestations?: NearReport[] } & Partial<NearReport>;
   const reports: ReportProof[] = [];
   if (j.gateway_attestation) reports.push(buildReportProof(j.gateway_attestation, "gateway", nonce));
-  for (const m of j.model_attestations ?? []) reports.push(buildReportProof(m, "model", nonce));
-  if (!reports.length && j.intel_quote) reports.push(buildReportProof(j as NearReport, "model", nonce));
+  // With its own gateway report present, the tag cannot relabel model reports (that would move the signing key to the gateway's).
+  const roleOf = (r: NearReport): ReportProof["role"] =>
+    (!j.gateway_attestation && typeof r.api_version === "string" && r.api_version.startsWith("aci/") ? "gateway" : "model");
+  for (const m of j.model_attestations ?? []) reports.push(buildReportProof(m, roleOf(m), nonce));
+  if (!reports.length && j.intel_quote) reports.push(buildReportProof(j as NearReport, roleOf(j as NearReport), nonce));
   return summarise(modelRef, reports, false);
 }
 

@@ -14,7 +14,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
-import { firstPassing, noEnclaveProof, proofFromResponse, serverCheckedProof, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { firstPassing, noEnclaveProof, proofFromResponse, signatureLevel, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { autoModels, visibleModels, defaultModelRef, type AutoEntry } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
@@ -37,6 +37,8 @@ const SHEET_MQ = "(max-width: 820px)";
 const CRAMPED_MQ = "(max-width: 1279px)";
 /** Homepage hand-off: how long to wait for a model and its enclave check before only prefilling the prompt. */
 const HANDOFF_WAIT_MS = 10_000;
+/** Auto found no passing route: how long until it checks the routes again. */
+const AUTO_RETRY_MS = 30_000;
 const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
 
 export default function Home() {
@@ -146,13 +148,16 @@ export default function Home() {
     const unavailable = (r: string): Proof => ({ modelRef: r, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] });
     // One provider ref, no state: null means no session yet, so nothing is cached and the next check retries.
     const one = async (r: string): Promise<Proof | null> => {
-      if (r.startsWith("tinfoil:")) return serverCheckedProof(r);
       if (models.find((m) => `${m.provider}:${m.id}` === r)?.privacy === "anonymized") return noEnclaveProof(r);
       const nonce = newNonce();
       try {
         const res = await fetch(`/api/attestation?model=${encodeURIComponent(r)}&nonce=${nonce}`);
         if (res.status === 401) return null;
-        return res.ok ? proofFromResponse(r, await res.json(), nonce) : unavailable(r);
+        if (!res.ok) return unavailable(r);
+        const body: unknown = await res.json();
+        // Tinfoil: passes only if the SDK on our server holds a verified attestation; a broken Tinfoil route is unavailable, so Auto moves on.
+        if (r.startsWith("tinfoil:")) return tinfoilProof(r, body);
+        return proofFromResponse(r, body, nonce);
       } catch {
         return unavailable(r);
       }
@@ -173,6 +178,13 @@ export default function Home() {
   }, [models]);
 
   useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
+  // Auto with no passing route (e.g. a brief attestation outage) leaves Send disabled: check again after a pause,
+  // until a route passes or the selection changes (the cleanup cancels the pending retry).
+  useEffect(() => {
+    if (!sessionReady || !modelRef.startsWith("auto:") || proofs[modelRef]?.level !== "unavailable") return;
+    const t = setTimeout(() => void checkProof(modelRef), AUTO_RETRY_MS);
+    return () => clearTimeout(t);
+  }, [sessionReady, modelRef, proofs, checkProof]);
 
   const verifySignature = useCallback(async (receipt: Receipt): Promise<Signed> => {
     const ref = `${receipt.provider}:${receipt.model}`;

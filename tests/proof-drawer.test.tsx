@@ -86,3 +86,20 @@ describe("proof drawer (summary first)", () => {
     expect(claimsVerified(text(before))).toBe(false);
   });
 });
+
+describe("gateway reports", () => {
+  it("RedPill's legacy aci/ report counts as its gateway, and the drawer names the provider, not NEAR", () => {
+    const n = newNonce();
+    const p = proofFromResponse("redpill:qwen/qwen3", { ...mockReport(n), api_version: "aci/v1" }, n);
+    expect(p.reports.map((r) => r.role)).toEqual(["gateway"]);
+    const html = text(drawer(p));
+    expect(html).toContain("RedPill gateway (TDX)");
+    expect(html).not.toContain("NEAR AI");
+    expect(html).not.toContain("Model enclave");
+    // Reports without an aci/ version stay model reports; NEAR's gateway keeps its provider's name.
+    expect(proofFromResponse("phala:m", mockReport(n), n).reports.map((r) => r.role)).toEqual(["model"]);
+    expect(text(drawer(passing()))).toContain("Mock enclave (dev) gateway (TDX)");
+    const g = mockReport(n);
+    expect(proofFromResponse("redpill:m", { gateway_attestation: g, model_attestations: [{ ...mockReport(n), api_version: "aci/v1" }] }, n).reports.map((r) => r.role)).toEqual(["gateway", "model"]);
+  });
+});
