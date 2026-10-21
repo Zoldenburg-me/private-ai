@@ -104,13 +104,16 @@ describe("auto model in the app", () => {
     expect(fallbackOf(undefined, proof("near:ds", "checks-passed"))).toBe(""); // not an Auto selection
 
     for (const level of ["verified", "checks-passed", "server-checked"] as const) expect(handoffReady(proof("near:m", level), "")).toBe(true);
-    for (const level of ["gateway-checked", "failed", "unavailable", "pending", "no-enclave"] as const) expect(handoffReady(proof("near:m", level), "")).toBe(false);
+    for (const level of ["gateway-checked", "failed", "unavailable", "pending"] as const) expect(handoffReady(proof("near:m", level), "")).toBe(false);
+    expect(handoffReady(proof("venice:m", "no-enclave"), "")).toBe(true); // an anonymized model picked by hand
     expect(handoffReady(proof("near:ds", "checks-passed"), "near:ds")).toBe(false); // a model the user did not pick: prefill only
     expect(handoffReady(null, "")).toBe(false);
 
-    expect(autoRetryDelay(proof("auto:glm", "unavailable"), "", 30_000)).toBe(30_000);
-    expect(autoRetryDelay(proof("near:ds", "checks-passed"), "near:ds", 30_000)).toBe(ROUTE_COOLDOWN_MS);
-    expect(autoRetryDelay(proof("tinfoil:glm", "server-checked"), "", 30_000)).toBe(0);
+    expect(autoRetryDelay(proof("auto:glm", "unavailable"), routes, 30_000)).toBe(30_000);
+    expect(autoRetryDelay(proof("near:ds", "checks-passed"), routes, 30_000)).toBe(ROUTE_COOLDOWN_MS); // NEAR fallback
+    expect(autoRetryDelay(proof("tinfoil:glm", "server-checked"), routes, 30_000)).toBe(ROUTE_COOLDOWN_MS); // not the cheapest route
+    expect(autoRetryDelay(proof("phala:glm", "checks-passed"), routes, 30_000)).toBe(0); // on the cheapest route
+    expect(autoRetryDelay(undefined, routes, 30_000)).toBe(0);
   });
 
   it("an Auto entry must carry its routes", () => {

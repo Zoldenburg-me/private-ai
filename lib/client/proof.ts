@@ -182,12 +182,19 @@ export const isBenched = (ref: string, failedAt: Record<string, number>, now = D
 export const fallbackOf = (routes: string[] | undefined, proof: Proof | undefined) =>
   routes && proof && PASSING.includes(proof.level) && !routes.includes(proof.modelRef) ? proof.modelRef : "";
 
-/** Homepage hand-off may send by itself only to a passing proof the user picked: not a gateway-only proof, not a fallback. */
-export const handoffReady = (proof: Proof | null | undefined, fallback: string) => !!proof && !fallback && PASSING.includes(proof.level);
+/**
+ * Homepage hand-off may send by itself only to what the user picked: a passing proof, or an anonymized model chosen
+ * by hand (no-enclave; Auto never picks one). Not a gateway-only proof, not Auto's fallback to another model.
+ */
+export const handoffReady = (proof: Proof | null | undefined, fallback: string) =>
+  !!proof && !fallback && (PASSING.includes(proof.level) || proof.level === "no-enclave");
 
-/** Auto's next re-check: soon while nothing passes, after the cooldown while on the NEAR fallback, else none. */
-export const autoRetryDelay = (proof: Proof | undefined, fallback: string, soonMs: number) =>
-  proof?.level === "unavailable" ? soonMs : fallback ? ROUTE_COOLDOWN_MS : 0;
+/**
+ * Auto's next re-check: soon while nothing passes; after the cooldown while it is not on its cheapest route (another
+ * route or the NEAR fallback), so a recovered route is used again; else none.
+ */
+export const autoRetryDelay = (proof: Proof | undefined, routes: string[], soonMs: number) =>
+  !proof ? 0 : proof.level === "unavailable" ? soonMs : proof.modelRef !== routes[0] ? ROUTE_COOLDOWN_MS : 0;
 
 /** Auto: check routes in order (cheapest first) and return the first proof that holds, or undefined if none does. */
 export async function firstPassing(routes: string[], check: (ref: string) => Promise<Proof | null>): Promise<Proof | undefined> {

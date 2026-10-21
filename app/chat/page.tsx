@@ -202,16 +202,17 @@ export default function Home() {
   useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
   // Auto with no passing route (e.g. a brief attestation outage) leaves Send disabled: check again after a pause,
   // until a route passes or the selection changes (the cleanup cancels the pending retry).
-  // On the NEAR fallback, check again once benched routes are back, so the chat returns to the model that was picked.
+  // Off its cheapest route (another route or the NEAR fallback), check again once benched routes are back.
   const autoEntry = autoEntryOf(models, modelRef);
   const autoProof = autoEntry ? proofs[modelRef] : undefined;
   const fallbackRef = fallbackOf(autoEntry?.routes, autoProof);
+  const [retryTick, setRetryTick] = useState(0); // a re-check that stored nothing (e.g. a 401) still arms the next one
   useEffect(() => {
-    const delay = autoProof ? autoRetryDelay(autoProof, fallbackRef, AUTO_RETRY_MS) : 0;
+    const delay = autoEntry ? autoRetryDelay(autoProof, autoEntry.routes, AUTO_RETRY_MS) : 0;
     if (!sessionReady || !delay) return;
-    const t = setTimeout(() => void checkProof(modelRef), delay);
+    const t = setTimeout(() => void checkProof(modelRef).then((p) => { if (!p) setRetryTick((n) => n + 1); }), delay);
     return () => clearTimeout(t);
-  }, [sessionReady, modelRef, autoProof, fallbackRef, checkProof]);
+  }, [sessionReady, modelRef, autoEntry, autoProof, checkProof, retryTick]);
   // Say so when Auto lands on the NEAR fallback (a model other than the one picked), and when it is back on its own route.
   const lastFallback = useRef({ modelRef: "", fallbackRef: "" });
   useEffect(() => {
