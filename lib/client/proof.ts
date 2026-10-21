@@ -60,7 +60,7 @@ export interface ReportProof {
   items: ProofItem[];
 }
 
-export type ProofLevel = "verified" | "checks-passed" | "failed" | "unavailable" | "pending" | "no-enclave";
+export type ProofLevel = "verified" | "checks-passed" | "server-checked" | "failed" | "unavailable" | "pending" | "no-enclave";
 
 export interface Proof {
   modelRef: string;
@@ -129,6 +129,7 @@ export function summarise(modelRef: string, reports: ReportProof[], chainVerifie
 export const LEVEL_LABEL: Record<ProofLevel, string> = {
   verified: "Verified",
   "checks-passed": "Enclave checks passed · chain not verified",
+  "server-checked": "Checked by our server · Tinfoil SDK",
   failed: "Proof failed",
   unavailable: "No proof available",
   pending: "Checking proof…",
@@ -138,6 +139,26 @@ export const LEVEL_LABEL: Record<ProofLevel, string> = {
 /** Anonymized models run at the model vendor: there is no enclave to attest, so nothing is fetched or claimed. */
 export function noEnclaveProof(modelRef: string, now = Date.now()): Proof {
   return { modelRef, level: "no-enclave", label: LEVEL_LABEL["no-enclave"], chainVerified: false, checkedAt: now, reports: [], notVerified: [] };
+}
+
+/**
+ * Tinfoil: lib/tinfoil.ts sends nothing until the Tinfoil SDK on our server has verified the enclave's attestation
+ * and code provenance, and its reports are not NEAR-shaped, so this browser cannot re-check them. Say exactly that.
+ */
+export function serverCheckedProof(modelRef: string, now = Date.now()): Proof {
+  return { modelRef, level: "server-checked", label: LEVEL_LABEL["server-checked"], chainVerified: false, checkedAt: now, reports: [],
+    notVerified: ["Tinfoil's attestation and code provenance: checked by the Tinfoil SDK on our server before each request, not in this browser"] };
+}
+
+const PASSING: ProofLevel[] = ["verified", "checks-passed", "server-checked"];
+
+/** Auto: check routes in order (cheapest first) and return the first proof that holds, or undefined if none does. */
+export async function firstPassing(routes: string[], check: (ref: string) => Promise<Proof | null>): Promise<Proof | undefined> {
+  for (const r of routes) {
+    const p = await check(r);
+    if (p && PASSING.includes(p.level)) return p;
+  }
+  return undefined;
 }
 
 export function proofFromResponse(modelRef: string, body: unknown, nonce: string): Proof {

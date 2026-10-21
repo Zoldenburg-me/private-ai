@@ -13,7 +13,13 @@ import type { Receipt } from "@/lib/sse";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
-import { ANONYMIZED_NOTE } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
+
+/** Names the provider this chat is actually sent to (Auto picks it per proof), or none while Auto is still choosing. */
+export function enclaveLine(modelRef: string): string {
+  const p = modelRef.split(":")[0];
+  return p ? `Runs inside an attested enclave on ${PROVIDER_LABEL[p] ?? p}.` : "Runs inside an attested enclave.";
+}
 
 export type { Signed, StoredMsg };
 
@@ -123,7 +129,7 @@ export function ChatThread(props: ThreadProps) {
             <div className="welcome" data-testid="welcome">
               <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
               <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
-              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : "Runs inside an attested enclave on NEAR AI Cloud."} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
+              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
               <div className="suggestions">
                 {(props.suggestions ?? []).map((s) => (
                   <ThreadPrimitive.Suggestion key={s} prompt={s} send className="suggestion">{s}</ThreadPrimitive.Suggestion>

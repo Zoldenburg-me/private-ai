@@ -14,8 +14,8 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
-import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
-import { visibleModels, defaultModelRef } from "@/lib/client/providers";
+import { firstPassing, noEnclaveProof, proofFromResponse, serverCheckedProof, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { autoModels, visibleModels, defaultModelRef, type AutoEntry } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
@@ -85,7 +85,7 @@ export default function Home() {
     setCollapsed(readSidebarCollapsed());
     refreshSession();
     fetch("/api/models").then((r) => r.json()).then((all: ModelEntry[]) => {
-      const m = visibleModels(all); setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
+      const m = [...autoModels(all), ...visibleModels(all)]; setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
     }).catch(() => setNotice("Could not load models"));
   }, []);
 
@@ -142,18 +142,32 @@ export default function Home() {
 
   const checkProof = useCallback(async (ref: string): Promise<Proof | null> => {
     if (!ref || !models.length) return null; // the catalog decides whether this model has an enclave at all
-    const nonce = newNonce();
-    let proof: Proof;
-    if (models.find((m) => `${m.provider}:${m.id}` === ref)?.privacy === "anonymized") proof = noEnclaveProof(ref);
-    else try {
-      const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
-      if (r.status === 401) return null; // no session yet: do not cache, the next check retries
-      proof = r.ok ? proofFromResponse(ref, await r.json(), nonce)
-        : { modelRef: ref, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] };
-    } catch {
-      proof = { modelRef: ref, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] };
-    }
-    setProofs((p) => ({ ...p, [ref]: proof }));
+    const unavailable = (r: string): Proof => ({ modelRef: r, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] });
+    // One provider ref, no state: null means no session yet, so nothing is cached and the next check retries.
+    const one = async (r: string): Promise<Proof | null> => {
+      if (r.startsWith("tinfoil:")) return serverCheckedProof(r);
+      if (models.find((m) => `${m.provider}:${m.id}` === r)?.privacy === "anonymized") return noEnclaveProof(r);
+      const nonce = newNonce();
+      try {
+        const res = await fetch(`/api/attestation?model=${encodeURIComponent(r)}&nonce=${nonce}`);
+        if (res.status === 401) return null;
+        return res.ok ? proofFromResponse(r, await res.json(), nonce) : unavailable(r);
+      } catch {
+        return unavailable(r);
+      }
+    };
+    const auto = models.find((m): m is AutoEntry => m.provider === "auto" && `auto:${m.id}` === ref);
+    let proof: Proof | null;
+    if (auto) {
+      // Cheapest route whose proof holds; its modelRef is where messages go. State is set once, at the end:
+      // setting it per route re-ran the check effect before this ref was stored (render loop).
+      let noSession = false;
+      const won = await firstPassing(auto.routes, async (r) => { const p = await one(r); if (!p) noSession = true; return p; });
+      proof = won ?? (noSession ? null : unavailable(ref));
+    } else proof = await one(ref);
+    if (!proof) return null;
+    const done = proof;
+    setProofs((p) => ({ ...p, [ref]: done, [done.modelRef]: done })); // the route's own key serves its signature checks
     return proof;
   }, [models]);
 
@@ -297,6 +311,8 @@ export default function Home() {
 
   const persona = personas.find((p) => p.id === personaId);
   const proof = proofs[modelRef] ?? null;
+  // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
+  const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
   const onUsage = useCallback((rem: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: u?.limit })); }, []);
 
@@ -407,7 +423,7 @@ export default function Home() {
 
         {view === "chat" && (
           kv || ghost
-            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost}
+            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
                 hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>

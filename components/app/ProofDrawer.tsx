@@ -27,6 +27,7 @@ function Item({ i }: { i: ProofItem }) {
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
   "checks-passed": "Enclave checks passed, but the hardware chain is not verified yet.",
+  "server-checked": "Our server checked this enclave's attestation and code with the Tinfoil SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
   unavailable: "No enclave proof is available right now.",
   pending: "Checking…",
