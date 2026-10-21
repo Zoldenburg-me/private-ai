@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleAgent, handleChat } from "../lib/handler";
 import { issueToken, setTier } from "../lib/session";
-import { _reset } from "../lib/ratelimit";
+import { _reset, usage } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { parseSseChunk } from "../lib/sse";
 import { createHash } from "node:crypto";
@@ -286,5 +286,19 @@ describe("agent limits, receipts and timeouts", () => {
     expect(s.features).toEqual({ webSearch: false });
     vi.stubEnv("INVITE_ONLY", "");
     expect((await (await sessionGET(new Request("http://app/api/session"))).json()).features).toEqual({ webSearch: true });
+  });
+});
+
+describe("agent mode on an incognito model", () => {
+  it("every step counts against the incognito quota, not the TEE one", async () => {
+    const { id, token } = issueToken();
+    const kimi = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "kimi-k3", model_spec: { privacy: "private" } });
+    const u = upstream((n) => (n === 1 ? toolCallStream("c1") : answerStream("c2")));
+    const res = await handleAgent(req(token, { ...ask, model: "venice:kimi-k3" }), "/api/agent",
+      { catalog: async () => [kimi], env: { ...env, VENICE_API_KEY: "k", VENICE_BASE_URL: "http://upstream/v1" }, fetchImpl: u.fetchImpl, log: () => {} });
+    expect(res.headers.get("x-usage-limit-daily")).toBe("50");
+    expect(res.headers.get("x-usage-remaining-daily")).toBe("49");
+    expect(parseSseChunk((await res.text()) + "\n").remaining).toBe("48");
+    expect((await usage(id, "free")).usedToday).toBe(0);
   });
 });

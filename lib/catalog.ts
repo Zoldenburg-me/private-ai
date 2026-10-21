@@ -1,5 +1,7 @@
 import type { ProviderConfig } from "./providers";
+import { LIQUID_MODELS, VENICE_PRIVATE, canonicalModelId } from "./provider-models";
 import { tinfoilFetch } from "./tinfoil";
+import { PAID_ONLY_MODELS } from "./tiers";
 
 export type Privacy = "tee" | "private" | "anonymized";
 
@@ -14,6 +16,10 @@ export interface ModelEntry {
   selectable: boolean;
   /** USD per 1M tokens, from the provider's own /models listing. */
   price?: { in: number; out: number };
+  /** Paid plans only (PAID_ONLY_MODELS). */
+  paid?: boolean;
+  /** Behind an anonymizing gateway (Venice, Liquid): its own quota and picker group. A zero-retention contract provider is not incognito. */
+  incognito?: true;
 }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
@@ -22,6 +28,8 @@ const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
 type Raw = Record<string, unknown>;
 
 const bool = (v: unknown) => v === true || v === "true";
+/** "tee" as its own token (tee-attested, tdx_tee1), never inside a word (guarantee) or negated (non-tee, not tee). */
+const teeWord = (t: string) => /(^|[^a-z])tee/.test(t) && !/(^|[^a-z])(non|no|not)[\s_-]*tee/.test(t);
 /** A missing or blank price is unknown, never free. */
 const num = (v: unknown) => (typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
 
@@ -39,17 +47,25 @@ function priceOf(raw: Raw): ModelEntry["price"] {
  */
 export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw, nearAttested = false): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
-  const name = String(raw.name ?? raw.display_name ?? id);
-  // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
-  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name, privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  // Paid plans only, whichever provider serves it (a Venice alias counts as its canonical id).
+  const paid = PAID_ONLY_MODELS.has(canonicalModelId(id)) ? { paid: true } : {};
+  const spec = (raw.model_spec && typeof raw.model_spec === "object" && !Array.isArray(raw.model_spec) ? raw.model_spec : {}) as Raw;
+  // Liquid's /models has no display names.
+  const name = [raw.name, raw.display_name, spec.name].find((n): n is string => typeof n === "string" && n !== "")
+    ?? (provider.id === "liquid" && Object.hasOwn(LIQUID_MODELS, id) ? LIQUID_MODELS[id] : id);
+  // Nothing behind a gateway can be attested: never TEE or E2EE. PRIVATE only for Venice's pinned self-run models, and only while Venice still says so.
+  if (provider.privacy === "anon-gateway") {
+    const privacy = provider.id === "venice" && VENICE_PRIVATE.has(id) && spec.privacy === "private" ? "private" : "anonymized";
+    return { id, provider: provider.id, name, privacy, tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true, incognito: true, ...paid };
+  }
   if (provider.id === "near")
-    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw) };
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw), ...paid };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
   const tee =
     bool(raw.tee) || bool(raw.is_tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
-    privacyText.includes("tee") || privacyText.includes("confidential") ||
+    teeWord(privacyText) || privacyText.includes("confidential") ||
     (ALL_TEE.has(provider.id) && !privacyText.includes("anonym"));
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
   const zdr = bool(raw.zdr) || bool(meta.zdr) || privacyText.includes("private") || privacyText.includes("zdr") || provider.privacy === "zdr-contract";
@@ -65,6 +81,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     // Tinfoil also lists embedding, speech, safety and tool models; only type "chat" can answer a chat.
     selectable: isSelectable(privacy) && !(provider.id === "tinfoil" && raw.type !== undefined && raw.type !== "chat"),
     price: priceOf(raw),
+    ...paid,
   };
 }
 
@@ -92,7 +109,8 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   const attested = p.id === "near" ? await nearAttested(p, fetchImpl) : undefined;
   return listed
     .map((m) => normaliseModel(p, m, attested?.has(String(m.id ?? m.model_id ?? m.modelId))))
-    .filter((m) => m.id && (!p.models || p.models.includes(m.id)));
+    .filter((m) => m.id && (!p.models || p.models.includes(m.id)))
+    .sort((a, b) => (p.models ? p.models.indexOf(a.id) - p.models.indexOf(b.id) : 0)); // allowlist order is picker order
 }
 
 /**

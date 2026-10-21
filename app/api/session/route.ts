@@ -21,14 +21,14 @@ export const GET = withStores(async (req: Request) => {
   if (me) {
     const existing = me.accountId;
     const tier = await tierOf(existing);
-    return Response.json({ tier: TIERS[tier], usage: await usage(existing, tier), account: { signedIn: me.deviceId !== null, id: existing.slice(0, 6) }, features: features(me.deviceId !== null) },
+    return Response.json({ tier: TIERS[tier], usage: await usage(existing, tier), incognitoUsage: await usage(existing, tier, Date.now(), true), account: { signedIn: me.deviceId !== null, id: existing.slice(0, 6) }, features: features(me.deviceId !== null) },
       { headers: { "Cache-Control": "no-store" } });
   }
   const limited = await overLimit(LIMITS.newSession, "new-session");
   if (limited) return limited;
   const { id, token } = await createSession();
   const tier = await tierOf(id);
-  return Response.json({ tier: TIERS[tier], usage: await usage(id, tier), apiToken: token, account: { signedIn: false, id: id.slice(0, 6) }, features: features(false) }, {
+  return Response.json({ tier: TIERS[tier], usage: await usage(id, tier), incognitoUsage: await usage(id, tier, Date.now(), true), apiToken: token, account: { signedIn: false, id: id.slice(0, 6) }, features: features(false) }, {
     headers: { "Cache-Control": "no-store", "Set-Cookie": sessionCookie(token) },
   });
 });

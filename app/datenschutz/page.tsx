@@ -12,7 +12,7 @@ export default function Datenschutz() {
         <h2>Datenschutzerklärung</h2>
         <h3>1. Verantwortlicher</h3>
         <p>Zoldenburg UG (haftungsbeschränkt), Anschrift siehe <a href="/impressum">Impressum</a>. E-Mail: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.
-          Datenschutzbeauftragter: <Todo>falls erforderlich benennen, sonst Satz streichen</Todo></p>
+          Datenschutzbeauftragter: Tony Thomas, erreichbar unter derselben E-Mail-Adresse. <Todo>Prüfen, ob eine Benennungspflicht besteht (Art. 37 DSGVO, § 38 BDSG), und die Benennung bestätigen</Todo></p>
         <h3>2. Grundsatz</h3>
         <p>Wir speichern keine Chat-Inhalte, keine IP-Adressen, keine User-Agents und keine E-Mail-Adressen. Ihr Chatverlauf liegt nur in Ihrem Browser.
           Eine vollständige, automatisch mit dem Code abgeglichene Liste aller gespeicherten Felder und Fristen finden Sie unter <a href="/privacy/metadata">/privacy/metadata</a>.</p>
@@ -23,13 +23,19 @@ export default function Datenschutz() {
         <h3>4. Chat-Inhalte</h3>
         <p>Ihre Nachrichten werden über unseren Server an den gewählten KI-Anbieter weitergeleitet und die Antwort zurückgestreamt. Inhalte werden dabei nur im Arbeitsspeicher
           verarbeitet, weder gespeichert noch protokolliert. Standardmäßig nutzen wir nur Anbieter, deren Modelle in vertraulichen Rechenumgebungen (TEE) laufen oder die vertraglich keine Daten aufbewahren.
-          Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
+          Empfänger: NEAR AI Cloud, Phala, Tinfoil, Privatemode (Bochum) und RedPill (<Todo>je Firma, Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen; RedPill: nachgelagerte Anbieter nennen</Todo>).
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
-        <p>Anonymisierte Frontier-Modelle (optional): Modelle mit der Kennzeichnung „ANONYMIZED“ (z. B. GPT, Claude, Gemini) laufen nicht in einer TEE und werden nie automatisch ausgewählt.
-          Wählen Sie eines aus, leiten wir Ihre Nachricht über Venice (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Venice ergänzen</Todo>) an den jeweiligen
-          Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>). Die Anfrage läuft unter unserem Konto bei Venice;
-          Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt. Venice und der Modellanbieter erhalten aber den Inhalt Ihrer Nachricht und der Antwort,
-          und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
+        <p>Inkognito-Modelle (optional): Modelle in der Gruppe „Incognito“ laufen nicht in einer TEE und werden nie automatisch ausgewählt. Wählen Sie eines aus, geht Ihre Nachricht
+          unter unserem Konto an einen dieser Dienste; Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt:</p>
+        <ul>
+          <li>„PRIVATE“ über Venice (Venice.ai, 1309 Coffeen Ave, Ste 14343, Sheridan, WY 82801, USA; Verarbeitung in den USA;
+            <Todo>AVV mit Venice abschließen und die Garantie für die Übermittlung in die USA (z. B. Standardvertragsklauseln) eintragen; Venice nennt öffentlich keine</Todo>): Venice betreibt das Modell selbst und speichert nach eigenen Angaben weder Anfrage noch Antwort.</li>
+          <li>„ANONYMIZED“ über Venice: Venice leitet die Nachricht an den jeweiligen Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>).</li>
+          <li>„ANONYMIZED“ über Liquid Inference (AI.exchange; <Todo>Firma, Sitz und Drittlandtransfer (Art. 44 ff. DSGVO) für Liquid Inference ergänzen</Todo>): Liquid vergibt die Anfrage an einen
+            Anbieter auf seiner Börse. Liquid sagt in seinem Auftragsverarbeitungsvertrag (AVV) zu, keine Daten aufzubewahren; zusätzlich verlangen wir bei jeder Anfrage, dass nur Angebote ohne
+            Datenaufbewahrung teilnehmen (<Todo>AVV mit Liquid: Datum eintragen; Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
+        </ul>
+        <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
         <p>Websuche (optional, standardmäßig aus): Schalten Sie im Chat „Websuche“ ein, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
           (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
           Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.</p>
@@ -44,9 +50,14 @@ export default function Datenschutz() {
         <h3>7. Hosting und Server-Logs</h3>
         <p>Hosting: <Todo>Hetzner Online GmbH, Gunzenhausen, Rechenzentrum in Deutschland; AVV abschließen</Todo>. Unsere Anwendung protokolliert nur Metadaten (Route, Modell, Status, Dauer, Längen als Zahlen), nie Inhalte oder IP-Adressen.
           <Todo>Reverse-Proxy so konfigurieren, dass keine IP-Adressen geloggt werden, und hier bestätigen</Todo></p>
+        <p>Netzwerk: Alle Aufrufe von hiddensee.app laufen über Cloudflare (Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA; DNS und Cloudflare Tunnel).
+          Cloudflare beendet die verschlüsselte Verbindung (TLS) und verarbeitet dabei Ihre IP-Adresse und den Inhalt der Anfragen, auch Ihre Nachrichten, auf dem Weg zu unserem Server.
+          Grundlage ist das Cloudflare Data Processing Addendum (Auftragsverarbeitung, Art. 28 DSGVO); die Übermittlung in die USA stützt sich auf Cloudflares Zertifizierung unter dem
+          EU-U.S. Data Privacy Framework (Art. 45 DSGVO), hilfsweise auf Standardvertragsklauseln. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (sichere Bereitstellung ohne offene Ports).
+          <Todo>Annahme des Cloudflare-DPA im Cloudflare-Konto bestätigen</Todo></p>
         <h3>8. Speicherdauer</h3>
         <p>Konten ohne aktives Abo werden {RETENTION_DAYS} Tage nach der letzten Nutzung automatisch gelöscht. Zähler laufen nach spätestens 2 Tagen ab. Ändert ein Betreiber Ihr Konto (z. B. Tarif setzen, Gerät abmelden, Konto löschen), protokollieren wir Aktion, Zeitpunkt und Ihre Konto-ID {AUDIT_LOG_DAYS} Tage lang (Art. 6 Abs. 1 lit. f DSGVO, Nachvollziehbarkeit); löschen Sie Ihr Konto, wird die ID aus dem Protokoll entfernt. Einzelheiten: <a href="/privacy/metadata">/privacy/metadata</a>.
-          <Todo>handels- und steuerrechtliche Aufbewahrungspflichten (Rechnungen bei Stripe) ergänzen</Todo></p>
+          Rechnungen zu bezahlten Tarifen (bei Stripe) werden 10 Jahre aufbewahrt (handels- und steuerrechtliche Aufbewahrungspflicht, Art. 6 Abs. 1 lit. c DSGVO). <Todo>Frist (§ 147 AO, § 257 HGB) und Rolle von Stripe rechtlich prüfen</Todo></p>
         <h3>9. Ihre Rechte</h3>
         <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie auf Beschwerde bei einer Aufsichtsbehörde (Art. 77 DSGVO),
           z. B. beim Bayerischen Landesamt für Datenschutzaufsicht (BayLDA), Ansbach. Auskunft und Datenübertragbarkeit: In den Einstellungen (⚙︎) unter „Account“ laden Sie mit „Download my data“ alle bei uns gespeicherten Daten Ihres Kontos als JSON-Datei herunter. Löschung: „Delete account“ löscht Ihr Konto, Tarif, Passkeys, angemeldete Geräte und Abo-Daten sofort sowie Ihren Kundendatensatz bei Stripe (gesetzlich aufzubewahrende Rechnungen verbleiben bei Stripe). Da wir Sie nicht namentlich kennen, erfolgt die Zuordnung über Ihr Session-Cookie bzw. Ihren Passkey (Art. 11 DSGVO); senden Sie uns Ihr Session-Token nicht per E-Mail.
@@ -55,7 +66,8 @@ export default function Datenschutz() {
       <Lang id="en">
         <h2>Privacy policy</h2>
         <h3>1. Controller</h3>
-        <p>Zoldenburg UG (haftungsbeschränkt), address see <a href="/impressum">legal notice</a>. Email: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.</p>
+        <p>Zoldenburg UG (haftungsbeschränkt), address see <a href="/impressum">legal notice</a>. Email: <a href="mailto:kontakt@zoldenburg.com">kontakt@zoldenburg.com</a>.
+          Data protection officer: Tony Thomas, reachable at the same email address. <Todo>check whether a designation is required (Art. 37 GDPR, § 38 BDSG) and confirm it</Todo></p>
         <h3>2. Principle</h3>
         <p>We do not store chat content, IP addresses, user agents or email addresses. Your chat history lives only in your browser.
           A complete list of every stored field and its retention, checked against the code automatically, is at <a href="/privacy/metadata">/privacy/metadata</a>.</p>
@@ -65,12 +77,18 @@ export default function Datenschutz() {
         <h3>4. Chat content</h3>
         <p>Your messages are relayed through our server to the selected AI provider and the reply is streamed back. Content is processed in memory only; it is never stored or logged.
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
-          Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
-        <p>Anonymized frontier models (optional): models labelled “ANONYMIZED” (e.g. GPT, Claude, Gemini) do not run in a TEE and are never selected automatically.
-          If you pick one, we relay your message via Venice (<Todo>Venice company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>) to the model vendor
-          (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>). The request runs under our Venice account;
-          your account id, IP address and session token are not sent. Venice and the model vendor do receive the content of your message and the reply,
-          and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
+          Recipients: NEAR AI Cloud, Phala, Tinfoil, Privatemode (Bochum) and RedPill (<Todo>company, location, DPA and any third-country transfer (Art. 44 ff. GDPR) for each; RedPill: name the providers it forwards to</Todo>). Ghost chats are not stored even in your browser.</p>
+        <p>Incognito models (optional): models in the “Incognito” group do not run in a TEE and are never selected automatically. If you pick one, your message goes
+          to one of these services under our account; your account id, IP address and session token are not sent:</p>
+        <ul>
+          <li>“PRIVATE” via Venice (Venice.ai, 1309 Coffeen Ave, Ste 14343, Sheridan, WY 82801, USA; processed in the US;
+            <Todo>sign a DPA with Venice and add the safeguard for the transfer to the US (e.g. standard contractual clauses); Venice publishes none</Todo>): Venice runs the model itself and, by its own account, stores neither the request nor the reply.</li>
+          <li>“ANONYMIZED” via Venice: Venice relays the message to the model vendor (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>).</li>
+          <li>“ANONYMIZED” via Liquid Inference (AI.exchange; <Todo>Liquid Inference company, location and third-country transfer (Art. 44 ff. GDPR)</Todo>): Liquid awards the request to a provider
+            on its exchange. Liquid commits in its data processing agreement (DPA) to retain no data; on every request we also require that only offers without data retention take part
+            (<Todo>DPA with Liquid: add its date; providers on Liquid: confirm role and third-country transfer</Todo>).</li>
+        </ul>
+        <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
         <p>Web search (optional, off by default): if you turn on “Web search” in a chat, the model may write search queries, which our server sends to the Brave Search API
           (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). Only the query text is sent, not your chat history,
           account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.</p>
@@ -82,8 +100,14 @@ export default function Datenschutz() {
           Legal basis: Art. 6(1)(b) and (c) GDPR.</p>
         <h3>7. Hosting and server logs</h3>
         <p>Hosting: <Todo>Hetzner Online GmbH, data centre in Germany; sign DPA</Todo>. Our application logs metadata only (route, model, status, duration, sizes as numbers), never content or IP addresses.</p>
+        <p>Network: every request to hiddensee.app passes through Cloudflare (Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA; DNS and Cloudflare Tunnel).
+          Cloudflare terminates the encrypted connection (TLS) and so processes your IP address and the content of requests, including your messages, on their way to our server.
+          This is covered by the Cloudflare Data Processing Addendum (processing on our behalf, Art. 28 GDPR); the transfer to the US relies on Cloudflare&apos;s certification under the
+          EU-U.S. Data Privacy Framework (Art. 45 GDPR), with standard contractual clauses as fallback. Legal basis: Art. 6(1)(f) GDPR (secure delivery without open ports).
+          <Todo>confirm the Cloudflare DPA is accepted in the Cloudflare account</Todo></p>
         <h3>8. Retention</h3>
-        <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. If an operator changes your account (e.g. sets a plan, signs out a device, deletes the account), we log the action, its time and your account id for {AUDIT_LOG_DAYS} days (Art. 6(1)(f) GDPR, accountability); deleting your account removes the id from that log. Details: <a href="/privacy/metadata">/privacy/metadata</a>.</p>
+        <p>Accounts without an active subscription are deleted automatically {RETENTION_DAYS} days after last use. Counters expire within 2 days. If an operator changes your account (e.g. sets a plan, signs out a device, deletes the account), we log the action, its time and your account id for {AUDIT_LOG_DAYS} days (Art. 6(1)(f) GDPR, accountability); deleting your account removes the id from that log. Details: <a href="/privacy/metadata">/privacy/metadata</a>.
+          Invoices for paid plans (held at Stripe) are kept for 10 years (commercial and tax retention duty, Art. 6(1)(c) GDPR). <Todo>legal review of the period (§ 147 AO, § 257 HGB) and Stripe&apos;s role</Todo></p>
         <h3>9. Your rights</h3>
         <p>You have the rights of access, rectification, erasure, restriction, portability and objection (Art. 15–21 GDPR) and may complain to a supervisory authority (Art. 77 GDPR).
           Access and portability: in Settings (⚙︎) under &quot;Account&quot;, &quot;Download my data&quot; gives you everything we store for your account as a JSON file. Erasure: &quot;Delete account&quot; immediately deletes your account, plan, passkeys, signed-in devices and subscription records, and your customer record at Stripe (invoices Stripe must keep by law remain there). As we do not know who you are, your session cookie or passkey identifies your account (Art. 11 GDPR); do not email us your session token. There is no automated decision-making or profiling.</p>

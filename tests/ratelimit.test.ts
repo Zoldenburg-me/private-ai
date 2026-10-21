@@ -46,6 +46,18 @@ describe.each(backends)("server-side fair-use gate (%s)", (_name, make) => {
     expect(d.status).toBe(429); expect(d.headers["retry-after"]).toBe("59");
     expect((await gate("u", "free", 1, now + 60_000)).allowed).toBe(true);
   });
+  it("incognito has its own daily count but shares the minute window and error budget", async () => {
+    const now = Date.UTC(2026, 9, 13, 10);
+    for (let i = 0; i < 5; i++) await gate("u", "free", 1, now);
+    const d = await gate("u", "free", 1, now + 1000, true);
+    expect(d.reason).toBe("rate limit, slow down");
+    expect(d.headers["x-usage-quota"]).toBe("incognito");
+    expect((await gate("u", "free", 1, now + 60_000, true)).headers["x-usage-remaining-daily"]).toBe("49");
+    expect(await usage("u", "free", now + 60_000)).toMatchObject({ usedToday: 5, dailyLimit: 20 });
+    expect(await usage("u", "free", now + 60_000, true)).toMatchObject({ usedToday: 1, dailyLimit: 50 });
+    for (let i = 0; i < ERROR_BUDGET.failures; i++) await recordFailure("u", now + 61_000);
+    expect((await gate("u", "free", 1, now + 62_000, true)).reason).toMatch(/error budget/);
+  });
   it("enforces context by tier without consuming quota", async () => {
     const now = Date.UTC(2026, 9, 13, 10);
     expect((await gate("a", "free", 9000, now)).status).toBe(413);

@@ -4,7 +4,7 @@ let verified = true;
 const upstream: string[] = [];
 vi.mock("../lib/tinfoil", () => ({ tinfoilFetch: vi.fn(), tinfoilVerified: async () => verified }));
 vi.mock("../lib/provider-keys", () => ({ liveProviders: async () => [{ id: "tinfoil", baseUrl: "https://inference.tinfoil.sh/v1", apiKey: "k" }] }));
-vi.mock("../lib/catalog-cache", () => ({ getCatalog: async () => [{ id: "kimi-k3", provider: "tinfoil", privacy: "tee-attested", selectable: true }] }));
+vi.mock("../lib/catalog-cache", () => ({ getCatalog: async () => [{ id: "kimi-k3", provider: "tinfoil", privacy: "tee", tee: true, selectable: true }] }));
 
 import { _setStores } from "../lib/store";
 import { createSession, touchSession } from "../lib/session";
@@ -25,6 +25,13 @@ describe("Tinfoil attestation (checked by the SDK on our server)", () => {
     expect(await ok.json()).toEqual({ server_checked: true });
     verified = false;
     expect((await attestation(get(s.token))).status).toBe(502);
+    expect(upstream).toEqual([]);
+  });
+
+  it("has no NEAR-style signature endpoint to spend the key on", async () => {
+    const s = await createSession(); await touchSession(s.id);
+    const sig = proxyEvidence("signature", fake)(new Request("http://app/api/signature?model=tinfoil:kimi-k3&chat_id=c1", { headers: { Cookie: `pai_session=${s.token}` } }));
+    expect((await sig).status).toBe(404);
     expect(upstream).toEqual([]);
   });
 });

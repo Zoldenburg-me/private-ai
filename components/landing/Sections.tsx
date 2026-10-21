@@ -16,7 +16,7 @@ import { ProofDemo } from "./ProofDemo";
 export const BRAND = "Hiddensee";
 /** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
 const gated = () => inviteCodes().length > 0;
-/** Anonymized frontier models are only offered when the gateway is configured (VENICE_API_KEY + VENICE_MODELS). */
+/** Frontier models are only offered when a gateway is configured (VENICE_API_KEY or LIQUID_API_KEY; an empty <PREFIX>_MODELS turns it off). */
 const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
 const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 
@@ -200,7 +200,7 @@ export function Features() {
 }
 
 const PLAN_LINES: Record<TierId, string[]> = {
-  free: [`${TIERS.free.dailyMessages} messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
+  free: [`${TIERS.free.dailyMessages} messages a day`, `+ ${TIERS.free.incognitoDailyMessages} incognito messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
   pro: [`${TIERS.pro.dailyMessages.toLocaleString("en")} messages a day`, `${TIERS.pro.maxContextTokens / 1000}k context`, "All models"],
   max: ["High fair-use limit", "1M context", "All models"],
 };

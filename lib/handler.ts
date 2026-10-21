@@ -45,7 +45,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
       // Like the first check: the cache secret uses no model context (JSON.stringify drops undefined).
-      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify({ ...body, user_cache_secret: undefined })));
+      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify({ ...body, user_cache_secret: undefined })), Date.now(), p.incognito);
       remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
@@ -62,7 +62,8 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
   }
 }
 
-interface Prepared { id: string; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
+/** `incognito`: the model counts against the incognito daily quota (lib/ratelimit.ts). */
+interface Prepared { id: string; incognito: boolean; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
 
 /**
  * Identity, body, model, tier and the first rate-limit check: everything before the upstream call.
@@ -97,6 +98,9 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   if (!provider) return err(503, "provider not configured");
 
   const tier = await tierOf(id);
+  if (entry.paid && tier === "free")
+    return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
+  const incognito = entry.incognito === true;
   const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
   const cap = TIERS[tier].maxOutputTokens;
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
@@ -105,8 +109,10 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
   const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
-  const g = await gate(id, tier, estimateTokens(JSON.stringify(sent(prompt, tier)))); // the cache secret uses no model context
-  const body = { ...prompt, ...cacheScope };
+  // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
+  const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
+  const g = await gate(id, tier, estimateTokens(JSON.stringify(sent(prompt, tier))), Date.now(), incognito); // the cache secret uses no model context
+  const body = { ...prompt, ...cacheScope, ...exchange };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget
     const limited = await overLimit(LIMITS.anonChat, "anon-chat");
@@ -115,7 +121,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  return { id, tier, provider, body, headers: g.headers, log };
+  return { id, incognito, tier, provider, body, headers: g.headers, log };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */

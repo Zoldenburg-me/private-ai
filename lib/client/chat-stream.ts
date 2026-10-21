@@ -8,7 +8,8 @@ const failure = (message: string, atProvider: boolean) => (atProvider ? new Prov
 // Our server's own texts for a failure at the provider (lib/relay.ts, lib/agent.ts, lib/handler.ts).
 const providerText = (m: string) => /^(provider |empty provider response$|model did not answer$)/.test(m);
 
-export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null; tools: ToolEvent[] }
+/** `quota`: which daily quota the reply counted against ("standard" or "incognito"), from the server's headers. */
+export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null; limit?: string | null; quota?: string | null; tools: ToolEvent[] }
 
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
 export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
@@ -56,7 +57,10 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     body: JSON.stringify({ model, stream: true, messages, ...(Object.keys(opts).length ? { pai_options: opts } : {}) }),
   });
   let remaining = res.headers.get("x-usage-remaining-daily"); // /api/agent updates it in `pai_usage` after its last step
+  const limit = res.headers.get("x-usage-limit-daily");
+  const quota = res.headers.get("x-usage-quota");
   if (!res.ok || !res.body) {
+    if (remaining != null) yield { text: "", remaining, limit, quota, tools: [] }; // a refused request still reports its quota
     const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     const message = j.error?.message || `HTTP ${res.status}`;
     // Our relay's own text too: a 502 from the tunnel while the app is down is not the provider's fault.
@@ -71,11 +75,11 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
     buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); finished ||= p.done; remaining = p.remaining ?? remaining;
     if (p.error) throw failure(p.error, agent && providerText(p.error)); // only /api/agent writes agent_error; a relayed provider could fake it
-    yield { text, remaining, tools };
+    yield { text, remaining, limit, quota, tools };
   }
   const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); remaining = p.remaining ?? remaining;
   if (p.error) throw failure(p.error, agent && providerText(p.error));
   // /api/agent always ends with [DONE] or agent_error: anything else is a cut connection, not an answer.
   if (agent && !(finished || p.done)) throw new Error("connection lost before the answer finished");
-  yield { text, receipt, remaining, tools };
+  yield { text, receipt, remaining, limit, quota, tools };
 }

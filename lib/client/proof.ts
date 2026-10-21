@@ -140,10 +140,10 @@ export const LEVEL_LABEL: Record<ProofLevel, string> = {
   failed: "Proof failed",
   unavailable: "No proof available",
   pending: "Checking proof…",
-  "no-enclave": "No enclave · anonymized",
+  "no-enclave": "No enclave",
 };
 
-/** Anonymized models run at the model vendor: there is no enclave to attest, so nothing is fetched or claimed. */
+/** Incognito models (private or anonymized) run outside any enclave: there is nothing to attest, so nothing is fetched or claimed. */
 export function noEnclaveProof(modelRef: string, now = Date.now()): Proof {
   return { modelRef, level: "no-enclave", label: LEVEL_LABEL["no-enclave"], chainVerified: false, checkedAt: now, reports: [], notVerified: [] };
 }

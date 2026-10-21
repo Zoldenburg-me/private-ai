@@ -12,18 +12,21 @@ export interface GateDecision {
   allowed: boolean; status: number; reason?: string; headers: Record<string, string>;
 }
 
-export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now()): Promise<GateDecision> {
+/** Incognito models have their own daily quota; the per-minute window and error budget are shared with the account. */
+export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now(), incognito = false): Promise<GateDecision> {
   const t = TIERS[tierId];
+  const daily = incognito ? t.incognitoDailyMessages : t.dailyMessages;
   const { counters } = await stores();
-  const r = await counters.consume(id, { daily: t.dailyMessages, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs },
+  const r = await counters.consume(id, { daily, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs, ...(incognito ? { scope: "incognito" } : {}) },
     contextTokens <= t.maxContextTokens, now);
   const resetMinute = Math.ceil((r.minuteStart + 60_000) / 1000);
   const headers: Record<string, string> = {
     "x-ratelimit-limit-requests": String(t.requestsPerMinute),
     "x-ratelimit-remaining-requests": String(Math.max(0, t.requestsPerMinute - r.minute)),
     "x-ratelimit-reset-requests": String(resetMinute),
-    "x-usage-limit-daily": String(t.dailyMessages),
-    "x-usage-remaining-daily": String(Math.max(0, t.dailyMessages - r.daily)),
+    "x-usage-limit-daily": String(daily),
+    "x-usage-remaining-daily": String(Math.max(0, daily - r.daily)),
+    "x-usage-quota": incognito ? "incognito" : "standard",
     "x-tier": t.id,
   };
   switch (r.outcome) {
@@ -40,10 +43,10 @@ export async function recordFailure(id: string, now = Date.now()): Promise<void>
   await (await stores()).counters.recordFailure(id, ERROR_BUDGET.windowMs, now);
 }
 
-/** Messages used today (for the usage display). */
-export async function usage(id: string, tierId: TierId, now = Date.now()) {
-  const used = await (await stores()).counters.usedToday(id, now);
-  const limit = TIERS[tierId].dailyMessages;
+/** Messages used today (for the usage display); `incognito` reads the incognito quota. */
+export async function usage(id: string, tierId: TierId, now = Date.now(), incognito = false) {
+  const used = await (await stores()).counters.usedToday(id, now, incognito ? "incognito" : undefined);
+  const limit = incognito ? TIERS[tierId].incognitoDailyMessages : TIERS[tierId].dailyMessages;
   return { usedToday: used, dailyLimit: limit, remainingToday: Math.max(0, limit - used) };
 }
 

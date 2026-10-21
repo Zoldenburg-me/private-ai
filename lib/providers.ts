@@ -1,3 +1,5 @@
+import { LIQUID_MODELS, VENICE_MODELS } from "./provider-models";
+
 /** "anon-gateway": no enclave; the gateway forwards prompts to the model vendor under its own account, without the user's identity. */
 export type PrivacyModel = "tee-attested" | "tee-gateway" | "zdr-contract" | "anon-gateway";
 
@@ -14,14 +16,16 @@ export interface ProviderConfig {
   keyId?: string;
 }
 
-export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
+/** Liquid is listed before Venice: when both offer a model and neither route is PRIVATE, the picker keeps Liquid's (lib/client/providers.ts). */
+export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string; models?: string[] }[] = [
   { id: "near", name: "NEAR AI Cloud", prefix: "NEAR_AI", privacy: "tee-attested", baseUrl: "https://cloud-api.near.ai/v1" },
   { id: "phala", name: "Phala Confidential AI", prefix: "PHALA", privacy: "tee-attested", baseUrl: "https://inference.phala.com/v1" },
   { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested", baseUrl: "https://inference.tinfoil.sh/v1" },
   { id: "privatemode", name: "Privatemode (Edgeless)", prefix: "PRIVATEMODE", privacy: "tee-attested" },
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway", baseUrl: "https://api.redpill.ai/v1" },
   { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },
-  { id: "venice", name: "Venice (anonymized frontier models)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1" },
+  { id: "liquid", name: "Liquid Inference (zero-retention exchange)", prefix: "LIQUID", privacy: "anon-gateway", baseUrl: "https://router.inference.ai.exchange/v1", models: Object.keys(LIQUID_MODELS) },
+  { id: "venice", name: "Venice (private open-weight, anonymized frontier)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", models: Object.keys(VENICE_MODELS) },
   { id: "custom", name: "Custom OpenAI-compatible", prefix: "CUSTOM", privacy: "zdr-contract" },
 ];
 
@@ -34,7 +38,7 @@ export function loadProviders(env: Env = process.env): ProviderConfig[] {
     if (d.id === "mock" && env.MOCK_PROVIDER !== "1") return [];
     const apiKey = env[`${d.prefix}_API_KEY`] || (d.id === "mock" ? "mock" : "");
     if (!baseUrl || !apiKey) return [];
-    const listed = env[`${d.prefix}_MODELS`]?.split(",").map((m) => m.trim()).filter(Boolean);
+    const listed = (env[`${d.prefix}_MODELS`]?.split(",") ?? d.models)?.map((m) => m.trim()).filter(Boolean);
     const models = listed && [...new Set(listed)];
     if (d.privacy === "anon-gateway" && !models?.length) return []; // only explicitly vetted frontier models
     return [{ id: d.id, name: d.name, privacy: d.privacy, baseUrl: baseUrl.replace(/\/$/, ""), apiKey, defaultModel: env[`${d.prefix}_MODEL`] || "", ...(models?.length ? { models } : {}) }];

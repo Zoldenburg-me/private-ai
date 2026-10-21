@@ -116,7 +116,8 @@ export const AUDIT_LOG_DAYS = 365;
 /** Subscription states that grant access (Stripe retries failed renewals while past_due). */
 export const ENTITLED_STATUSES = ["active", "trialing", "past_due"] as const;
 
-export interface ConsumeLimits { daily: number; perMinute: number; budgetFailures: number; budgetWindowMs: number }
+/** `scope` keeps a separate daily count (e.g. "incognito"); the minute window and error budget stay per id. */
+export interface ConsumeLimits { daily: number; perMinute: number; budgetFailures: number; budgetWindowMs: number; scope?: QuotaScope }
 export type ConsumeOutcome = "ok" | "budget" | "rejected" | "daily" | "minute";
 export interface ConsumeResult {
   outcome: ConsumeOutcome;
@@ -137,7 +138,7 @@ export interface CounterStore {
    */
   consume(id: string, limits: ConsumeLimits, commit: boolean, now: number): Promise<ConsumeResult>;
   recordFailure(id: string, windowMs: number, now: number): Promise<void>;
-  usedToday(id: string, now: number): Promise<number>;
+  usedToday(id: string, now: number, scope?: QuotaScope): Promise<number>;
   /**
    * Fixed-window request counter for abuse limits (`bucket` is a route name or account id).
    * Always increments; `allowed` is false once the count exceeds `limit` in this window.
@@ -153,6 +154,10 @@ export interface CounterStore {
 export interface HitResult { allowed: boolean; count: number; resetAt: number }
 
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
+
+export type QuotaScope = "incognito";
+/** Suffix of the daily counter after the id: ":<scope>:<day>" or ":<day>". */
+export const dailySuffix = (now: number, scope?: QuotaScope) => `${scope ? `:${scope}` : ""}:${dayKey(now)}`;
 
 /** Erasure ledger entries outlive the oldest backup (3 months, docs/backup-restore.md) with margin. */
 export const ERASURE_LEDGER_DAYS = 120;

@@ -294,7 +294,7 @@ describe("session + entitlements over the store", () => {
   it("/api/session reports tier and usage", async () => {
     const res = await sessionGET(new Request("http://app/api/session"));
     const body = await res.json();
-    expect(body).toMatchObject({ tier: { id: "free" }, usage: { usedToday: 0, dailyLimit: 20 } });
+    expect(body).toMatchObject({ tier: { id: "free" }, usage: { usedToday: 0, dailyLimit: 20 }, incognitoUsage: { usedToday: 0, dailyLimit: 50 } });
     expect(res.headers.get("set-cookie")).toMatch(/^pai_session=pai_/);
   });
 });

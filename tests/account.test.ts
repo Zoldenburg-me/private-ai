@@ -1,3 +1,4 @@
+import { TIERS } from "../lib/tiers";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Stripe from "stripe";
 import { _setStores, type Stores } from "../lib/store";
@@ -90,6 +91,8 @@ describe("GET /api/account/export (Art. 15 / 20)", () => {
     expect(d.passkeys).toHaveLength(1);
     expect(typeof d.passkeys[0].publicKey).toBe("string");
     expect(d.usage).toMatchObject({ usedToday: 0 });
+    expect(d.incognitoUsage).toMatchObject({ usedToday: 0 }); // Art. 15: the incognito counter is exported too
+    expect(Object.values(TIERS).map((t) => t.incognitoDailyMessages)).toContain(d.incognitoUsage.dailyLimit);
     expect(d.notStoredHere).toBeDefined();
   });
   it("gives the step-up back when the export fails, so the retry needs no second passkey prompt", async () => {

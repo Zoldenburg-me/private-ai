@@ -1,5 +1,5 @@
-import type { AccountStore, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
-import { dayKey, minuteStartOf, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
+import type { AccountStore, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, QuotaScope, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import { dailySuffix, dayKey, minuteStartOf, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
 export class MemoryAccountStore implements AccountStore {
@@ -198,7 +198,7 @@ export class MemoryCounterStore implements CounterStore {
 
   async consume(id: string, l: ConsumeLimits, commit: boolean, now: number): Promise<ConsumeResult> {
     const minuteStart = minuteStartOf(now);
-    const dk = `d:${id}:${dayKey(now)}`; const mk = `m:${id}:${minuteStart}`;
+    const dk = `d:${id}${dailySuffix(now, l.scope)}`; const mk = `m:${id}:${minuteStart}`;
     const f = this.recentFailures(id, l.budgetWindowMs, now);
     const oldestFailure = f.length ? Math.min(...f) : 0;
     let daily = this.get(dk, now); let minute = this.get(mk, now);
@@ -211,7 +211,7 @@ export class MemoryCounterStore implements CounterStore {
     return res("ok");
   }
   async recordFailure(id: string, windowMs: number, now: number) { this.recentFailures(id, windowMs, now).push(now); }
-  async usedToday(id: string, now: number) { return this.get(`d:${id}:${dayKey(now)}`, now); }
+  async usedToday(id: string, now: number, scope?: QuotaScope) { return this.get(`d:${id}${dailySuffix(now, scope)}`, now); }
   async hit(bucket: string, limit: number, windowMs: number, now: number): Promise<HitResult> {
     const start = Math.floor(now / windowMs) * windowMs;
     const count = this.incr(`rl:${bucket}:${start}`, windowMs, now);

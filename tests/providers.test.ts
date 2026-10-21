@@ -7,11 +7,11 @@ describe("providers", () => {
     expect(ps.map((p) => p.id)).toEqual(["near"]);
     expect(ps[0].baseUrl).toBe("https://cloud-api.near.ai/v1");
   });
-  it("Venice is the anonymizing gateway, configured from env only", () => {
+  it("Venice is a gateway with a vetted default line-up that env can replace", () => {
     const [v] = loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, gpt-x" });
     expect(v).toMatchObject({ id: "venice", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", apiKey: "k", models: ["gpt-x"] });
-    // Without an explicit frontier allowlist the gateway is off, so nothing unvetted is offered as "Frontier".
-    expect(loadProviders({ VENICE_API_KEY: "k" })).toEqual([]);
+    expect(loadProviders({ VENICE_API_KEY: "k" })[0].models).toEqual(expect.arrayContaining(["kimi-k3", "z-ai-glm-5-3"]));
+    // An explicitly empty allowlist turns the gateway off, so nothing unvetted is offered.
     expect(loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: " , " })).toEqual([]);
   });
   it("picks default then first", () => {
