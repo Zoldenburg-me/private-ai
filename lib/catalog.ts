@@ -1,5 +1,6 @@
 import type { ProviderConfig } from "./providers";
 import { LIQUID_MODELS, VENICE_PRIVATE, canonicalModelId } from "./provider-models";
+import { privatemodeFetch } from "./privatemode";
 import { tinfoilFetch } from "./tinfoil";
 import { PAID_ONLY_MODELS } from "./tiers";
 
@@ -78,11 +79,20 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     tee,
     e2ee,
     contextLength: ctxOf(raw),
-    // Tinfoil also lists embedding, speech, safety and tool models; only type "chat" can answer a chat.
-    selectable: isSelectable(privacy) && !(provider.id === "tinfoil" && raw.type !== undefined && raw.type !== "chat"),
+    selectable: isSelectable(privacy) && chatCapable(provider.id, raw),
     price: priceOf(raw),
     ...paid,
   };
+}
+
+/**
+ * Tinfoil and Privatemode also list embedding, speech, safety and tool models. Only Tinfoil's type "chat" and
+ * Privatemode's task "generate" can answer a chat; an entry without the field is left to the other checks.
+ */
+function chatCapable(provider: string, raw: Raw): boolean {
+  if (provider === "tinfoil") return raw.type === undefined || raw.type === "chat";
+  if (provider === "privatemode") return !Array.isArray(raw.tasks) || raw.tasks.includes("generate");
+  return true;
 }
 
 function ctxOf(raw: Raw): number | undefined {
@@ -101,7 +111,7 @@ export function isSelectable(p: Privacy): boolean {
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 /** One provider's /models, normalised. Throws when the provider fails or times out. */
-export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = p.id === "tinfoil" ? tinfoilFetch : fetch): Promise<ModelEntry[]> {
+export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = p.id === "tinfoil" ? tinfoilFetch : p.id === "privatemode" ? privatemodeFetch : fetch): Promise<ModelEntry[]> {
   const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { data?: Raw[] } | Raw[];

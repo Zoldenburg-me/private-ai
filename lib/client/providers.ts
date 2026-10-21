@@ -11,7 +11,7 @@ export const ENABLED_PROVIDERS = ["near", "venice", "liquid", "mock"] as const;
 
 /** Providers whose attestation covers their gateway, not the model behind it (lib/providers.ts: privacy "tee-gateway"). */
 export const GATEWAY_ONLY = new Set(["redpill"]);
-export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", redpill: "RedPill", incognito: "Incognito", mock: "Mock enclave (dev)" };
+export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", privatemode: "Privatemode", near: "NEAR AI Cloud", redpill: "RedPill", incognito: "Incognito", mock: "Mock enclave (dev)" };
 
 /** Picker group: every gateway model (Venice, Liquid) goes to one Incognito group; the rest by provider. */
 export const pickerGroup = (m: ModelEntry) => (m.incognito ? "incognito" : m.provider);

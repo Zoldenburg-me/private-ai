@@ -24,11 +24,14 @@ function Item({ i }: { i: ProofItem }) {
 }
 
 // Plain-language status (the design's wording). "verified" is only reachable when the certificate chain is verified (lib/client/proof.ts).
+/** The provider whose SDK checked a server-checked proof (Tinfoil, Privatemode). */
+const sdkName = (proof: Proof) => PROVIDER_LABEL[proof.modelRef.split(":")[0]] ?? "provider"; // only SERVER_CHECKED providers reach this, all labelled
+
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
   "checks-passed": "Enclave checks passed",
   "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
-  "server-checked": "Our server checked this enclave's attestation and code with the Tinfoil SDK before sending. Your browser cannot re-check it.",
+  "server-checked": "Our server checked this enclave's attestation with the provider's SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
   unavailable: "No enclave proof is available right now.",
   pending: "Checking…",
@@ -129,7 +132,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
               <div><dt>Model</dt><dd>{modelName ? <>{modelName} <code className="muted">{proof.modelRef}</code></> : <code>{proof.modelRef}</code>}</dd></div>
               <div><dt>Provider</dt><dd>{gatewayName}</dd></div>
               <div><dt>Checked</dt><dd>{new Date(proof.checkedAt).toLocaleTimeString()}</dd></div>
-              <div><dt>Checks</dt><dd data-testid="check-count">{items.length ? checkCount(items) : proof.level === "server-checked" ? "Run on our server by the Tinfoil SDK, not in this browser" : "None this browser could run"}</dd></div>
+              <div><dt>Checks</dt><dd data-testid="check-count">{items.length ? checkCount(items) : proof.level === "server-checked" ? `Run on our server by the ${sdkName(proof)} SDK, not in this browser` : "None this browser could run"}</dd></div>
             </dl>
           </section>
 
@@ -186,7 +189,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
             <section className="report">
               <h3>Per message</h3>
               {proof.level === "server-checked" ? (
-                <p className="small muted" data-testid="tinfoil-signature-note">Tinfoil does not sign each reply, so replies show no signature. The enclave check above ran on our server before anything was sent.</p>
+                <p className="small muted" data-testid="tinfoil-signature-note">{sdkName(proof)} does not sign each reply, so replies show no signature. The enclave check above ran on our server before anything was sent.</p>
               ) : proof.level === "gateway-checked" ? (
                 <p className="small muted" data-testid="gateway-signature-note">Replies are not signature-checked here: only the gateway is attested, so a signature from its key would not show that the model&apos;s enclave produced the reply.</p>
               ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>}

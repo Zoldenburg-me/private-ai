@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { normaliseModel } from "@/lib/catalog";
 import { routesByPrice } from "@/lib/routing";
 import { autoEntryOf, autoModels, defaultModelRef, visibleModels } from "@/lib/client/providers";
-import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, serverCheckedProof, tinfoilProof, LEVEL_LABEL, ROUTE_COOLDOWN_MS, type Proof } from "@/lib/client/proof";
+import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, serverCheckedProof, isServerChecked, sdkProof, LEVEL_LABEL, ROUTE_COOLDOWN_MS, type Proof } from "@/lib/client/proof";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ModelPicker } from "@/components/app/ModelPicker";
 import { enclaveLine } from "@/components/app/ChatThread";
@@ -51,9 +51,9 @@ describe("auto model in the app", () => {
   });
 
   it("Tinfoil passes only when our server's SDK check passed, so a broken Tinfoil route lets Auto fall through", async () => {
-    expect(tinfoilProof("tinfoil:kimi-k3", { server_checked: true }).level).toBe("server-checked");
-    for (const body of [{}, null, { server_checked: "true" }, { model_attestations: [] }]) expect(tinfoilProof("tinfoil:kimi-k3", body).level).toBe("unavailable");
-    const got = await firstPassing(["tinfoil:kimi-k3", "phala:kimi"], async (r) => (r.startsWith("tinfoil:") ? tinfoilProof(r, {}) : proof(r, "checks-passed")));
+    expect(sdkProof("tinfoil:kimi-k3", { server_checked: true }).level).toBe("server-checked");
+    for (const body of [{}, null, { server_checked: "true" }, { model_attestations: [] }]) expect(sdkProof("tinfoil:kimi-k3", body).level).toBe("unavailable");
+    const got = await firstPassing(["tinfoil:kimi-k3", "phala:kimi"], async (r) => (r.startsWith("tinfoil:") ? sdkProof(r, {}) : proof(r, "checks-passed")));
     expect(got?.modelRef).toBe("phala:kimi");
   });
 
@@ -70,6 +70,16 @@ describe("auto model in the app", () => {
     expect(enclaveLine("phala:z-ai/glm-5.3")).toBe("Runs inside an attested enclave on Phala Confidential AI.");
     expect(enclaveLine("near:x")).toBe("Runs inside an attested enclave on NEAR AI Cloud.");
     expect(enclaveLine("")).toBe("Runs inside an attested enclave.");
+  });
+
+  it("Privatemode is server-checked by its own SDK; unknown or inherited provider names are not", () => {
+    const p = serverCheckedProof("privatemode:glm-5.3");
+    expect(p).toMatchObject({ level: "server-checked", chainVerified: false, label: "Checked by our server · Privatemode SDK" });
+    expect(p.notVerified[0]).toContain("Privatemode SDK on our server");
+    expect(isServerChecked("privatemode:glm-5.3")).toBe(true);
+    expect(isServerChecked("near:x")).toBe(false);
+    expect(isServerChecked("__proto__:x")).toBe(false);
+    expect(enclaveLine("privatemode:glm-5.3")).toBe("Runs inside an attested enclave on Privatemode.");
   });
 
   it("a server-checked proof counts as passing for Auto", async () => {

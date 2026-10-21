@@ -42,7 +42,7 @@ describe("incognito line", () => {
 
 describe("signature line under a reply", () => {
   it("says why there is no signature", () => {
-    expect(SIG.server.text).toMatch(/Tinfoil/);
+    expect(SIG.server.text).toMatch(/No per-reply signature from this provider · enclave checked by our server/);
     expect(SIG.gateway.text).toMatch(/gateway/);
     for (const s of Object.values(SIG)) expect(s.text).not.toMatch(/^Signature not available$/);
   });

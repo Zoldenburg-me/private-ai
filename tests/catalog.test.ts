@@ -37,6 +37,18 @@ describe("model catalog + privacy policy", () => {
     expect(normaliseModel(tinfoil, { id: "gpt-oss-120b" }).selectable).toBe(true);
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", type: "embedding" }).selectable).toBe(true);
   });
+  it("only Privatemode's generate models are selectable, by the tasks its /models lists", () => {
+    const pm = { id: "privatemode", privacy: "tee-attested" } as const;
+    expect(normaliseModel(pm, { id: "glm-5.3", tasks: ["generate", "tool_calling"] })).toMatchObject({ privacy: "tee", selectable: true });
+    for (const [id, task] of [["qwen3-embedding-4b", "embed"], ["whisper-large-v3", "transcribe"], ["docs", "unstructured"]])
+      expect(normaliseModel(pm, { id, tasks: [task] }).selectable).toBe(false);
+    // No tasks (the allowlist fallback when /models is down): the operator picked it, keep it.
+    expect(normaliseModel(pm, { id: "glm-5.3" }).selectable).toBe(true);
+    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", tasks: ["embed"] }).selectable).toBe(true);
+  });
+  it("Privatemode works with only a key: no local proxy URL needed", () => {
+    expect(loadProviders({ PRIVATEMODE_API_KEY: "k" })).toMatchObject([{ id: "privatemode", baseUrl: "https://api.privatemode.ai/v1" }]);
+  });
   it("e2ee and zdr flags", () => {
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
