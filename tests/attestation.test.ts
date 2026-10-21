@@ -41,3 +41,11 @@ describe("signed responses", () => {
     expect(verifySignedResponse({ text, signature: mockSign(text) }, "0x" + "22".repeat(20)).ok).toBe(false);
   });
 });
+
+describe("verifyReport on a report without key or quote", () => {
+  it("fails its checks instead of throwing", () => {
+    const v = verifyReport({} as never, "00".repeat(32));
+    expect(v.ok).toBe(false);
+    expect(v.signingAddress).toBe("");
+  });
+});

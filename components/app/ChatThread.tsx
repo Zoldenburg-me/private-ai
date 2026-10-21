@@ -94,11 +94,13 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
   );
 }
 
-const SIG = {
+export const SIG = {
   enclave: { cls: "ok", Icon: CheckCircle, text: "Signed in the enclave", testid: "signed" },
   "key-match": { cls: "warn", Icon: CheckCircle, text: "Signature matches the enclave's reported key · chain not verified", testid: "signed-key-match" },
   fail: { cls: "bad", Icon: XCircle, text: "Signature mismatch", testid: "signed-fail" },
-  "n/a": { cls: "muted", Icon: MinusCircle, text: "Signature not available", testid: "signed-na" },
+  server: { cls: "muted", Icon: MinusCircle, text: "No per-reply signature from Tinfoil · enclave checked by our server", testid: "signed-server" },
+  gateway: { cls: "muted", Icon: MinusCircle, text: "No model-enclave signature · only the provider's gateway is attested", testid: "signed-gateway" },
+  "n/a": { cls: "muted", Icon: MinusCircle, text: "No signature could be checked for this reply", testid: "signed-na" },
 } as const;
 
 /** What an assistant bubble shows. Try again only on the last reply: retrying an older one would save over the later messages. */

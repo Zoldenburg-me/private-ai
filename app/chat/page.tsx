@@ -14,7 +14,7 @@ import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
 import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
-import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, autoEntryOf, autoModels, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
@@ -266,7 +266,7 @@ export default function Home() {
     const ref = `${receipt.provider}:${receipt.model}`;
     const a = proofs[ref] ?? await checkProof(ref);
     // A gateway-only proof's key is the gateway's: a match would not mean the model's enclave signed the reply.
-    if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return "n/a";
+    if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return a ? unsignedReason(a.level) : "n/a";
     const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
     if (!r.ok) return "n/a";
     return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok);

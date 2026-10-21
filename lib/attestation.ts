@@ -68,7 +68,7 @@ export function verifyReport(report: AttestationReport, nonceHex: string): Verif
     try { const p = JSON.parse(report.nvidia_payload) as { nonce?: string }; add("gpu evidence nonce", strip0x(p.nonce ?? "") === nonce); }
     catch { add("gpu evidence nonce", false, "malformed"); }
   }
-  return { ok: checks.every((c) => c.ok), checks, signingAddress: report.signing_address.toLowerCase(), chainVerified: false };
+  return { ok: checks.every((c) => c.ok), checks, signingAddress: (report.signing_address ?? "").toLowerCase(), chainVerified: false };
 }
 
 /** Ethereum personal_sign recovery (EIP-191). */
