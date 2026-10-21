@@ -1,7 +1,7 @@
 /**
  * Our own OpenAI-compatible extension object: `pai_options`.
  *  - persona: { name, system_prompt }  -> prepended as system message (sent by client; personas are stored locally)
- *  - web_search: boolean (default false; not yet supported -> 400 if true)
+ *  - web_search: boolean (default false; only /api/agent accepts true, elsewhere -> 400)
  */
 export interface PaiOptions { persona?: { name?: string; system_prompt: string }; web_search?: boolean }
 
@@ -50,11 +50,11 @@ function toMessage(m: unknown, callIds: Set<string>): ForwardedMessage | null {
   return { role: m.role, content, tool_calls: calls as ToolCall[] };
 }
 
-export function applyExtensions(input: Record<string, unknown>): ParsedRequest {
+export function applyExtensions(input: Record<string, unknown>, allow: { webSearch?: boolean } = {}): ParsedRequest {
   const fail = (error: string): ParsedRequest => ({ body: {}, messages: [], error });
   if (!isObject(input)) return fail("body must be a JSON object");
   const opts = (isObject(input.pai_options) ? input.pai_options : {}) as PaiOptions;
-  if (opts.web_search === true) return fail("web_search is not available yet (off by default for privacy)");
+  if (opts.web_search === true && !allow.webSearch) return fail("web_search is only available in agent mode (/api/agent)");
   if (input.tools !== undefined || input.tool_choice !== undefined) return fail("tools are not supported");
   if (!validStop(input.stop)) return fail(`stop must be up to ${MAX_STOP} strings of at most ${MAX_STOP_CHARS} characters`);
   if (!Array.isArray(input.messages) || !input.messages.length) return fail("messages required");

@@ -30,6 +30,9 @@ export default function Datenschutz() {
           Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>). Die Anfrage läuft unter unserem Konto bei Venice;
           Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt. Venice und der Modellanbieter erhalten aber den Inhalt Ihrer Nachricht und der Antwort,
           und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
+        <p>Websuche (optional, standardmäßig aus): Schalten Sie im Chat „Websuche“ ein, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
+          (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
+          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.</p>
         <h3>5. Passkeys (optional)</h3>
         <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
@@ -68,6 +71,9 @@ export default function Datenschutz() {
           (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>). The request runs under our Venice account;
           your account id, IP address and session token are not sent. Venice and the model vendor do receive the content of your message and the reply,
           and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
+        <p>Web search (optional, off by default): if you turn on “Web search” in a chat, the model may write search queries, which our server sends to the Brave Search API
+          (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). Only the query text is sent, not your chat history,
+          account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.</p>
         <h3>5. Passkeys (optional)</h3>
         <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>
