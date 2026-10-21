@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { openHistory, readHandoff, inviteLink, withInvite } from "../lib/client/guest";
 import { MANAGED, type KeyStore } from "../lib/client/vault";
 import type { KV } from "../lib/storage";
-import { SIDEBAR_KEY, sidebarHidden } from "../lib/client/ui-prefs";
+import { DEFAULT_MODE, MODE_KEY, SIDEBAR_KEY, parseModePrefs, sidebarHidden } from "../lib/client/ui-prefs";
 import { DATA_INVENTORY } from "../lib/data-inventory";
 
 const spyKV = (init: Record<string, string> = {}) => {
@@ -47,6 +47,22 @@ describe("sidebar preference", () => {
   it("is listed in the data inventory (DE + EN)", () => {
     const f = DATA_INVENTORY.find((x) => x.store === "browser" && x.container.includes(SIDEBAR_KEY));
     expect(f?.en && f.de).toBeTruthy();
+  });
+});
+
+describe("privacy mode preference", () => {
+  it("is listed in the data inventory (DE + EN)", () => {
+    const f = DATA_INVENTORY.find((x) => x.store === "browser" && x.container.includes(MODE_KEY));
+    expect(f?.en && f.de).toBeTruthy();
+  });
+  it("first visit and anything unreadable: Max, Auto everywhere, web search on, no provider choice", () => {
+    for (const raw of [null, "", "{", "[]", JSON.stringify({ level: "root", picks: { max: 5 }, webSearch: "yes" })])
+      expect(parseModePrefs(raw)).toEqual(DEFAULT_MODE);
+    expect(DEFAULT_MODE).toEqual({ level: "max", picks: { max: "auto", medium: "auto", anon: "auto" }, webSearch: true, pickProvider: false });
+  });
+  it("keeps valid fields and drops the rest", () => {
+    const raw = JSON.stringify({ level: "anon", picks: { medium: "venice:kimi-k3", anon: "x".repeat(300) }, webSearch: false, pickProvider: true, extra: 1 });
+    expect(parseModePrefs(raw)).toEqual({ level: "anon", picks: { max: "auto", medium: "venice:kimi-k3", anon: "auto" }, webSearch: false, pickProvider: true });
   });
 });
 

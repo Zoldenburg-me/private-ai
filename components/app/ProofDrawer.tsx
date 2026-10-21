@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowClockwise, CheckCircle, Circle, Code, MinusCircle, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, CheckCircle, Circle, CircleDashed, Code, MinusCircle, Question, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
 import type { Proof, ProofItem } from "@/lib/client/proof";
-import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
+import { PROVIDER_LABEL } from "@/lib/client/providers";
 import { CopyHash } from "./CopyHash";
 
 const STATE_TEXT = { pass: "passed", fail: "failed", "not-checked": "not checked" } as const;
@@ -23,10 +23,10 @@ function Item({ i }: { i: ProofItem }) {
   );
 }
 
-// Plain-language status. "verified" is only reachable when the certificate chain is verified (lib/client/proof.ts).
+// Plain-language status (the design's wording). "verified" is only reachable when the certificate chain is verified (lib/client/proof.ts).
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
-  "checks-passed": "Enclave checks passed, but the hardware chain is not verified yet.",
+  "checks-passed": "Enclave checks passed",
   "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
   "server-checked": "Our server checked this enclave's attestation and code with the Tinfoil SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
@@ -34,6 +34,35 @@ const STATUS: Record<Proof["level"], string> = {
   pending: "Checking…",
   "no-enclave": "No enclave.",
 };
+
+// The design's note under the status line.
+const NOTE: Partial<Record<Proof["level"], string>> = {
+  "checks-passed": "The hardware certificate chain is not checked yet, so this is not a full proof.",
+};
+
+/** The design's five key checks, read from the model enclave's report: label, and what a pass means. */
+const KEY_CHECKS: { id: string; label: string; pass: string }[] = [
+  { id: "nonce echoed", label: "Nonce echoed in report", pass: "matches this browser's nonce" },
+  { id: "debug mode off", label: "Debug mode off", pass: "production enclave" },
+  { id: "report_data binds signer+nonce", label: "Signer bound to report", pass: "hash matches" },
+  { id: "gpu evidence nonce", label: "GPU evidence", pass: "nonce matches" },
+  { id: "dcap-chain", label: "Certificate chain", pass: "verified" },
+];
+
+function KeyChecks({ items }: { items: ProofItem[] }) {
+  const rows = KEY_CHECKS.flatMap((k) => { const i = items.find((x) => x.id === k.id); return i ? [{ ...k, state: i.state }] : []; });
+  if (!rows.length) return null;
+  return (
+    <ul className="key-checks" data-testid="key-checks">
+      {rows.map((k) => (
+        <li key={k.id} className={`key-check s-${k.state}`}>
+          <span className="ico">{k.state === "pass" ? <CheckCircle weight="fill" aria-hidden /> : k.state === "fail" ? <XCircle weight="fill" aria-hidden /> : <CircleDashed aria-hidden />}</span>
+          <span>{k.label}<span className="st">{k.state === "pass" ? k.pass : k.state === "fail" ? "failed" : "not checked yet"}</span></span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function checkCount(items: ProofItem[]): string {
   const run = items.filter((i) => i.state !== "not-checked");
@@ -52,7 +81,8 @@ function SummaryIcon({ level }: { level: Proof["level"] }) {
  * Details drawer. Structure inspired by how Maple explains its enclave proof (summary first,
  * then measurements, then what is and is not covered); written from scratch for TDX/NEAR evidence.
  */
-export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof | null; open: boolean; onClose: () => void; onRecheck: () => void }) {
+/** `autoNote`: which route Auto is using and why (lib/client/levels.ts autoRouteNote), when Auto chose it. */
+export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelName, privacy, autoNote }: { proof: Proof | null; open: boolean; onClose: () => void; onRecheck: () => void; onExplain?: () => void; modelName?: string; privacy?: string; autoNote?: string }) {
   const [showRaw, setShowRaw] = useState(false);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
@@ -62,7 +92,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
     if (!open) return;
     const back = document.activeElement as HTMLElement | null;
     closeBtn.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector("dialog[open]")) closeRef.current(); }; // Escape in a modal on top closes only that
     addEventListener("keydown", onKey);
     return () => { removeEventListener("keydown", onKey); setTimeout(() => { if (back?.isConnected) back.focus(); }); }; // after this commit: <main> may still be inert on mobile
   }, [open]);
@@ -81,21 +111,29 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
       {!proof ? <p className="drawer-body muted">Checking…</p> : proof.level === "no-enclave" ? (
         <div className="drawer-body">
           <section className="summary lvl-no-enclave" data-testid="proof-summary">
-            <p className="summary-title"><ShieldSlash aria-hidden /><strong>{proof.label}</strong></p>
+            <p className="summary-title"><ShieldSlash aria-hidden /><strong>No enclave for this model</strong></p>
+            <p className="summary-note">{privacy === "anonymized" ? "Your identity is stripped at our relay; the model runs at the provider without hardware isolation. The vendor sees the prompt and reply; we cannot prove what it does with them."
+              : privacy === "private" ? "Zero-retention by contract with the provider, without hardware isolation. The vendor sees the prompt and reply; we cannot prove what it does with them."
+              : "No enclave attestation applies: the vendor sees the prompt and reply, and we cannot prove what it does with them."}</p>
+            {autoNote && <p className="summary-note" data-testid="auto-note">{autoNote}</p>}
             <dl className="facts"><div><dt>Model</dt><dd><code>{proof.modelRef}</code></dd></div></dl>
-            <p className="summary-note">No enclave attestation applies. {ANONYMIZED_NOTE} The vendor sees the prompt and reply; we cannot prove what it does with them.</p>
           </section>
         </div>
       ) : (
         <div className="drawer-body">
           <section className={`summary lvl-${proof.level}`} data-testid="proof-summary">
             <p className="summary-title"><SummaryIcon level={proof.level} /><strong data-testid="drawer-chain-status">{STATUS[proof.level]}</strong></p>
+            {NOTE[proof.level] && <p className="summary-note">{NOTE[proof.level]}</p>}
+            {autoNote && <p className="summary-note" data-testid="auto-note">{autoNote}</p>}
             <dl className="facts">
-              <div><dt>Model</dt><dd><code>{proof.modelRef}</code></dd></div>
+              <div><dt>Model</dt><dd>{modelName ? <>{modelName} <code className="muted">{proof.modelRef}</code></> : <code>{proof.modelRef}</code>}</dd></div>
+              <div><dt>Provider</dt><dd>{gatewayName}</dd></div>
               <div><dt>Checked</dt><dd>{new Date(proof.checkedAt).toLocaleTimeString()}</dd></div>
               <div><dt>Checks</dt><dd data-testid="check-count">{checkCount(items)}</dd></div>
             </dl>
           </section>
+
+          <KeyChecks items={proof.reports.find((rp) => rp.role === "model")?.items ?? items} />
 
           {failed.length > 0 && (
             <section className="report" data-testid="failed-checks">
@@ -106,6 +144,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
           <div className="row gap wrap drawer-actions">
             <button type="button" className="btn" data-testid="verify" onClick={onRecheck}><ArrowClockwise aria-hidden />Re-check now</button>
+            {onExplain && <button type="button" className="link explain-link" onClick={onExplain}><Question weight="duotone" aria-hidden />What do these privacy modes mean?</button>}
           </div>
 
           <details className="tech">

@@ -53,7 +53,8 @@ describe("proof drawer (summary first)", () => {
   it("leads with a plain status line, model, time and a check count", () => {
     const html = drawer(passing());
     const summary = html.slice(0, html.indexOf("<details"));
-    expect(summary).toContain("Enclave checks passed, but the hardware chain is not verified yet.");
+    expect(summary).toContain("Enclave checks passed");
+    expect(summary).toContain("The hardware certificate chain is not checked yet");
     expect(summary).not.toMatch(/sealed|running in/i); // an unverified quote cannot prove where it runs
     expect(summary).toContain("mock:mock-tee-small");
     expect(summary).toContain("Checked");
@@ -111,3 +112,23 @@ describe("gateway reports", () => {
     expect(proofFromResponse("redpill:m", { gateway_attestation: g, model_attestations: [{ ...mockReport(n), api_version: "aci/v1" }] }, n).reports.map((r) => r.role)).toEqual(["gateway", "model"]);
   });
 });
+
+describe("badge tone and no-enclave notes", () => {
+  it("a verified proof gets the green tone, unverified does not", () => {
+    const p = passing();
+    const allPass = p.reports.map((r) => ({ ...r, items: r.items.map((i) => ({ ...i, state: "pass" as const })) }));
+    expect(badge(summarise("m", allPass, true))).toContain("tone-ok");
+    expect(badge(p)).not.toContain("tone-ok");
+  });
+
+  it("no-enclave drawer shows one note, and claims identity stripping only for anonymized models", () => {
+    const p: Proof = { ...passing(), level: "no-enclave", reports: [] };
+    const html = (privacy?: string) => renderToStaticMarkup(<ProofDrawer open proof={p} privacy={privacy} onClose={() => {}} onRecheck={() => {}} />);
+    for (const pv of [undefined, "private", "anonymized"]) expect(html(pv).match(/summary-note/g)).toHaveLength(1);
+    expect(text(html("anonymized"))).toMatch(/identity is stripped/);
+    expect(text(html(undefined))).not.toMatch(/identity is stripped/);
+    expect(text(html("private"))).not.toMatch(/identity is stripped/);
+    expect(text(html("private"))).toMatch(/Zero-retention/);
+  });
+});
+

@@ -1,0 +1,75 @@
+/* Management console (design v3 "Management"). Shared controls (hs-*) come from components/app/settings.css. */
+.mgmt.page { height: 100dvh; padding: 20px 20px 40px; background: var(--bg); }
+.mgmt-inner { max-width: 1080px; }
+.mgmt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+.mgmt.page h1 { margin: 0 0 5px; font-size: clamp(30px, 3.6vw, 42px); font-weight: 400; letter-spacing: -.02em; }
+.mgmt-lede { margin: 0 0 30px; font-style: italic; color: var(--muted); }
+.mgmt-me { display: flex; align-items: center; gap: 10px; font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-me code { font-family: var(--mono); font-style: normal; font-size: 13px; color: var(--text); }
+.mgmt-status { min-height: 1.4em; margin: -15px 0 15px; font-size: 15px; font-style: italic; color: var(--accent); }
+.mgmt-tabs { display: flex; gap: 30px; margin-bottom: 30px; flex-wrap: wrap; overflow-x: auto; }
+.mgmt-tabs button { display: inline-flex; align-items: center; gap: 8px; padding: 6px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: 16px var(--font); white-space: nowrap; cursor: pointer; }
+.mgmt-tabs button svg { font-size: 18px; }
+.mgmt-tabs button:hover { color: var(--text); }
+.mgmt-tabs button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--tint); }
+.mgmt-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mgmt-muted { color: var(--muted); font-style: italic; }
+.mgmt-foot { margin: 20px 0 0; font-size: 14px; font-style: italic; color: var(--muted); max-width: 70ch; }
+
+/* Accounts */
+.mgmt-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 40px; align-items: start; }
+.mgmt-split .hs-search { margin-bottom: 15px; }
+.mgmt-acct { display: grid; grid-template-columns: minmax(0, 1fr) 60px 80px; gap: 12px; align-items: center; width: 100%; padding: 11px 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); font: 15px var(--font); text-align: left; cursor: pointer; }
+.mgmt-acct:hover, .mgmt-acct[aria-current="true"] { background: var(--hover); }
+.mgmt-acct .id { font-family: var(--mono); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgmt-acct .tier { color: var(--accent); text-transform: capitalize; }
+.mgmt-acct .tier.free { color: var(--muted); }
+.mgmt-acct .seen { font-size: 13.5px; font-style: italic; color: var(--muted); }
+.mgmt-pager { display: flex; align-items: center; gap: 15px; margin-top: 15px; font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-card-k { font-size: 13px; font-style: italic; color: var(--muted); }
+.mgmt-card-id { margin: 2px 0 15px; font-family: var(--mono); font-size: 15px; overflow-wrap: anywhere; }
+.mgmt-fact { display: grid; grid-template-columns: 120px 1fr; gap: 10px; padding: 7px 0; font-size: 15px; }
+.mgmt-fact > span:first-child { font-style: italic; color: var(--muted); }
+.mgmt-label { margin-top: 15px; font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-card .hs-seg { margin: 6px 0 10px; }
+.mgmt-until { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-until .hs-input { height: 36px; }
+.mgmt-card .hs-row { font-size: 14.5px; padding: 8px 0; }
+
+/* Provider keys */
+.mgmt-key { display: grid; grid-template-columns: minmax(0, 1.4fr) 110px 90px 70px auto; gap: 15px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.mgmt-key .priv { font-size: 13px; letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
+.mgmt-key .use { font-style: italic; color: var(--muted); }
+.mgmt-key .sfx { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.mgmt-key-more { padding: 10px 0 20px; border-bottom: 1px solid var(--line); }
+.mgmt-key-more form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.mgmt-key-more .hs-input { min-width: 260px; flex: 1; max-width: 420px; }
+.mgmt-key-more .hs-row { font-size: 14.5px; padding: 8px 0; flex-wrap: wrap; }
+
+/* Invites */
+.mgmt-new { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 30px; max-width: 720px; }
+.mgmt-new .grow { flex: 1; min-width: 200px; }
+.mgmt-new .code { font-family: var(--mono); font-size: 17px; user-select: all; overflow-wrap: anywhere; }
+.mgmt-new label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-new label .hs-input { width: 80px; height: 40px; }
+.mgmt-inv { display: grid; grid-template-columns: minmax(0, 1.2fr) 80px minmax(0, 1fr) 90px 60px; gap: 15px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.mgmt-inv .id { font-family: var(--mono); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgmt-inv .uses { font-variant-numeric: tabular-nums; }
+.mgmt-inv .created { font-style: italic; color: var(--muted); }
+.mgmt-inv .st { color: var(--muted); }
+.mgmt-inv .st.on { color: var(--accent); }
+
+/* Audit */
+.mgmt-audit { display: grid; grid-template-columns: 150px 150px minmax(0, 1fr); gap: 15px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.mgmt-audit .at { font-size: 14px; font-style: italic; color: var(--muted); }
+.mgmt-audit .act { color: var(--accent); overflow-wrap: anywhere; }
+.mgmt-audit .by { display: block; font-family: var(--mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .mgmt.page { padding: 20px 15px 40px; }
+  .mgmt-key { grid-template-columns: minmax(0, 1fr) auto; }
+  .mgmt-key .use, .mgmt-key .sfx { display: none; }
+  .mgmt-inv { grid-template-columns: minmax(0, 1fr) 56px 70px 56px; }
+  .mgmt-inv .created { display: none; }
+  .mgmt-audit { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}

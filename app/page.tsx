@@ -1,5 +1,5 @@
 import "./landing.css";
-import { BRAND, Closing, Compare, Faq, Features, Hero, HowItWorks, Pricing, Proof, ServerSees, SiteFooter, SiteNav, Statement } from "@/components/landing/Sections";
+import { BRAND, Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, ServerSees, SiteFooter, SiteNav, Statement, Video, frontierOn } from "@/components/landing/Sections";
 
 // Always per request: the invite-gate copy (INVITE_CODES) must never be frozen at build time.
 export const dynamic = "force-dynamic";
@@ -9,18 +9,20 @@ export const metadata = {
   description: "Open models in hardware enclaves. Your chat history stays encrypted in your browser. No email needed.",
 };
 
-export default function Landing() {
+export default async function Landing() {
+  const frontier = await frontierOn(); // admin-panel keys count, like in the chat
   return (
     <div className="landing theme-island">
       <SiteNav />
       <main>
         <Hero />
-        <Statement text={`Most AI apps ask you to trust them. ${BRAND} shows you what it checked, what it could not check yet, and every field the server keeps.`} />
-        <Compare />
+        <Statement />
+        <PoweredBy />
+        <Compare frontier={frontier} />
         <HowItWorks />
+        <Video />
         <Proof />
         <ServerSees />
-        <Features />
         <Pricing />
         <Faq />
         <Closing />

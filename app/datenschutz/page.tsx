@@ -36,9 +36,12 @@ export default function Datenschutz() {
             Datenaufbewahrung teilnehmen (<Todo>AVV mit Liquid: Datum eintragen; Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
         </ul>
         <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
-        <p>Websuche (optional, standardmäßig aus): Schalten Sie im Chat „Websuche“ ein, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
-          (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
-          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.</p>
+        <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
+          (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Das gilt auf jeder Datenschutzstufe, auch für Modelle in einer Enklave (Max):
+          Die Suchanfrage verlässt dann die Enklave. Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
+          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.
+          Sie schalten die Websuche unter Einstellungen → Account → „Privacy &amp; tools“ oder im „+“-Menü der Chatleiste aus; im Ghost-Chat ist sie aus, bis Sie sie dort einschalten.
+          Diese Einstellung speichern wir nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
         <h3>5. Passkeys (optional)</h3>
         <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
@@ -89,9 +92,12 @@ export default function Datenschutz() {
             (<Todo>DPA with Liquid: add its date; providers on Liquid: confirm role and third-country transfer</Todo>).</li>
         </ul>
         <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
-        <p>Web search (optional, off by default): if you turn on “Web search” in a chat, the model may write search queries, which our server sends to the Brave Search API
-          (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). Only the query text is sent, not your chat history,
-          account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.</p>
+        <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries, which our server sends to the Brave Search API
+          (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). This applies at every privacy level, including enclave models (Max):
+          the search query then leaves the enclave. Only the query text is sent, not your chat history,
+          account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.
+          Switch web search off under Settings → Account → “Privacy &amp; tools” or in the chat bar’s “+” menu; in ghost chat it is off until you turn it on there.
+          We keep this setting only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
         <h3>5. Passkeys (optional)</h3>
         <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>

@@ -17,6 +17,14 @@ describe("legal pages", () => {
     expect(html).toContain("Zoldenburg UG");
     expect(html).toMatch(/data-todo=""/);
   });
+  it("datenschutz: web search is on by default, can be switched off, and its query leaves even an enclave (DE + EN)", () => {
+    const html = render(Datenschutz);
+    expect(html).not.toMatch(/standardmäßig aus|off by default/);
+    expect(html).toMatch(/Websuche \(standardmäßig an/);
+    expect(html).toMatch(/Web search \(on by default/);
+    expect(html).toMatch(/verlässt dann die Enklave/);
+    expect(html).toMatch(/leaves the enclave/);
+  });
   it("privacy/metadata lists every inventory field in both languages", () => {
     const html = render(Metadata);
     for (const d of DATA_INVENTORY) {

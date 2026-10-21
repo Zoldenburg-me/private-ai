@@ -68,10 +68,10 @@ describe("ghost chat: one persistence gate", () => {
         if (/\b(sessionStorage|document\.cookie\s*=)/.test(src) || /\bindexedDB\b(?!\.open\()/.test(src)) offenders.push(`${rel}: other browser storage`);
         if (/\blocalStorage\s*[.[]/.test(src)) offenders.push(`${rel}: uses localStorage directly`);
       } else if (rel === "lib/client/ui-prefs.ts") {
-        // One UI preference (sidebar collapsed), never content: exactly one localStorage key, nothing else.
+        // UI preferences (sidebar collapsed, privacy mode), never content: exactly these localStorage keys, nothing else.
         const writes = [...src.matchAll(/([\w.]+)\.(setItem|removeItem|clear)\s*\(([^,)]*)/g)];
-        if (writes.some((m) => m[0] !== "localStorage.setItem(SIDEBAR_KEY")) offenders.push(`${rel}: writes something other than SIDEBAR_KEY`);
-        if (!/export const SIDEBAR_KEY = "pai\.ui\.[\w-]+";/.test(src)) offenders.push(`${rel}: SIDEBAR_KEY is not a pai.ui.* literal`);
+        if (writes.some((m) => !["localStorage.setItem(SIDEBAR_KEY", "localStorage.setItem(MODE_KEY"].includes(m[0]))) offenders.push(`${rel}: writes something other than SIDEBAR_KEY or MODE_KEY`);
+        for (const k of ["SIDEBAR_KEY", "MODE_KEY"]) if (!new RegExp(`export const ${k} = "pai\\.ui\\.[\\w-]+";`).test(src)) offenders.push(`${rel}: ${k} is not a pai.ui.* literal`);
         if (/\b(sessionStorage|indexedDB|document\.cookie\s*=)/.test(src)) offenders.push(`${rel}: other browser storage`);
       } else {
         // Only the gated writer modules may call setItem/removeItem, and only on a Writer.

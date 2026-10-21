@@ -1,7 +1,5 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
 import { loadChats, saveChat, deleteChat, wipeAll, replaceChats, type Chat } from "@/lib/storage";
 import { persist } from "@/lib/persist";
 import { loadPersonas, savePersona, deletePersona, replacePersonas, type Persona } from "@/lib/personas";
@@ -13,9 +11,11 @@ import type { Receipt } from "@/lib/sse";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
-import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
+import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
+import { AUTO, autoRouteNote, levelModels, resolveRef } from "@/lib/client/levels";
+import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
-import { autoEntryOf, autoModels, visibleModels, defaultModelRef, nearDefault } from "@/lib/client/providers";
+import { ENABLED_PROVIDERS, autoEntryOf, autoModels, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
@@ -24,22 +24,23 @@ import { PersonaGallery } from "@/components/app/PersonaGallery";
 import { SettingsView, type AccountInfo, type Billing, type DeviceInfo } from "@/components/app/SettingsView";
 import type { Usage } from "@/components/app/UsageMeter";
 import { Sidebar } from "@/components/app/Sidebar";
+import { DashboardView } from "@/components/app/DashboardView";
 import { ChatScope } from "@/lib/chat-scope";
-import { ChatsCircle, GearSix, Ghost, List, SidebarSimple, UserCirclePlus, UserFocus, X } from "@phosphor-icons/react";
+import Link from "next/link";
+import { ChartBar, Cube, Ghost, List, Moon, NotePencil, Question, SidebarSimple, Sun, UserCirclePlus, UserFocus, X } from "@phosphor-icons/react";
+import { PrivacyModes } from "@/components/app/PrivacyModes";
 
-type View = "chat" | "personas" | "settings";
+type View = "chat" | "dashboard" | "personas" | "settings";
 const newChat = (): Chat => ({ id: crypto.randomUUID(), title: "New chat", messages: [], updatedAt: Date.now() });
-/** Below this width the rail + sidebar are an off-canvas drawer (phones and iPads in portrait). */
+/** Below this width the sidebar is an off-canvas drawer (phones and iPads in portrait). */
 const NAV_MQ = "(max-width: 1024px)";
 /** Below this width the proof drawer is a bottom sheet over the chat. */
 const SHEET_MQ = "(max-width: 820px)";
-/** Up to this width an open proof drawer leaves too little room for the header next to the sidebar. */
-const CRAMPED_MQ = "(max-width: 1279px)";
 /** Homepage hand-off: how long to wait for a model and its enclave check before only prefilling the prompt. */
 const HANDOFF_WAIT_MS = 10_000;
 /** Auto found no passing route: how long until it checks the routes again. */
 const AUTO_RETRY_MS = 30_000;
-const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
+const SUGGESTIONS = ["Draft a sensitive email", "Explain a test result", "Plan next month's budget", "How is this private?"];
 
 export default function Home() {
   const [kv, setKv] = useState<Vault | null>(null);
@@ -52,8 +53,17 @@ export default function Home() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [incognitoUsage, setIncognitoUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelEntry[]>([]);
-  const [modelRef, setModelRef] = useState("");
+  // Privacy level, Auto or a pick per level, and tool settings (lib/client/ui-prefs.ts): saved like the sidebar preference below.
+  const [mode, setMode] = useState<ModePrefs>(DEFAULT_MODE);
+  const modeTouched = useRef(false);
+  const updateMode = (patch: Partial<ModePrefs>) => { setMode((m) => ({ ...m, ...patch })); modeTouched.current = true; };
+  // Routes whose chat failed at the provider, mirrored from routeFailedAt so Medium/Anon Auto re-picks on the next render.
+  const [failedAt, setFailedAt] = useState<Record<string, number>>({});
+  const modelRef = resolveRef(models, mode.level, mode.picks[mode.level], mode.pickProvider, failedAt);
+  const autoOn = modelRef !== mode.picks[mode.level]; // Auto also covers a remembered pick the picker no longer offers
+  const pick = (r: string) => updateMode({ picks: { ...mode.picks, [mode.level]: r } });
   const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.tee === false;
+  const selectedPrivacy = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.privacy;
   // The meter shows the quota the selected model counts against.
   const incognitoSelected = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.incognito === true;
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -63,26 +73,29 @@ export default function Home() {
   const routeFailedAt = useRef<Record<string, number>>({});
   const candidates = useCallback((routes: string[]) => autoCandidates(routes, nearDefault(models), routeFailedAt.current), [models]);
   const [drawer, setDrawer] = useState(false);
-  const [navOpen, setNavOpen] = useState(false); // narrow only: rail + sidebar as a drawer
+  const [navOpen, setNavOpen] = useState(false); // narrow only: sidebar as a drawer
   const [narrow, setNarrow] = useState(false);
   const [sheet, setSheet] = useState(false); // proof drawer is a bottom sheet
-  const [cramped, setCramped] = useState(false);
-  const [collapsed, setCollapsed] = useState(false); // wide only: sidebar hidden, rail stays
+  const [modes, setModes] = useState(false); // privacy modes dialog
+  const [theme, setTheme] = useState<"light" | "dark" | null>(null); // null follows the system; memory only, never stored
+  const [collapsed, setCollapsed] = useState(false); // wide only: sidebar hidden
   const [sessionDone, setSessionDone] = useState(false);
   const [pending, setPending] = useState(""); // hand-off prompt waiting for a model and its proof
   const [handoff, setHandoff] = useState<{ text: string; send: boolean } | null>(null);
   const [notice, setNotice] = useState("");
   const [invite, setInvite] = useState(""); // from an invite link; memory only, never stored
-  const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[]>([]);
+  const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[] | null>([]); // null: the list could not be loaded
+  const [modelsFailed, setModelsFailed] = useState(false);
   const [account, setAccount] = useState<AccountInfo | null>(null);
-  const [webSearch, setWebSearch] = useState(false);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [ghost, setGhost] = useState(false);
+  const [ghostSearch, setGhostSearch] = useState(false); // ghost chat only, memory only
+  const [searchAvailable, setSearchAvailable] = useState(false); // /api/session features.webSearch
   const [billing, setBilling] = useState<Billing | null>(null);
   const [sessionReady, setSessionReady] = useState(false); // evidence needs the session cookie
   const [scope] = useState(() => new ChatScope());
   /** Every chat switch goes through here so a running reply cannot follow into the next chat. */
-  function openChat(next: Chat, nextGhost = ghost) { scope.switch(); setGhost(nextGhost); setChat(next); }
+  function openChat(next: Chat, nextGhost = ghost) { scope.switch(); setGhost(nextGhost); setChat(next); if (nextGhost) setGhostSearch(false); }
 
   useEffect(() => {
     // Homepage hand-off: the prompt only ever sits in the fragment; drop it from the address bar right away.
@@ -91,11 +104,11 @@ export default function Home() {
     if (h.prompt) setPending(h.prompt);
     if (h.invite) setInvite(h.invite);
     if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
-    setCollapsed(readSidebarCollapsed());
+    setCollapsed(readSidebarCollapsed()); setMode(readModePrefs());
     refreshSession();
-    fetch("/api/models").then((r) => r.json()).then((all: ModelEntry[]) => {
-      const m = [...autoModels(all), ...visibleModels(all)]; setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
-    }).catch(() => setNotice("Could not load models"));
+    fetch("/api/models").then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))).then((all: ModelEntry[]) => {
+      setModels([...autoModels(all), ...all.filter((x) => (ENABLED_PROVIDERS as readonly string[]).includes(x.provider))]); // levelModels picks the rows per level
+    }).catch(() => { setModelsFailed(true); setNotice("Could not load models. Reload to try again."); });
   }, []);
 
   // Open the encrypted local vault (non-extractable key in IndexedDB) once we know who this is. A signed-out
@@ -140,14 +153,16 @@ export default function Home() {
   function refreshSession() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
       if (!s.error) setSessionReady(true); // a 429/503 sets no cookie, so evidence would only 401
-      setTier(s.tier); setAccount(s.account ?? null); setWebSearch(s.features?.webSearch === true);
+      else setNotice("Could not reach your session: plan, usage and sign-in status are unknown. Reload to try again.");
+      setTier(s.tier); setAccount(s.account ?? null); setSearchAvailable(s.features?.webSearch === true);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.usage.dailyLimit });
       setIncognitoUsage(s.incognitoUsage ? { remaining: s.incognitoUsage.remainingToday, limit: s.incognitoUsage.dailyLimit, incognito: true } : null);
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
       if (s.account?.signedIn) fetch("/api/account/devices").then((r) => r.json()).then((d) => setDevices(d.devices ?? [])).catch(() => {});
       else setDevices([]);
-      return fetch("/api/auth/passkey").then((r) => r.json()).then((p) => setPasskeys(p.passkeys ?? []));
-    }).catch(() => {}).finally(() => setSessionDone(true));
+      // A failed list must not read as "no passkey left".
+      return fetch("/api/auth/passkey").then((r) => (r.ok ? r.json() : Promise.reject())).then((p) => setPasskeys(Array.isArray(p.passkeys) ? p.passkeys : null), () => setPasskeys(null));
+    }).catch(() => setNotice("Could not reach your session: plan, usage and sign-in status are unknown. Reload to try again.")).finally(() => setSessionDone(true));
   }
 
   const checkProof = useCallback(async (ref: string): Promise<Proof | null> => {
@@ -191,11 +206,14 @@ export default function Home() {
   // Auto choice that sends there (not only this one) picks again.
   // An "unavailable" Auto proof goes too, so a check always follows. The notice is about the current selection (read
   // from a ref: ChatThread holds the callback of the render its reply started in), and only if it uses that route.
-  const selection = useRef({ modelRef, models, proofs }); selection.current = { modelRef, models, proofs };
+  const incognitoAuto = autoOn && mode.level !== "max";
+  const selection = useRef({ modelRef, models, proofs, incognitoAuto }); selection.current = { modelRef, models, proofs, incognitoAuto };
   const onProviderFailure = useCallback((ref: string) => {
     routeFailedAt.current = { ...routeFailedAt.current, [ref]: Date.now() };
+    setFailedAt(routeFailedAt.current);
     setProofs((p) => Object.fromEntries(Object.entries(p).filter(([k, v]) => !(k.startsWith("auto:") && (v.modelRef === ref || v.level === "unavailable")))));
-    const { modelRef: now, models: all, proofs: cached } = selection.current;
+    const { modelRef: now, models: all, proofs: cached, incognitoAuto: onList } = selection.current;
+    if (onList && now === ref) { setNotice("Auto: that model failed at the provider, so Auto moves to the next one on its list. Send again."); return; }
     const auto = autoEntryOf(all, now);
     if (!auto || cached[now]?.modelRef !== ref) return; // only if this selection was sending there
     setNotice(candidates(auto.routes).length
@@ -372,6 +390,10 @@ export default function Home() {
   const proof = proofs[modelRef] ?? null;
   // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
   const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
+  const routeNote = autoRouteNote({ models, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt });
+  // Web search: on by default (Settings can turn it off); in ghost chat off until switched on in the "+" menu, never saved.
+  const searchPref = ghost ? ghostSearch : mode.webSearch;
+  const webSearch = searchAvailable && searchPref;
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
   // Incognito models have their own quota, so the limit comes from the same response as the remaining count.
   const onUsage = useCallback((rem: string | null, limit?: string | null, quota?: string | null) => {
@@ -381,7 +403,7 @@ export default function Home() {
     (incognito ? setIncognitoUsage : setUsage)((u) => ({ remaining, limit: max > 0 ? max : u?.limit, ...(incognito ? { incognito } : {}) }));
   }, []);
 
-  const go = (v: View) => { setView(v); setNavOpen(false); };
+  const go = (v: View) => { if (v !== view) setDrawer(false); setView(v); setNavOpen(false); };
   /** Saving and history need an account: say so and show where to create one, never block the chat. */
   const promptSignup = (why: string) => { setNotice(`${why} Create an account with a passkey: no email, no password.`); go("settings"); };
 
@@ -398,19 +420,17 @@ export default function Home() {
   }, [pending, modelRef, sessionReady, proofReady]);
 
   useEffect(() => {
-    const mq = matchMedia(NAV_MQ); const sq = matchMedia(SHEET_MQ); const cq = matchMedia(CRAMPED_MQ);
-    const apply = () => { setNarrow(mq.matches); setSheet(sq.matches); setCramped(cq.matches); if (!mq.matches) setNavOpen(false); };
-    const all = [mq, sq, cq];
+    const mq = matchMedia(NAV_MQ); const sq = matchMedia(SHEET_MQ);
+    const apply = () => { setNarrow(mq.matches); setSheet(sq.matches); if (!mq.matches) setNavOpen(false); };
+    const all = [mq, sq];
     apply(); all.forEach((q) => q.addEventListener("change", apply));
     return () => all.forEach((q) => q.removeEventListener("change", apply));
   }, []);
-  // Wide but cramped: the open proof drawer takes the sidebar's place (the saved preference is untouched).
-  const drawerHidesSide = sidebarHidden({ narrow, cramped, drawer, collapsed: false });
-  const sideHidden = sidebarHidden({ narrow, cramped, drawer, collapsed });
+  // The proof sheet floats over the chat, so it never takes the sidebar's place.
+  const sideHidden = sidebarHidden({ narrow, cramped: false, drawer, collapsed });
   const navShown = narrow ? navOpen : !sideHidden;
   function toggleNav() {
     if (narrow) { setNavOpen((o) => !o); return; }
-    if (drawerHidesSide) { setDrawer(false); if (!collapsed) return; } // closing the drawer brings the sidebar back
     setCollapsed(!collapsed); sidebarTouched.current = true;
   }
   // Remember the user's choice, only outside ghost chat and once this browser keeps history (a signed-out
@@ -420,6 +440,9 @@ export default function Home() {
   useEffect(() => { // saved once per toggle, so a stale value never overwrites another tab's later choice
     if (!ghost && kv && sidebarTouched.current) { writeSidebarCollapsed(collapsed); sidebarTouched.current = false; }
   }, [ghost, kv, collapsed]);
+  useEffect(() => { // same rule for the privacy level, model picks and tool settings
+    if (!ghost && kv && modeTouched.current) { writeModePrefs(mode); modeTouched.current = false; }
+  }, [ghost, kv, mode]);
 
   // Narrow: the nav is an off-canvas drawer (and below 820px the proof drawer a bottom sheet): keep focus out of
   // whatever is hidden or covered, move it into the drawer on open and back to the menu button on close.
@@ -433,35 +456,45 @@ export default function Home() {
     return () => removeEventListener("keydown", onKey);
   }, [navOpen, drawer, narrow, sheet]);
   useEffect(() => {
-    if (navOpen && narrow) sheetRef.current?.querySelector<HTMLElement>(".rail-btn")?.focus();
+    if (navOpen && narrow) sheetRef.current?.querySelector<HTMLElement>(".side-item")?.focus();
     if (!navOpen && navWasOpen.current && narrow) menuRef.current?.focus(); // not when widening closed it
     navWasOpen.current = navOpen;
   }, [navOpen, narrow]);
+  useEffect(() => {
+    const el = document.documentElement;
+    if (theme) el.dataset.theme = theme; else delete el.dataset.theme;
+    return () => { delete el.dataset.theme; };
+  }, [theme]);
+  const [systemDark, setSystemDark] = useState(false); // read after mount, so server and client render the same label
+  useEffect(() => {
+    const q = matchMedia("(prefers-color-scheme: dark)"); const on = () => setSystemDark(q.matches);
+    on(); q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+  const dark = theme ? theme === "dark" : systemDark;
+  const toggleGhost = () => {
+    if (ghost && !kv && !signedIn) { promptSignup("Sign up to save chats in this browser."); return; }
+    startChat({ ghost: !ghost }); setNavOpen(false);
+  };
+  const TITLES: Record<View, string> = { chat: "", dashboard: "Dashboard", personas: "Personas", settings: "Account" };
+  const title = view !== "chat" ? TITLES[view] : ghost ? "Ghost chat — not saved" : chat.messages.length ? chat.title : "";
   const NAV = [
-    { v: "chat" as const, label: "Chats", Icon: ChatsCircle },
+    { v: "dashboard" as const, label: "Dashboard", Icon: ChartBar },
     { v: "personas" as const, label: "Personas", Icon: UserFocus },
   ];
-  const navBtn = ({ v, label, Icon }: { v: View; label: string; Icon: typeof ChatsCircle }) => (
-    <button key={v} type="button" className={`rail-btn ${view === v ? "on" : ""}`} data-testid={`nav-${v}`} onClick={() => go(v)}
-      aria-label={label} aria-current={view === v ? "page" : undefined} title={label}><Icon weight={view === v ? "fill" : "regular"} aria-hidden /></button>
+  const navBtn = ({ v, label, Icon }: { v: View; label: string; Icon: typeof ChartBar }) => (
+    <button key={v} type="button" className={`side-item ${view === v ? "on" : ""}`} data-testid={`nav-${v}`} onClick={() => go(v)}
+      aria-current={view === v ? "page" : undefined}><Icon weight={view === v ? "fill" : "duotone"} aria-hidden />{label}</button>
   );
 
   return (
     <div className={`app ${drawer ? "with-drawer" : ""} ${ghost ? "is-ghost" : ""} ${navOpen ? "nav-open" : ""} ${sideHidden ? "side-collapsed" : ""}`}>
       <div className="nav-sheet" id="app-nav" ref={sheetRef}>
-        <nav className="rail" aria-label="Main">
-          <Link href="/" className="brand" aria-label="Private AI home"><Image src="/brand/narwhal.svg" alt="" width={28} height={15} unoptimized /></Link>
-          {NAV.map(navBtn)}
-          <div className="grow" />
-          {navBtn({ v: "settings", label: "Settings", Icon: GearSix })}
-        </nav>
         <Sidebar ghost={ghost} query={query} onQuery={setQuery} chats={filtered} currentId={chat.id} vaultError={vaultError}
-          tier={tier} usage={incognitoSelected ? incognitoUsage : usage} onUpgrade={() => go("settings")} account={account} onAccount={() => go("settings")}
+          tier={tier} usage={incognitoSelected ? incognitoUsage : usage} account={account} accountOn={view === "settings"} onAccount={() => go("settings")}
+          onCollapse={toggleNav}
+          nav={<><Link href="/models" className="side-item"><Cube weight="duotone" aria-hidden />Models</Link>{NAV.map(navBtn)}</>}
           onNew={() => { startChat(); setNavOpen(false); }}
-          onToggleGhost={() => {
-            if (ghost && !kv && !signedIn) { promptSignup("Sign up to save chats in this browser."); return; }
-            startChat({ ghost: !ghost }); setNavOpen(false);
-          }}
           onOpen={(c) => { openChat(c, false); go("chat"); }}
           onDelete={(c) => { if (!kv) return; scope.forget(c.id); const n = persist(kv, { ghost }, (w) => deleteChat(w, c.id)); if (n) setChats(n); if (c.id === chat.id) openChat(newChat()); }} />
       </div>
@@ -469,14 +502,17 @@ export default function Home() {
 
       <main className="main" ref={mainRef}>
         <header className="topbar">
-          <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Sidebar"}
-            aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple aria-hidden />}</button>
-          <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} paidPlan={tier ? tier.id !== "free" : undefined} />
+          <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Open sidebar"}
+            aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple weight="duotone" aria-hidden />}</button>
+          <button type="button" className="icon-btn menu-btn" aria-label="New chat" onClick={() => startChat()}><NotePencil weight="duotone" aria-hidden /></button>
+          <span className="top-title">{title}</span>
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
-          {ghost && <span className="chip ghost-chip"><Ghost aria-hidden />Ghost chat</span>}
           <div className="grow" />
           {sessionDone && !signedIn && view !== "settings" && <button type="button" className="btn signup-btn" data-testid="signup" onClick={() => go("settings")}><UserCirclePlus aria-hidden className="signup-ico" /><span className="signup-label">Sign up</span></button>}
-          <ProofBadge proof={proof} onOpen={() => setDrawer(true)} />
+          {view === "chat" && <ProofBadge proof={proof} onOpen={() => setDrawer((d) => !d)} />}
+          <button type="button" className="icon-btn top-btn" aria-label="Privacy modes explained" title="Privacy modes explained" onClick={() => setModes(true)}><Question weight="duotone" aria-hidden /></button>
+          <button type="button" className="icon-btn top-btn" aria-label={dark ? "Light mode" : "Dark mode"} title={dark ? "Light mode" : "Dark mode"}
+            onClick={() => setTheme(dark ? "light" : "dark")}>{dark ? <Sun weight="duotone" aria-hidden /> : <Moon weight="duotone" aria-hidden />}</button>
         </header>
         {/* The live region stays mounted so screen readers announce text added to it. */}
         <div role="status" className="notice-slot">
@@ -490,13 +526,24 @@ export default function Home() {
 
         {view === "chat" && (
           kv || ghost
-            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost} webSearch={webSearch}
+            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost}
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature} onProviderFailure={onProviderFailure}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
                 hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>
                   : sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
-                anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/enclave/i.test(s)) : SUGGESTIONS} />
-            : <div className="loading muted">Unlocking encrypted history…</div>
+                anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/private/i.test(s)) : SUGGESTIONS}
+                onOpenProof={() => setDrawer(true)}
+                incognitoLine={selectedPrivacy === "private" ? "Incognito · zero-retention" : selectedPrivacy === "anonymized" ? "Incognito · anonymized" : undefined}
+                ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
+                  <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
+                webSearch={webSearch}
+                toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))} />}
+                modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
+                  privacy={{ level: mode.level, onLevel: (l) => updateMode({ level: l }), auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
+            : vaultError ? <div className="loading bad">{vaultError}</div> : <div className="loading muted">Unlocking encrypted history…</div>
+        )}
+        {view === "dashboard" && (
+          <DashboardView tier={tier} usage={usage} incognitoUsage={incognitoUsage} chats={chats} models={models} proofs={proofs} renewsAt={billing?.subscription?.status === "active" ? billing.subscription.currentPeriodEnd : null} />
         )}
         {view === "personas" && (
           <PersonaGallery personas={personas} disabled={ghost || !kv} onAdd={addPersona} onDelete={removePersona}
@@ -509,11 +556,15 @@ export default function Home() {
             onPortal={() => goBilling("/api/billing/portal")}
             onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}
             onExportAccount={downloadAccountData} onDeleteAccount={deleteAccount}
-            onExport={exportBackup} onImport={importBackup} onWipe={wipe} />
+            onExport={exportBackup} onImport={importBackup} onWipe={wipe}
+            tools={{ available: searchAvailable, webSearch: mode.webSearch, onWebSearch: (on) => updateMode({ webSearch: on }), pickProvider: mode.pickProvider, onPickProvider: (on) => updateMode({ pickProvider: on }) }} />
         )}
       </main>
 
-      <ProofDrawer proof={proof} open={drawer} onClose={() => setDrawer(false)} onRecheck={() => void checkProof(modelRef)} />
+      {drawer && <button type="button" className="proof-scrim" aria-label="Close enclave proof" tabIndex={-1} onClick={() => setDrawer(false)} />}
+      <ProofDrawer proof={proof} open={drawer} onClose={() => setDrawer(false)} onRecheck={() => void checkProof(modelRef)} onExplain={() => setModes(true)}
+        modelName={models.find((m) => `${m.provider}:${m.id}` === modelRef)?.name} privacy={selectedPrivacy} autoNote={routeNote} />
+      {modes && <PrivacyModes onClose={() => setModes(false)} />}
     </div>
   );
 }

@@ -100,7 +100,7 @@
       "action": "click",
       "locator": {
         "kind": "css",
-        "selector": "[data-testid='nav-chat']"
+        "selector": "[data-testid='new-chat']"
       }
     },
     {
