@@ -100,3 +100,22 @@ describe("client provider scope", () => {
     expect(defaultModelRef([m("near", "x", false), m("near", "y")])).toBe("near:y");
   });
 });
+
+describe("usage from the chat response", () => {
+  const limited = () => new Response(JSON.stringify({ error: { message: "daily limit reached" } }), { status: 429,
+    headers: { "x-usage-remaining-daily": "0", "x-usage-limit-daily": "50", "x-usage-quota": "incognito" } });
+
+  it("reports which quota a reply counted against", async () => {
+    const ok = (async () => { const r = sse(["data: [DONE]\n\n"]); r.headers.set("x-usage-quota", "incognito"); return r; }) as unknown as typeof fetch;
+    const updates: unknown[] = [];
+    for await (const u of streamChat({ model: "liquid:m", messages: [], fetchImpl: ok })) updates.push(u);
+    expect(updates.at(-1)).toMatchObject({ remaining: "7", quota: "incognito" });
+  });
+
+  it("still updates the meter when the request is refused for its quota", async () => {
+    const updates: unknown[] = [];
+    await expect((async () => { for await (const u of streamChat({ model: "liquid:m", messages: [], fetchImpl: (async () => limited()) as unknown as typeof fetch })) updates.push(u); })())
+      .rejects.toThrow("daily limit reached");
+    expect(updates).toEqual([{ text: "", remaining: "0", limit: "50", quota: "incognito", tools: [] }]);
+  });
+});

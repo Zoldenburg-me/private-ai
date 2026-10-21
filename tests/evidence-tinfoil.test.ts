@@ -27,4 +27,11 @@ describe("Tinfoil attestation (checked by the SDK on our server)", () => {
     expect((await attestation(get(s.token))).status).toBe(502);
     expect(upstream).toEqual([]);
   });
+
+  it("has no NEAR-style signature endpoint to spend the key on", async () => {
+    const s = await createSession(); await touchSession(s.id);
+    const sig = proxyEvidence("signature", fake)(new Request("http://app/api/signature?model=tinfoil:kimi-k3&chat_id=c1", { headers: { Cookie: `pai_session=${s.token}` } }));
+    expect((await sig).status).toBe(404);
+    expect(upstream).toEqual([]);
+  });
 });

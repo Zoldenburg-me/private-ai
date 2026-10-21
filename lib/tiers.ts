@@ -16,8 +16,8 @@ export const TIERS: Record<TierId, Tier> = {
   max: { id: "max", name: "Max", priceEurMonth: 49, dailyMessages: 5_000, maxContextTokens: 1_000_000, maxOutputTokens: 16_384, requestsPerMinute: 60, incognitoDailyMessages: 5_000, agentMaxSteps: 15 },
 };
 
-/** Top frontier models: paid plans only, from any provider. */
-export const PAID_ONLY_MODELS = new Set(["gemini-4-argon", "claude-fable-5-1", "gpt-6-astra", "openai-gpt-6-astra"]);
+/** Top frontier models, by canonical (Liquid) id: paid plans only. Venice aliases map via canonicalModelId. */
+export const PAID_ONLY_MODELS = new Set(["gemini-4-argon", "claude-fable-5-1", "gpt-6-astra"]);
 
 /** max_tokens sent upstream when the client sets none (never above the tier cap). */
 export const DEFAULT_OUTPUT_TOKENS = 4_096;

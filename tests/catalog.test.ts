@@ -14,7 +14,7 @@ describe("model catalog + privacy policy", () => {
     expect(f).toMatchObject({ provider: "venice", privacy: "anonymized", tee: false, e2ee: false, selectable: true });
   });
   it("a gateway never claims TEE or E2EE; only Venice's own private models count as zero retention", () => {
-    const m = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "e2ee-x", tee: true, capabilities: { e2ee: true }, model_spec: { privacy: "private", name: "X" } });
+    const m = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "kimi-k3", tee: true, capabilities: { e2ee: true }, model_spec: { privacy: "private", name: "X" } });
     expect(m).toMatchObject({ name: "X", privacy: "private", tee: false, e2ee: false, selectable: true });
     expect(normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "y", model_spec: { privacy: "anonymized" } }).privacy).toBe("anonymized");
     expect(normaliseModel({ id: "liquid", privacy: "anon-gateway" }, { id: "z", model_spec: { privacy: "private" } }).privacy).toBe("anonymized");

@@ -23,7 +23,7 @@ export default function Datenschutz() {
         <h3>4. Chat-Inhalte</h3>
         <p>Ihre Nachrichten werden über unseren Server an den gewählten KI-Anbieter weitergeleitet und die Antwort zurückgestreamt. Inhalte werden dabei nur im Arbeitsspeicher
           verarbeitet, weder gespeichert noch protokolliert. Standardmäßig nutzen wir nur Anbieter, deren Modelle in vertraulichen Rechenumgebungen (TEE) laufen oder die vertraglich keine Daten aufbewahren.
-          Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
+          Empfänger: NEAR AI Cloud, Phala, Tinfoil, Privatemode (Bochum) und RedPill (<Todo>je Firma, Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen; RedPill: nachgelagerte Anbieter nennen</Todo>).
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
         <p>Inkognito-Modelle (optional): Modelle in der Gruppe „Incognito“ laufen nicht in einer TEE und werden nie automatisch ausgewählt. Wählen Sie eines aus, geht Ihre Nachricht
           unter unserem Konto an einen dieser Dienste; Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt:</p>
@@ -31,9 +31,9 @@ export default function Datenschutz() {
           <li>„PRIVATE“ über Venice (Venice.ai, 1309 Coffeen Ave, Ste 14343, Sheridan, WY 82801, USA; Verarbeitung in den USA;
             <Todo>AVV mit Venice abschließen und die Garantie für die Übermittlung in die USA (z. B. Standardvertragsklauseln) eintragen; Venice nennt öffentlich keine</Todo>): Venice betreibt das Modell selbst und speichert nach eigenen Angaben weder Anfrage noch Antwort.</li>
           <li>„ANONYMIZED“ über Venice: Venice leitet die Nachricht an den jeweiligen Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>).</li>
-          <li>„ANONYMIZED“ über Liquid Inference (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Liquid Inference ergänzen</Todo>): Liquid vergibt die Anfrage an einen
-            Anbieter auf seiner Börse. Wir verlangen bei jeder Anfrage, dass nur Anbieter teilnehmen, die zusagen, die Anfrage nicht zu speichern; Liquid prüft diese Zusage nicht selbst
-            (<Todo>Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
+          <li>„ANONYMIZED“ über Liquid Inference (AI.exchange; <Todo>Firma, Sitz und Drittlandtransfer (Art. 44 ff. DSGVO) für Liquid Inference ergänzen</Todo>): Liquid vergibt die Anfrage an einen
+            Anbieter auf seiner Börse. Liquid sagt in seinem Auftragsverarbeitungsvertrag (AVV) zu, keine Daten aufzubewahren; zusätzlich verlangen wir bei jeder Anfrage, dass nur Angebote ohne
+            Datenaufbewahrung teilnehmen (<Todo>AVV mit Liquid: Datum eintragen; Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
         </ul>
         <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
         <p>Websuche (optional, standardmäßig aus): Schalten Sie im Chat „Websuche“ ein, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
@@ -77,16 +77,16 @@ export default function Datenschutz() {
         <h3>4. Chat content</h3>
         <p>Your messages are relayed through our server to the selected AI provider and the reply is streamed back. Content is processed in memory only; it is never stored or logged.
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
-          Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
+          Recipients: NEAR AI Cloud, Phala, Tinfoil, Privatemode (Bochum) and RedPill (<Todo>company, location, DPA and any third-country transfer (Art. 44 ff. GDPR) for each; RedPill: name the providers it forwards to</Todo>). Ghost chats are not stored even in your browser.</p>
         <p>Incognito models (optional): models in the “Incognito” group do not run in a TEE and are never selected automatically. If you pick one, your message goes
           to one of these services under our account; your account id, IP address and session token are not sent:</p>
         <ul>
           <li>“PRIVATE” via Venice (Venice.ai, 1309 Coffeen Ave, Ste 14343, Sheridan, WY 82801, USA; processed in the US;
             <Todo>sign a DPA with Venice and add the safeguard for the transfer to the US (e.g. standard contractual clauses); Venice publishes none</Todo>): Venice runs the model itself and, by its own account, stores neither the request nor the reply.</li>
           <li>“ANONYMIZED” via Venice: Venice relays the message to the model vendor (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>).</li>
-          <li>“ANONYMIZED” via Liquid Inference (<Todo>Liquid Inference company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>): Liquid awards the request to a provider
-            on its exchange. On every request we require that only providers promising not to keep it take part; Liquid does not check that promise itself
-            (<Todo>providers on Liquid: confirm role and third-country transfer</Todo>).</li>
+          <li>“ANONYMIZED” via Liquid Inference (AI.exchange; <Todo>Liquid Inference company, location and third-country transfer (Art. 44 ff. GDPR)</Todo>): Liquid awards the request to a provider
+            on its exchange. Liquid commits in its data processing agreement (DPA) to retain no data; on every request we also require that only offers without data retention take part
+            (<Todo>DPA with Liquid: add its date; providers on Liquid: confirm role and third-country transfer</Todo>).</li>
         </ul>
         <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
         <p>Web search (optional, off by default): if you turn on “Web search” in a chat, the model may write search queries, which our server sends to the Brave Search API

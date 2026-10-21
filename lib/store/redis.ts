@@ -1,6 +1,6 @@
 import Redis from "ioredis";
-import type { ConsumeLimits, ConsumeResult, CounterStore, HitResult } from "./types";
-import { dayKey, minuteStartOf } from "./types";
+import type { ConsumeLimits, ConsumeResult, CounterStore, HitResult, QuotaScope } from "./types";
+import { dailySuffix, minuteStartOf } from "./types";
 
 /**
  * One atomic round trip per request. Keys use a {id} hash tag so they share a cluster slot.
@@ -58,7 +58,7 @@ export class RedisCounterStore implements CounterStore {
   async consume(id: string, l: ConsumeLimits, commit: boolean, now: number): Promise<ConsumeResult> {
     const minuteStart = minuteStartOf(now);
     const [outcome, daily, minute, oldest] = await this.r.paiConsume(
-      this.k("d", id, `:${dayKey(now)}`), this.k("m", id, `:${minuteStart}`), this.k("f", id),
+      this.k("d", id, dailySuffix(now, l.scope)), this.k("m", id, `:${minuteStart}`), this.k("f", id),
       now, l.budgetWindowMs, l.budgetFailures, l.daily, l.perMinute, commit ? "1" : "0", 2 * 86_400_000, 120_000,
     );
     return { outcome: outcome as ConsumeResult["outcome"], daily: Number(daily), minute: Number(minute), minuteStart, oldestFailure: Number(oldest) };
@@ -67,7 +67,7 @@ export class RedisCounterStore implements CounterStore {
     const key = this.k("f", id);
     await this.r.multi().zadd(key, now, `${now}:${Math.random().toString(36).slice(2)}`).pexpire(key, windowMs).exec();
   }
-  async usedToday(id: string, now: number) { return Number((await this.r.get(this.k("d", id, `:${dayKey(now)}`))) ?? 0); }
+  async usedToday(id: string, now: number, scope?: QuotaScope) { return Number((await this.r.get(this.k("d", id, dailySuffix(now, scope)))) ?? 0); }
   async hit(bucket: string, limit: number, windowMs: number, now: number): Promise<HitResult> {
     const start = Math.floor(now / windowMs) * windowMs;
     const count = Number(await this.r.paiHit(this.k("rl", bucket, `:${start}`), windowMs));

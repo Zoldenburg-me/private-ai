@@ -111,3 +111,75 @@ describe("Venice private routes", () => {
     expect(sent[0].exchange).toBeUndefined(); // the Liquid rule is not sent to other providers
   });
 });
+
+describe("review fixes", () => {
+  const venice = { id: "venice", privacy: "anon-gateway" } as const;
+  const v1 = (token: string, model: string, d: Parameters<typeof handleChat>[2] = deps) =>
+    handleChat(new Request("http://app/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ model, messages: [{ role: "user", content: "hi" }] }) }), "/api/v1/chat/completions", d);
+
+  it("PRIVATE needs a pinned Venice id: Venice's own flag alone is not enough", () => {
+    expect(normaliseModel(venice, { id: "claude-opus-5-5", model_spec: { privacy: "private" } }).privacy).toBe("anonymized");
+    expect(normaliseModel(venice, { id: "kimi-k3", model_spec: { privacy: "anonymized" } }).privacy).toBe("anonymized");
+    expect(normaliseModel(venice, { id: "kimi-k3", model_spec: { privacy: "private" } }).privacy).toBe("private");
+  });
+
+  it("gateways ignore TEE/E2EE hints, and Liquid is never PRIVATE", () => {
+    const m = normaliseModel(liquid, { id: "kimi-k3", tee: true, is_tee: true, e2ee: true, privacy: "tee", model_spec: { privacy: "private" } });
+    expect(m).toMatchObject({ privacy: "anonymized", tee: false, e2ee: false, incognito: true });
+  });
+
+  it("a malformed model_spec is ignored", () => {
+    expect(normaliseModel(venice, { id: "x", model_spec: "private" })).toMatchObject({ name: "x", privacy: "anonymized" });
+    expect(normaliseModel(venice, { id: "y", model_spec: { name: { evil: 1 } } }).name).toBe("y");
+  });
+
+  it("only gateway models are incognito: a zero-retention contract provider keeps the normal quota", async () => {
+    const custom = normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "zdr-model" });
+    expect(custom).toMatchObject({ privacy: "private", tee: false });
+    expect(custom.incognito).toBeUndefined();
+    expect(pickerGroup(custom)).toBe("custom");
+    const { token } = issueToken();
+    const d = { ...deps, catalog: async () => [custom], env: { CUSTOM_API_KEY: "k", CUSTOM_BASE_URL: "http://upstream/v1" } };
+    const r = await handleChat(new Request("http://app/api/chat", { method: "POST", headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ model: "custom:zdr-model", messages: [{ role: "user", content: "hi" }] }) }), "/api/chat", d);
+    expect(r.headers.get("x-usage-limit-daily")).toBe("20");
+    expect(r.headers.get("x-usage-quota")).toBe("standard");
+  });
+
+  it("'tee' in a privacy text counts only as a word", () => {
+    expect(normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "m", privacy: "retention guarantee" }).tee).toBe(false);
+    expect(normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "m", privacy: "intel-tdx tee" }).tee).toBe(true);
+  });
+
+  it("paid-only applies to Venice aliases and on the API route too", async () => {
+    const astra = normaliseModel(venice, { id: "openai-gpt-6-astra" });
+    expect(astra.paid).toBe(true);
+    const { token } = issueToken();
+    const d = { ...deps, catalog: async () => [astra], env: { VENICE_API_KEY: "k", VENICE_BASE_URL: "http://upstream/v1" } };
+    expect((await v1(token, "venice:openai-gpt-6-astra", d)).status).toBe(402);
+    expect((await v1(token, "liquid:claude-fable-5-1")).status).toBe(402);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("paid plans get their own incognito quota", async () => {
+    for (const tier of ["pro", "max"] as const) {
+      const { id, token } = issueToken();
+      await setTier(id, tier);
+      expect((await chat(token, "liquid:deepseek-v4.1-flash")).headers.get("x-usage-limit-daily")).toBe(String(TIERS[tier].incognitoDailyMessages));
+    }
+  });
+
+  it("an id Venice serves outside the built-in map still merges with the same Liquid model", () => {
+    const glmVenice = normaliseModel(venice, { id: "glm-5.3" });
+    const glmLiquid = normaliseModel(liquid, { id: "glm-5.3" });
+    expect(visibleModels([glmLiquid, glmVenice]).map((m) => m.provider)).toEqual(["liquid"]);
+    expect(visibleModels([normaliseModel(venice, { id: "constructor" })])).toHaveLength(1); // no prototype lookups
+  });
+});
+
+it("'tee' hints: separators count, negations and words containing it do not", () => {
+  const tee = (privacy: string) => normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "m", privacy }).tee;
+  expect(["tee_attested", "tdx-tee1", "TEE"].map(tee)).toEqual([true, true, true]);
+  expect(["non-tee", "not tee", "no_tee", "committee", "guarantee"].map(tee)).toEqual([false, false, false, false, false]);
+});

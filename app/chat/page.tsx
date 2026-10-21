@@ -50,9 +50,12 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [tier, setTier] = useState<Tier | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [incognitoUsage, setIncognitoUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [modelRef, setModelRef] = useState("");
   const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.tee === false;
+  // The meter shows the quota the selected model counts against.
+  const incognitoSelected = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.incognito === true;
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState("");
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
@@ -138,7 +141,8 @@ export default function Home() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
       if (!s.error) setSessionReady(true); // a 429/503 sets no cookie, so evidence would only 401
       setTier(s.tier); setAccount(s.account ?? null); setWebSearch(s.features?.webSearch === true);
-      if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.tier?.dailyMessages });
+      if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.usage.dailyLimit });
+      setIncognitoUsage(s.incognitoUsage ? { remaining: s.incognitoUsage.remainingToday, limit: s.incognitoUsage.dailyLimit, incognito: true } : null);
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
       if (s.account?.signedIn) fetch("/api/account/devices").then((r) => r.json()).then((d) => setDevices(d.devices ?? [])).catch(() => {});
       else setDevices([]);
@@ -370,7 +374,12 @@ export default function Home() {
   const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
   // Incognito models have their own quota, so the limit comes from the same response as the remaining count.
-  const onUsage = useCallback((rem: string | null, limit?: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: limit ? Number(limit) : u?.limit })); }, []);
+  const onUsage = useCallback((rem: string | null, limit?: string | null, quota?: string | null) => {
+    const remaining = Number(rem); const max = Number(limit);
+    if (rem == null || rem.trim() === "" || !Number.isFinite(remaining)) return;
+    const incognito = quota === "incognito";
+    (incognito ? setIncognitoUsage : setUsage)((u) => ({ remaining, limit: max > 0 ? max : u?.limit, ...(incognito ? { incognito } : {}) }));
+  }, []);
 
   const go = (v: View) => { setView(v); setNavOpen(false); };
   /** Saving and history need an account: say so and show where to create one, never block the chat. */
@@ -447,7 +456,7 @@ export default function Home() {
           {navBtn({ v: "settings", label: "Settings", Icon: GearSix })}
         </nav>
         <Sidebar ghost={ghost} query={query} onQuery={setQuery} chats={filtered} currentId={chat.id} vaultError={vaultError}
-          tier={tier} usage={usage} onUpgrade={() => go("settings")} account={account} onAccount={() => go("settings")}
+          tier={tier} usage={incognitoSelected ? incognitoUsage : usage} onUpgrade={() => go("settings")} account={account} onAccount={() => go("settings")}
           onNew={() => { startChat(); setNavOpen(false); }}
           onToggleGhost={() => {
             if (ghost && !kv && !signedIn) { promptSignup("Sign up to save chats in this browser."); return; }
@@ -462,7 +471,7 @@ export default function Home() {
         <header className="topbar">
           <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Sidebar"}
             aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple aria-hidden />}</button>
-          <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} paidPlan={!!tier && tier.id !== "free"} />
+          <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} paidPlan={tier ? tier.id !== "free" : undefined} />
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
           {ghost && <span className="chip ghost-chip"><Ghost aria-hidden />Ghost chat</span>}
           <div className="grow" />

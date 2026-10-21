@@ -27,6 +27,7 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   if (!entry.tee) return fail(404, "no enclave evidence: this model does not run in an enclave");
   // Tinfoil's reports are not NEAR-shaped: the SDK on this server checks them (lib/tinfoil.ts). server_checked: true
   // only when it holds a verified attestation, else 502. Tinfoil signature requests are not covered by this branch.
+  if (p.id === "tinfoil" && kind === "signature") return fail(404, "no per-reply signature from this provider");
   if (kind === "attestation" && p.id === "tinfoil")
     return (await tinfoilVerified()) ? Response.json({ server_checked: true }, { headers: { "Cache-Control": "no-store" } }) : fail(502, "evidence unavailable");
   let target: string;

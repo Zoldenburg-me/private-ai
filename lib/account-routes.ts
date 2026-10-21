@@ -26,6 +26,7 @@ async function exportData(id: string): Promise<Response> {
   const [session, entitlement, subscriptions, passkeys, devices] = await Promise.all([
     accounts.getSession(id), accounts.getEntitlement(id), accounts.listSubscriptionsFor(id), accounts.listCredentials(id), accounts.listDevices(id),
   ]);
+  const tier = await tierOf(id);
   const data = {
     exportedAt: new Date().toISOString(),
     account: { id, createdAt: iso(session?.createdAt ?? null), lastSeenOn: session?.lastSeenOn ?? null },
@@ -36,7 +37,8 @@ async function exportData(id: string): Promise<Response> {
       counter: c.counter, transports: c.transports, createdAt: iso(c.createdAt),
     })),
     devices: devices.map((d) => ({ id: d.id, createdAt: iso(d.createdAt), lastSeenOn: d.lastSeenOn })),
-    usage: await usage(id, await tierOf(id)),
+    usage: await usage(id, tier),
+    incognitoUsage: await usage(id, tier, Date.now(), true),
     notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see /datenschutz.",
   };
   return json(data, 200, { "Content-Disposition": `attachment; filename="private-ai-account-${id.slice(0, 8)}.json"` });

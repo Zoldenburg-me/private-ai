@@ -1,7 +1,7 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { cheapestRoute } from "./routing";
-import { gate, incognitoId, recordFailure } from "./ratelimit";
+import { gate, recordFailure } from "./ratelimit";
 import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
@@ -30,7 +30,7 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
     const p = await prepareChat(req, route, deps, {});
     if (p instanceof Response) return p;
     const res = await relay({ provider: p.provider, body: p.body, log: p.log, route, fetchImpl: deps.fetchImpl, extraHeaders: p.headers });
-    if (res.status >= 500) await recordFailure(p.quotaId);
+    if (res.status >= 500) await recordFailure(p.id);
     return res;
   });
 }
@@ -49,7 +49,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
       remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
-    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.quotaId),
+    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }
@@ -62,8 +62,8 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
   }
 }
 
-/** `quotaId` is the counter id: incognito models count separately (lib/ratelimit.ts). */
-interface Prepared { id: string; quotaId: string; incognito: boolean; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
+/** `incognito`: the model counts against the incognito daily quota (lib/ratelimit.ts). */
+interface Prepared { id: string; incognito: boolean; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
 
 /**
  * Identity, body, model, tier and the first rate-limit check: everything before the upstream call.
@@ -100,8 +100,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const tier = await tierOf(id);
   if (entry.paid && tier === "free")
     return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
-  const incognito = !entry.tee;
-  const quotaId = incognito ? incognitoId(id) : id;
+  const incognito = entry.incognito === true;
   const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
   const cap = TIERS[tier].maxOutputTokens;
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
@@ -122,7 +121,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  return { id, quotaId, incognito, tier, provider, body, headers: g.headers, log };
+  return { id, incognito, tier, provider, body, headers: g.headers, log };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */

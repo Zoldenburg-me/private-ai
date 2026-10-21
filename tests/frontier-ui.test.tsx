@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { normaliseModel } from "@/lib/catalog";
 import { noEnclaveProof, signatureLevel } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, PROVIDER_LABEL, defaultModelRef, visibleModels } from "@/lib/client/providers";
-import { ModelPicker } from "@/components/app/ModelPicker";
+import { ModelPicker, isLocked } from "@/components/app/ModelPicker";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
 
@@ -48,5 +48,18 @@ describe("anonymized frontier models in the UI", () => {
     expect(drawer).toMatch(/No enclave attestation applies/);
     expect(drawer).not.toContain("Enclave proof");
     expect(drawer).not.toMatch(/Certificate chain|signing key/i);
+  });
+});
+
+describe("picker lock and labels", () => {
+  it("locks paid models only once the plan is known to be free", () => {
+    expect(isLocked(fable, false)).toBe(true);
+    expect(isLocked(fable, true)).toBe(false);
+    expect(isLocked(fable, undefined)).toBe(false); // tier still loading: no flash of "paid plans only"
+  });
+
+  it("the trigger tells screen readers an incognito model has no enclave", () => {
+    const html = renderToStaticMarkup(<ModelPicker models={[fable]} value="venice:claude-fable-5-1" onChange={() => {}} />);
+    expect(html).toMatch(/<span class="sr-only">[^<]*No enclave/);
   });
 });

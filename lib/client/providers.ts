@@ -1,5 +1,5 @@
 import type { ModelEntry } from "@/lib/catalog";
-import { VENICE_MODELS } from "@/lib/providers";
+import { canonicalModelId } from "@/lib/provider-models";
 import { CURATED, routesByPrice } from "@/lib/routing";
 
 /**
@@ -13,8 +13,8 @@ export const ENABLED_PROVIDERS = ["near", "venice", "liquid", "mock"] as const;
 export const GATEWAY_ONLY = new Set(["redpill"]);
 export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", redpill: "RedPill", incognito: "Incognito", mock: "Mock enclave (dev)" };
 
-/** Picker group: every selectable non-TEE model goes to one Incognito group, whatever its provider; the rest by provider. */
-export const pickerGroup = (m: ModelEntry) => (!m.tee && m.selectable ? "incognito" : m.provider);
+/** Picker group: every gateway model (Venice, Liquid) goes to one Incognito group; the rest by provider. */
+export const pickerGroup = (m: ModelEntry) => (m.incognito ? "incognito" : m.provider);
 
 /** One-line explanation shown wherever an anonymized model is offered or selected. */
 export const ANONYMIZED_NOTE = "No enclave: your prompt goes to the provider without your identity (no account, IP or session). PRIVATE models are run with zero data retention.";
@@ -23,9 +23,8 @@ export function visibleModels(all: ModelEntry[], enabled: readonly string[] = EN
   return oneRowPerModel(all.filter((m) => enabled.includes(m.provider)));
 }
 
-/** Same model across gateways: Liquid ids, and the Venice ids mapped to them in VENICE_MODELS; anything else is its own model. */
-const modelKey = (m: ModelEntry) =>
-  m.provider === "liquid" ? m.id : m.provider === "venice" && Object.hasOwn(VENICE_MODELS, m.id) ? VENICE_MODELS[m.id] : `${m.provider}:${m.id}`;
+/** Same model across gateways: the canonical id (Venice aliases mapped to Liquid's, any other id as is). */
+const modelKey = (m: ModelEntry) => canonicalModelId(m.provider, m.id);
 
 /** Incognito shows each model once: a private (zero-retention) route replaces an anonymized one in place; otherwise the first listed stays. */
 function oneRowPerModel(models: ModelEntry[]): ModelEntry[] {

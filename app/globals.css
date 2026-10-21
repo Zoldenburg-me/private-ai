@@ -157,7 +157,7 @@ details summary { cursor: pointer; color: var(--text); }
 .picker-item { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
 .picker-item:hover:not([aria-disabled=true]), .picker-item:focus-visible, .picker-item.on { background: var(--panel2); }
 .picker-item:focus-visible { outline-offset: -2px; }
-.picker-item[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
+.picker-item[aria-disabled=true] { color: var(--muted); cursor: not-allowed; } /* muted text keeps 4.5:1; opacity did not */
 .pi-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .pi-name svg { color: var(--accent); }
 .picker-note { margin: 0 10px 6px; font-size: 12px; line-height: 1.4; color: var(--warn); }
