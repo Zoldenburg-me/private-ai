@@ -21,7 +21,7 @@ vi.mock("tinfoil", () => ({
   },
 }));
 
-import { tinfoilFetch } from "../lib/tinfoil";
+import { tinfoilFetch, tinfoilVerified, VERIFY_FAIL_CACHE_MS } from "../lib/tinfoil";
 
 describe("tinfoilFetch", () => {
   it("fails closed when attestation fails, then re-attests on the next request", async () => {
@@ -44,5 +44,22 @@ describe("tinfoilFetch", () => {
     await expect(tinfoilFetch("https://inference.tinfoil.sh/v1/models")).rejects.toThrow("fetch failed");
     await tinfoilFetch("https://inference.tinfoil.sh/v1/models");
     expect(attestations).toBe(before + 1);
+  });
+
+  it("tinfoilVerified reports the SDK's attestation; a failure is reused briefly instead of attesting on every call", async () => {
+    attested = false; failReady = true;
+    const before = attestations;
+    expect(await tinfoilVerified(1_000)).toBe(false);
+    expect(await tinfoilVerified(1_000 + VERIFY_FAIL_CACHE_MS - 1)).toBe(false); // cached: no new attempt
+    expect(attestations).toBe(before);
+    expect(await tinfoilVerified(1_000 + VERIFY_FAIL_CACHE_MS)).toBe(true);
+    expect(attestations).toBe(before + 1);
+  });
+
+  it("a request that attests again clears a cached failure", async () => {
+    attested = false; failReady = true;
+    expect(await tinfoilVerified()).toBe(false);
+    await tinfoilFetch("https://inference.tinfoil.sh/v1/models"); // attests successfully
+    expect(await tinfoilVerified()).toBe(true);
   });
 });

@@ -285,7 +285,7 @@ details summary { cursor: pointer; color: var(--text); }
 .summary { margin-bottom: 18px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); }
 .summary-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; }
 .summary-title svg { font-size: 18px; flex: none; }
-.lvl-checks-passed, .lvl-no-enclave { background: var(--warn-bg); border-color: var(--warn-line); } .lvl-checks-passed .summary-title, .lvl-no-enclave .summary-title { color: var(--warn); }
+.lvl-checks-passed, .lvl-gateway-checked, .lvl-no-enclave { background: var(--warn-bg); border-color: var(--warn-line); } .lvl-checks-passed .summary-title, .lvl-gateway-checked .summary-title, .lvl-no-enclave .summary-title { color: var(--warn); }
 .lvl-verified { background: var(--ok-bg); border-color: var(--ok-line); } .lvl-verified .summary-title { color: var(--ok); }
 .lvl-failed { background: var(--bad-bg); border-color: var(--bad-line); } .lvl-failed .summary-title { color: var(--bad); }
 .lvl-unavailable .summary-title { color: var(--muted); }

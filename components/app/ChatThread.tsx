@@ -7,14 +7,21 @@ import {
 import Image from "next/image";
 import { ArrowUp, CheckCircle, MagnifyingGlass, MinusCircle, Stop, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
-import { streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
+import { ProviderFailure, streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt, ToolEvent } from "@/lib/sse";
 import { publicHttpUrl } from "@/lib/web-search";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
-import { ANONYMIZED_NOTE } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, GATEWAY_ONLY, PROVIDER_LABEL } from "@/lib/client/providers";
+
+/** Names the provider this chat is actually sent to (Auto picks it per proof), or none while Auto is still choosing. */
+export function enclaveLine(modelRef: string): string {
+  const p = modelRef.split(":")[0];
+  if (GATEWAY_ONLY.has(p)) return `Runs behind ${PROVIDER_LABEL[p] ?? p}'s attested gateway; the model itself is not attested.`;
+  return p ? `Runs inside an attested enclave on ${PROVIDER_LABEL[p] ?? p}.` : "Runs inside an attested enclave.";
+}
 
 export type { Signed, StoredMsg };
 
@@ -34,6 +41,8 @@ export interface ThreadProps {
   /** Homepage hand-off: send this prompt as the first message, or only put it in the composer. */
   handoff?: { text: string; send: boolean } | null;
   onHandoff?: () => void;
+  /** The provider behind `modelRef` failed this turn (e.g. so Auto can move to its next route). */
+  onProviderFailure: (modelRef: string) => void;
   /** Small line under the composer (e.g. the sign-up hint for signed-out visitors). */
   hint?: ReactNode;
   /** The server offers agent mode with web search (/api/session features.webSearch). */
@@ -121,6 +130,7 @@ export function ChatThread(props: ThreadProps) {
           }
         } catch (e) {
           if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } } }; return; } // keep what streamed so far, no error text
+          if (e instanceof ProviderFailure) p.onProviderFailure(p.modelRef);
           text = `⚠️ ${(e as Error).message}`; save();
           yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
           return;
@@ -159,7 +169,7 @@ export function ChatThread(props: ThreadProps) {
             <div className="welcome" data-testid="welcome">
               <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
               <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
-              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : "Runs inside an attested enclave on NEAR AI Cloud."} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
+              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
               <div className="suggestions">
                 {(props.suggestions ?? []).map((s) => (
                   <ThreadPrimitive.Suggestion key={s} prompt={s} send className="suggestion">{s}</ThreadPrimitive.Suggestion>

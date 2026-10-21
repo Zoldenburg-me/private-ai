@@ -1,6 +1,9 @@
 import { SecureClient } from "tinfoil";
 
 let client: SecureClient | undefined;
+/** A failed check is reused this long, so an outage does not turn every proof request into new attestation attempts. */
+export const VERIFY_FAIL_CACHE_MS = 10_000;
+let failedAt = -Infinity;
 
 /**
  * fetch for the Tinfoil provider: the SDK verifies the enclave's attestation and code provenance,
@@ -10,6 +13,7 @@ let client: SecureClient | undefined;
 export const tinfoilFetch: typeof fetch = async (input, init) => {
   const c = (client ??= new SecureClient());
   await c.ready(); // the SDK resets itself when attestation fails, so the next request attests again
+  failedAt = -Infinity; // attested again: the proof check need not wait out an earlier failure
   const url = new URL(input instanceof Request ? input.url : String(input));
   const path = url.pathname.replace(/^\/v1\/?/, "") + url.search;
   try {
@@ -20,3 +24,13 @@ export const tinfoilFetch: typeof fetch = async (input, init) => {
     throw e;
   }
 };
+
+
+/**
+ * Whether the Tinfoil SDK on this server holds a verified attestation (enclave + code provenance). The SDK keeps a
+ * passing result until a request fails, then attests again; a failure here is remembered for VERIFY_FAIL_CACHE_MS.
+ */
+export async function tinfoilVerified(now = Date.now()): Promise<boolean> {
+  if (now - failedAt < VERIFY_FAIL_CACHE_MS) return false;
+  try { await (client ??= new SecureClient()).ready(); return true; } catch { failedAt = now; return false; }
+}
