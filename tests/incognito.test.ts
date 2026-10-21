@@ -183,3 +183,13 @@ it("'tee' hints: separators count, negations and words containing it do not", ()
   expect(["tee_attested", "tdx-tee1", "TEE"].map(tee)).toEqual([true, true, true]);
   expect(["non-tee", "not tee", "no_tee", "committee", "guarantee"].map(tee)).toEqual([false, false, false, false, false]);
 });
+
+it("a Venice alias configured on Liquid is still paid-only", () => {
+  expect(normaliseModel(liquid, { id: "openai-gpt-6-astra" }).paid).toBe(true);
+});
+
+it("paid-only holds on every provider, not just gateways", () => {
+  expect(normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "claude-fable-5-1" }).paid).toBe(true);
+  expect(normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "gemini-4-argon" }, true).paid).toBe(true);
+  expect(normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "kimi-k3" }).paid).toBeUndefined();
+});

@@ -47,6 +47,8 @@ function priceOf(raw: Raw): ModelEntry["price"] {
  */
 export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw, nearAttested = false): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
+  // Paid plans only, whichever provider serves it (a Venice alias counts as its canonical id).
+  const paid = PAID_ONLY_MODELS.has(canonicalModelId(id)) ? { paid: true } : {};
   const spec = (raw.model_spec && typeof raw.model_spec === "object" && !Array.isArray(raw.model_spec) ? raw.model_spec : {}) as Raw;
   // Liquid's /models has no display names.
   const name = [raw.name, raw.display_name, spec.name].find((n): n is string => typeof n === "string" && n !== "")
@@ -54,11 +56,10 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   // Nothing behind a gateway can be attested: never TEE or E2EE. PRIVATE only for Venice's pinned self-run models, and only while Venice still says so.
   if (provider.privacy === "anon-gateway") {
     const privacy = provider.id === "venice" && VENICE_PRIVATE.has(id) && spec.privacy === "private" ? "private" : "anonymized";
-    return { id, provider: provider.id, name, privacy, tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true, incognito: true,
-      ...(PAID_ONLY_MODELS.has(canonicalModelId(provider.id, id)) ? { paid: true } : {}) };
+    return { id, provider: provider.id, name, privacy, tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true, incognito: true, ...paid };
   }
   if (provider.id === "near")
-    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw) };
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw), ...paid };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
@@ -80,6 +81,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     // Tinfoil also lists embedding, speech, safety and tool models; only type "chat" can answer a chat.
     selectable: isSelectable(privacy) && !(provider.id === "tinfoil" && raw.type !== undefined && raw.type !== "chat"),
     price: priceOf(raw),
+    ...paid,
   };
 }
 

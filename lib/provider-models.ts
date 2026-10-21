@@ -22,6 +22,8 @@ export const VENICE_MODELS: Record<string, string> = {
 /** Venice ids Venice runs itself with zero retention (its published private models). Only these may be labelled PRIVATE. */
 export const VENICE_PRIVATE = new Set(["deepseek-v4-1-flash", "kimi-k3", "z-ai-glm-5-3", "qwen-3-8-27b", "grok-4-7"]);
 
-/** One id per model across gateways: Venice ids map to Liquid's; anything else is already canonical. */
-export const canonicalModelId = (provider: string, id: string) =>
-  provider === "venice" && Object.hasOwn(VENICE_MODELS, id) ? VENICE_MODELS[id] : id;
+/**
+ * One id per model across gateways: Venice ids map to Liquid's, on any gateway (an env line-up may list a Venice id
+ * on Liquid); anything else is already canonical.
+ */
+export const canonicalModelId = (id: string) => (Object.hasOwn(VENICE_MODELS, id) ? VENICE_MODELS[id] : id);

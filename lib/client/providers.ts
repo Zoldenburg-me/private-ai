@@ -24,7 +24,7 @@ export function visibleModels(all: ModelEntry[], enabled: readonly string[] = EN
 }
 
 /** Same model across gateways: the canonical id (Venice aliases mapped to Liquid's, any other id as is). */
-const modelKey = (m: ModelEntry) => canonicalModelId(m.provider, m.id);
+const modelKey = (m: ModelEntry) => canonicalModelId(m.id);
 
 /** Incognito shows each model once: a private (zero-retention) route replaces an anonymized one in place; otherwise the first listed stays. */
 function oneRowPerModel(models: ModelEntry[]): ModelEntry[] {
