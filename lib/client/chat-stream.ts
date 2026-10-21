@@ -2,7 +2,7 @@ import { parseSseChunk, type Receipt } from "@/lib/sse";
 import type { ChatMessage } from "@/lib/providers";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 
-export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null }
+export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null; limit?: string | null }
 
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
 export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
@@ -43,6 +43,7 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     body: JSON.stringify({ model, stream: true, messages, ...(persona ? { pai_options: { persona } } : {}) }),
   });
   const remaining = res.headers.get("x-usage-remaining-daily");
+  const limit = res.headers.get("x-usage-limit-daily");
   if (!res.ok || !res.body) {
     const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     throw new Error(j.error?.message || `HTTP ${res.status}`);
@@ -54,8 +55,8 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     if (done) break;
     const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
     buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt;
-    yield { text, remaining };
+    yield { text, remaining, limit };
   }
   const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt;
-  yield { text, receipt, remaining };
+  yield { text, receipt, remaining, limit };
 }

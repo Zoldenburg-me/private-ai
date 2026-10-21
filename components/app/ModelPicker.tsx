@@ -2,16 +2,17 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { CaretDown, Check, LockSimple, Prohibit } from "@phosphor-icons/react";
 import type { ModelEntry } from "@/lib/catalog";
-import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, PROVIDER_LABEL, pickerGroup } from "@/lib/client/providers";
 
 const ref = (m: ModelEntry) => `${m.provider}:${m.id}`;
 
-/** Model picker grouped by provider, with privacy tags. Blocked models are shown but not selectable. */
-export function ModelPicker({ models, value, onChange }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void }) {
+/** Model picker: TEE models by provider, all non-TEE models in one Incognito group. Blocked models are shown but not selectable. */
+export function ModelPicker({ models, value, onChange, paidPlan = false }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void; paidPlan?: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const sel = models.find((m) => ref(m) === value);
-  const groups = [...new Set(models.map((m) => m.provider))];
+  const groups = [...new Set(models.map(pickerGroup))];
+  const locked = (m: ModelEntry) => !!m.paid && !paidPlan;
 
   // Close on outside click; focus the selected (or first enabled) option when the menu opens.
   useEffect(() => {
@@ -46,7 +47,7 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
         }}>
         <span className="picker-name">{sel ? sel.name : "Select a model"}</span>
         {sel && <span className={`tag t-${sel.privacy}`} data-testid={`badge-${sel.privacy}`}
-          title={sel.privacy === "anonymized" ? ANONYMIZED_NOTE : undefined}>{sel.privacy.toUpperCase()}</span>}
+          title={!sel.tee ? ANONYMIZED_NOTE : undefined}>{sel.privacy.toUpperCase()}</span>}
         <CaretDown aria-hidden />
       </button>
       {open && (
@@ -54,18 +55,20 @@ export function ModelPicker({ models, value, onChange }: { models: ModelEntry[];
           {groups.map((g) => (
             <div key={g} role="group" aria-label={PROVIDER_LABEL[g] ?? g}>
               <div className="picker-group" aria-hidden>{PROVIDER_LABEL[g] ?? g}</div>
-              {models.some((m) => m.provider === g && m.privacy === "anonymized" && m.selectable) && <p className="picker-note" id={`note-${g}`} aria-hidden>{ANONYMIZED_NOTE}</p>}
-              {models.filter((m) => m.provider === g).map((m) => (
-                <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} aria-disabled={!m.selectable || undefined}
-                  aria-describedby={m.privacy === "anonymized" && m.selectable ? `note-${g}` : undefined}
-                  className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { if (!m.selectable) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
+              {g === "incognito" && <p className="picker-note" id={`note-${g}`} aria-hidden>{ANONYMIZED_NOTE}</p>}
+              {models.filter((m) => pickerGroup(m) === g).map((m) => (
+                <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} aria-disabled={!m.selectable || locked(m) || undefined}
+                  aria-describedby={g === "incognito" ? `note-${g}` : undefined}
+                  className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { if (!m.selectable || locked(m)) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
                   <span className="pi-name">{ref(m) === value && <Check weight="bold" aria-hidden />}{m.name}</span>
                   <span className="tags">
                     <span className={`tag t-${m.privacy}`}>{m.privacy.toUpperCase()}</span>
+                    {m.paid && <span className="tag t-pro">PRO</span>}
                     {m.e2ee && <span className="tag t-e2ee"><LockSimple aria-hidden />E2EE</span>}
                     {m.contextLength && <span className="tag t-ctx">{Math.round(m.contextLength / 1000)}k</span>}
                   </span>
                   {!m.selectable && <span className="pi-blocked"><Prohibit aria-hidden />blocked by privacy policy</span>}
+                  {m.selectable && locked(m) && <span className="pi-blocked"><Prohibit aria-hidden />paid plans only</span>}
                 </button>
               ))}
             </div>

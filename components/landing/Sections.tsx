@@ -200,7 +200,7 @@ export function Features() {
 }
 
 const PLAN_LINES: Record<TierId, string[]> = {
-  free: [`${TIERS.free.dailyMessages} messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
+  free: [`${TIERS.free.dailyMessages} messages a day`, `+ ${TIERS.free.incognitoDailyMessages} incognito messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
   pro: [`${TIERS.pro.dailyMessages.toLocaleString("en")} messages a day`, `${TIERS.pro.maxContextTokens / 1000}k context`, "All models"],
   max: ["High fair-use limit", "1M context", "All models"],
 };

@@ -168,6 +168,7 @@ details summary { cursor: pointer; color: var(--text); }
 .t-private { color: var(--text); border-color: var(--hairline); }
 .t-anonymized { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
 .t-e2ee { color: var(--ok); border-color: var(--ok-line); }
+.t-pro { color: var(--tint); border-color: var(--accent-line); }
 .t-ctx { color: var(--muted); }
 .t-current { color: var(--accent); border-color: var(--accent-line); }
 

@@ -10,9 +10,9 @@ import { ProofDrawer } from "@/components/app/ProofDrawer";
 const fable = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "claude-fable-5-1", name: "Claude Fable 5.1" });
 
 describe("anonymized frontier models in the UI", () => {
-  it("the gateway is enabled client-side and its group is labelled as anonymized frontier models", () => {
-    expect(ENABLED_PROVIDERS).toContain("venice");
-    expect(PROVIDER_LABEL.venice).toBe("Frontier · anonymized");
+  it("the gateways are enabled client-side and their models share the Incognito group", () => {
+    expect(ENABLED_PROVIDERS).toEqual(expect.arrayContaining(["venice", "liquid"]));
+    expect(PROVIDER_LABEL.incognito).toBe("Incognito");
     expect(visibleModels([fable])).toEqual([fable]);
   });
 
@@ -28,7 +28,7 @@ describe("anonymized frontier models in the UI", () => {
     expect(html).toContain('data-testid="badge-anonymized"');
     expect(html).toContain("ANONYMIZED");
     expect(html).not.toContain("TEE");
-    expect(html).toMatch(/leaves the enclave path[^"]*without your identity/);
+    expect(html).toMatch(/No enclave[^"]*without your identity/);
   });
 
   it("proof for an anonymized model says no enclave attestation applies, never a TEE or verified state", () => {

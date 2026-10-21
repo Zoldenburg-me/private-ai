@@ -1,5 +1,6 @@
-import type { ProviderConfig } from "./providers";
+import { LIQUID_MODELS, type ProviderConfig } from "./providers";
 import { tinfoilFetch } from "./tinfoil";
+import { PAID_ONLY_MODELS } from "./tiers";
 
 export type Privacy = "tee" | "private" | "anonymized";
 
@@ -14,6 +15,8 @@ export interface ModelEntry {
   selectable: boolean;
   /** USD per 1M tokens, from the provider's own /models listing. */
   price?: { in: number; out: number };
+  /** Paid plans only (PAID_ONLY_MODELS). */
+  paid?: boolean;
 }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
@@ -39,9 +42,12 @@ function priceOf(raw: Raw): ModelEntry["price"] {
  */
 export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">, raw: Raw, nearAttested = false): ModelEntry {
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
-  const name = String(raw.name ?? raw.display_name ?? id);
-  // Whatever the gateway's metadata says, we cannot attest anything behind it: label it anonymized only.
-  if (provider.privacy === "anon-gateway") return { id, provider: provider.id, name, privacy: "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true };
+  // Liquid's /models has no display names.
+  const spec = (raw.model_spec ?? {}) as Raw;
+  const name = String(raw.name ?? raw.display_name ?? spec.name ?? (provider.id === "liquid" && Object.hasOwn(LIQUID_MODELS, id) ? LIQUID_MODELS[id] : id));
+  // Nothing behind a gateway can be attested: never TEE or E2EE. Venice runs its "private" models itself with zero retention.
+  if (provider.privacy === "anon-gateway")
+    return { id, provider: provider.id, name, privacy: provider.id === "venice" && spec.privacy === "private" ? "private" : "anonymized", tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true, ...(PAID_ONLY_MODELS.has(id) ? { paid: true } : {}) };
   if (provider.id === "near")
     return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw) };
   const caps = (raw.capabilities ?? {}) as Raw;
@@ -92,7 +98,8 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
   const attested = p.id === "near" ? await nearAttested(p, fetchImpl) : undefined;
   return listed
     .map((m) => normaliseModel(p, m, attested?.has(String(m.id ?? m.model_id ?? m.modelId))))
-    .filter((m) => m.id && (!p.models || p.models.includes(m.id)));
+    .filter((m) => m.id && (!p.models || p.models.includes(m.id)))
+    .sort((a, b) => (p.models ? p.models.indexOf(a.id) - p.models.indexOf(b.id) : 0)); // allowlist order is picker order
 }
 
 /**

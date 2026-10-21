@@ -3,14 +3,19 @@ export type TierId = "free" | "pro" | "max";
 export interface Tier {
   id: TierId; name: string; priceEurMonth: number;
   dailyMessages: number; maxContextTokens: number; maxOutputTokens: number; requestsPerMinute: number;
+  /** Separate daily quota for incognito (anonymized, non-TEE) models. */
+  incognitoDailyMessages: number;
 }
 
 /** PROPOSAL - not final pricing. Max "unlimited" is fair-use. */
 export const TIERS: Record<TierId, Tier> = {
-  free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5 },
-  pro: { id: "pro", name: "Pro", priceEurMonth: 15, dailyMessages: 1_000, maxContextTokens: 128_000, maxOutputTokens: 8_192, requestsPerMinute: 30 },
-  max: { id: "max", name: "Max", priceEurMonth: 49, dailyMessages: 5_000, maxContextTokens: 1_000_000, maxOutputTokens: 16_384, requestsPerMinute: 60 },
+  free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5, incognitoDailyMessages: 50 },
+  pro: { id: "pro", name: "Pro", priceEurMonth: 15, dailyMessages: 1_000, maxContextTokens: 128_000, maxOutputTokens: 8_192, requestsPerMinute: 30, incognitoDailyMessages: 1_000 },
+  max: { id: "max", name: "Max", priceEurMonth: 49, dailyMessages: 5_000, maxContextTokens: 1_000_000, maxOutputTokens: 16_384, requestsPerMinute: 60, incognitoDailyMessages: 5_000 },
 };
+
+/** Top frontier models: paid plans only, from any provider. */
+export const PAID_ONLY_MODELS = new Set(["gemini-4-argon", "claude-fable-5-1", "gpt-6-astra", "openai-gpt-6-astra"]);
 
 /** max_tokens sent upstream when the client sets none (never above the tier cap). */
 export const DEFAULT_OUTPUT_TOKENS = 4_096;

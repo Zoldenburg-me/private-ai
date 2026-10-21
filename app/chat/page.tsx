@@ -50,7 +50,7 @@ export default function Home() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [modelRef, setModelRef] = useState("");
-  const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.privacy === "anonymized";
+  const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.tee === false;
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState("");
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
@@ -144,7 +144,7 @@ export default function Home() {
     if (!ref || !models.length) return null; // the catalog decides whether this model has an enclave at all
     const nonce = newNonce();
     let proof: Proof;
-    if (models.find((m) => `${m.provider}:${m.id}` === ref)?.privacy === "anonymized") proof = noEnclaveProof(ref);
+    if (models.find((m) => `${m.provider}:${m.id}` === ref)?.tee === false) proof = noEnclaveProof(ref);
     else try {
       const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
       if (r.status === 401) return null; // no session yet: do not cache, the next check retries
@@ -298,7 +298,8 @@ export default function Home() {
   const persona = personas.find((p) => p.id === personaId);
   const proof = proofs[modelRef] ?? null;
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
-  const onUsage = useCallback((rem: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: u?.limit })); }, []);
+  // Incognito models have their own quota, so the limit comes from the same response as the remaining count.
+  const onUsage = useCallback((rem: string | null, limit?: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: limit ? Number(limit) : u?.limit })); }, []);
 
   const go = (v: View) => { setView(v); setNavOpen(false); };
   /** Saving and history need an account: say so and show where to create one, never block the chat. */
@@ -388,7 +389,7 @@ export default function Home() {
         <header className="topbar">
           <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Sidebar"}
             aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple aria-hidden />}</button>
-          <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} />
+          <ModelPicker models={models} value={modelRef} onChange={(r) => setModelRef(r)} paidPlan={!!tier && tier.id !== "free"} />
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
           {ghost && <span className="chip ghost-chip"><Ghost aria-hidden />Ghost chat</span>}
           <div className="grow" />

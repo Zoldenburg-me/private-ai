@@ -1,7 +1,7 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { cheapestRoute } from "./routing";
-import { gate, recordFailure } from "./ratelimit";
+import { gate, incognitoId, recordFailure } from "./ratelimit";
 import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
@@ -59,6 +59,10 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   if (!provider) return err(503, "provider not configured");
 
   const tier = await tierOf(id);
+  if (entry.paid && tier === "free")
+    return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
+  const incognito = !entry.tee;
+  const quotaId = incognito ? incognitoId(id) : id;
   const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
   const cap = TIERS[tier].maxOutputTokens;
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
@@ -67,8 +71,10 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
   const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
-  const g = await gate(id, tier, estimateTokens(JSON.stringify(prompt))); // the cache secret uses no model context
-  const body = { ...prompt, ...cacheScope };
+  // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
+  const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
+  const g = await gate(id, tier, estimateTokens(JSON.stringify(prompt)), Date.now(), incognito); // the cache secret uses no model context
+  const body = { ...prompt, ...cacheScope, ...exchange };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget
     const limited = await overLimit(LIMITS.anonChat, "anon-chat");
@@ -78,7 +84,7 @@ async function handle(req: Request, route: string, deps: HandlerDeps): Promise<R
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
   const res = await relay({ provider, body, log, route, fetchImpl: deps.fetchImpl, extraHeaders: g.headers });
-  if (res.status >= 500) await recordFailure(id);
+  if (res.status >= 500) await recordFailure(quotaId);
   return res;
 }
 

@@ -14,14 +14,32 @@ export interface ProviderConfig {
   keyId?: string;
 }
 
-export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string }[] = [
+/**
+ * Liquid's default incognito line-up, in picker order: open-weight models first (the default route), then frontier.
+ * Every Liquid request is sent with retention_policy "none" (lib/handler.ts), so only zero-retention offers compete.
+ */
+export const LIQUID_MODELS: Record<string, string> = {
+  "deepseek-v4.1-flash": "DeepSeek V4.1 Flash", "kimi-k3": "Kimi K3", "glm-5.3": "GLM 5.3", "qwen3.8-27b": "Qwen 3.8 27B",
+  "claude-opus-5-5": "Claude Opus 5.5", "grok-4.7": "Grok 4.7",
+  "gemini-4-argon": "Gemini 4 Argon", "claude-fable-5-1": "Claude Fable 5.1", "gpt-6-astra": "GPT-6 Astra",
+};
+
+/** Venice's default line-up: open-weight models and Grok that Venice runs itself ("private", zero retention), then anonymized frontier. */
+const VENICE_MODELS = [
+  "deepseek-v4-1-flash", "kimi-k3", "z-ai-glm-5-3", "qwen-3-8-27b", "grok-4-7",
+  "claude-opus-5-5", "gemini-4-argon", "claude-fable-5-1", "openai-gpt-6-astra",
+];
+
+/** Liquid is listed before Venice: when both offer a model anonymized, the picker keeps Liquid's zero-retention route. */
+export const DEFS: { id: string; name: string; prefix: string; privacy: PrivacyModel; baseUrl?: string; models?: string[] }[] = [
   { id: "near", name: "NEAR AI Cloud", prefix: "NEAR_AI", privacy: "tee-attested", baseUrl: "https://cloud-api.near.ai/v1" },
   { id: "phala", name: "Phala Confidential AI", prefix: "PHALA", privacy: "tee-attested", baseUrl: "https://inference.phala.com/v1" },
   { id: "tinfoil", name: "Tinfoil", prefix: "TINFOIL", privacy: "tee-attested", baseUrl: "https://inference.tinfoil.sh/v1" },
   { id: "privatemode", name: "Privatemode (Edgeless)", prefix: "PRIVATEMODE", privacy: "tee-attested" },
   { id: "redpill", name: "RedPill gateway", prefix: "REDPILL", privacy: "tee-gateway" },
   { id: "mock", name: "Mock enclave (dev/test only)", prefix: "MOCK", privacy: "tee-attested", baseUrl: "http://127.0.0.1:3000/api/mock/v1" },
-  { id: "venice", name: "Venice (anonymized frontier models)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1" },
+  { id: "liquid", name: "Liquid Inference (zero-retention exchange)", prefix: "LIQUID", privacy: "anon-gateway", baseUrl: "https://router.inference.ai.exchange/v1", models: Object.keys(LIQUID_MODELS) },
+  { id: "venice", name: "Venice (private open-weight, anonymized frontier)", prefix: "VENICE", privacy: "anon-gateway", baseUrl: "https://api.venice.ai/api/v1", models: VENICE_MODELS },
   { id: "custom", name: "Custom OpenAI-compatible", prefix: "CUSTOM", privacy: "zdr-contract" },
 ];
 
@@ -34,7 +52,7 @@ export function loadProviders(env: Env = process.env): ProviderConfig[] {
     if (d.id === "mock" && env.MOCK_PROVIDER !== "1") return [];
     const apiKey = env[`${d.prefix}_API_KEY`] || (d.id === "mock" ? "mock" : "");
     if (!baseUrl || !apiKey) return [];
-    const listed = env[`${d.prefix}_MODELS`]?.split(",").map((m) => m.trim()).filter(Boolean);
+    const listed = (env[`${d.prefix}_MODELS`]?.split(",") ?? d.models)?.map((m) => m.trim()).filter(Boolean);
     const models = listed && [...new Set(listed)];
     if (d.privacy === "anon-gateway" && !models?.length) return []; // only explicitly vetted frontier models
     return [{ id: d.id, name: d.name, privacy: d.privacy, baseUrl: baseUrl.replace(/\/$/, ""), apiKey, defaultModel: env[`${d.prefix}_MODEL`] || "", ...(models?.length ? { models } : {}) }];

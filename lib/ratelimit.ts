@@ -12,18 +12,22 @@ export interface GateDecision {
   allowed: boolean; status: number; reason?: string; headers: Record<string, string>;
 }
 
-export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now()): Promise<GateDecision> {
+/** Incognito models count against their own daily quota, under this counter id. */
+export const incognitoId = (id: string) => `${id}:incognito`;
+
+export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now(), incognito = false): Promise<GateDecision> {
   const t = TIERS[tierId];
+  const daily = incognito ? t.incognitoDailyMessages : t.dailyMessages;
   const { counters } = await stores();
-  const r = await counters.consume(id, { daily: t.dailyMessages, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs },
+  const r = await counters.consume(incognito ? incognitoId(id) : id, { daily, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs },
     contextTokens <= t.maxContextTokens, now);
   const resetMinute = Math.ceil((r.minuteStart + 60_000) / 1000);
   const headers: Record<string, string> = {
     "x-ratelimit-limit-requests": String(t.requestsPerMinute),
     "x-ratelimit-remaining-requests": String(Math.max(0, t.requestsPerMinute - r.minute)),
     "x-ratelimit-reset-requests": String(resetMinute),
-    "x-usage-limit-daily": String(t.dailyMessages),
-    "x-usage-remaining-daily": String(Math.max(0, t.dailyMessages - r.daily)),
+    "x-usage-limit-daily": String(daily),
+    "x-usage-remaining-daily": String(Math.max(0, daily - r.daily)),
     "x-tier": t.id,
   };
   switch (r.outcome) {

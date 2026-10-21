@@ -13,9 +13,11 @@ describe("model catalog + privacy policy", () => {
     const f = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "claude-fable-5-1", model_spec: { privacy: "anonymized" } });
     expect(f).toMatchObject({ provider: "venice", privacy: "anonymized", tee: false, e2ee: false, selectable: true });
   });
-  it("the anonymizing gateway never claims TEE, E2EE or zero retention, whatever its metadata says", () => {
-    const m = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "e2ee-x", tee: true, capabilities: { e2ee: true }, model_spec: { privacy: "private" } });
-    expect(m).toMatchObject({ privacy: "anonymized", tee: false, e2ee: false, selectable: true });
+  it("a gateway never claims TEE or E2EE; only Venice's own private models count as zero retention", () => {
+    const m = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "e2ee-x", tee: true, capabilities: { e2ee: true }, model_spec: { privacy: "private", name: "X" } });
+    expect(m).toMatchObject({ name: "X", privacy: "private", tee: false, e2ee: false, selectable: true });
+    expect(normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "y", model_spec: { privacy: "anonymized" } }).privacy).toBe("anonymized");
+    expect(normaliseModel({ id: "liquid", privacy: "anon-gateway" }, { id: "z", model_spec: { privacy: "private" } }).privacy).toBe("anonymized");
   });
   it("<PREFIX>_MODELS limits a provider's catalogue to the listed ids", async () => {
     const providers = loadProviders({ VENICE_API_KEY: "k", VENICE_MODELS: "gpt-x, claude-fable-5-1" });

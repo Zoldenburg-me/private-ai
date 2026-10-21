@@ -23,7 +23,7 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   if (!p) return fail(503, "provider not configured");
   const entry = (await getCatalog()).find((m) => m.provider === ref.provider && m.id === ref.model);
   if (!entry) return fail(400, "unknown model");
-  if (entry.privacy === "anonymized") return fail(404, "no enclave evidence: anonymized models run at the model vendor");
+  if (!entry.tee) return fail(404, "no enclave evidence: incognito models do not run in an enclave");
   let target: string;
   if (kind === "attestation") {
     const nonce = url.searchParams.get("nonce") ?? "";

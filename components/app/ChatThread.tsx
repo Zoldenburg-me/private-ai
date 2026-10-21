@@ -25,7 +25,7 @@ export interface ThreadProps {
   /** isCurrent=false: the user switched chats mid-stream; persist, but do not show. */
   onSaved: (chat: Chat, ghost: boolean, isCurrent: boolean) => void;
   scope: ChatScope;
-  onUsage: (remaining: string | null) => void;
+  onUsage: (remaining: string | null, limit?: string | null) => void;
   verifySignature: (r: Receipt) => Promise<Signed>;
   suggestions?: string[];
   /** The selected model is anonymized: no enclave, so the welcome text must not claim one. */
@@ -80,7 +80,7 @@ export function ChatThread(props: ThreadProps) {
       const reply = async function* (): AsyncGenerator<ChatModelRunResult, void> {
         try {
           for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal })) {
-            text = u.text; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining);
+            text = u.text; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining, u.limit);
             yield { content: [{ type: "text", text }] };
           }
         } catch (e) {
