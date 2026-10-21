@@ -1,0 +1,91 @@
+<!doctype html><html><body style="margin:0;background:#151210">
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from "three";
+const S = 1024;
+const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+r.setSize(S, S); r.setClearColor(0, 0); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+r.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
+cam.position.set(0.6, 1.6, 12); cam.lookAt(0.05, 0.05, 0);
+
+scene.add(new THREE.HemisphereLight(0xfff4f8, 0x2a2238, 0.9));
+const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(3, 5, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0x6f8fff, 3.2); rim.position.set(-3, 3, -4); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffd9e6, 0.6); fill.position.set(-5, -2, 4); scene.add(fill);
+
+const narwhal = new THREE.Group(); scene.add(narwhal);
+const skin = new THREE.MeshPhysicalMaterial({ color: 0xe9e1e5, roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.3, sheen: 0.5, sheenColor: 0xffffff });
+
+// Body: lathe profile (radius, axis) from tail to snout, then laid along x.
+const prof = [[0.04,-2.45],[0.2,-1.9],[0.5,-1.1],[0.78,-0.2],[0.84,0.6],[0.72,1.15],[0.5,1.5],[0.22,1.7],[0.0,1.76]];
+const pts = new THREE.SplineCurve(prof.map(([a, b]) => new THREE.Vector2(a, b))).getPoints(60).map(v => new THREE.Vector2(Math.max(v.x, 0), v.y));
+const bodyGeo = new THREE.LatheGeometry(pts, 72, Math.PI) // seam on the far side, away from the camera;
+const pos = bodyGeo.attributes.position, col = [];
+const back = new THREE.Color(0xb3a3ad), belly = new THREE.Color(0xfbf8fa);
+for (let i = 0; i < pos.count; i++) {
+  pos.setZ(i, pos.getZ(i) * 0.9);
+  const x = pos.getX(i), y = pos.getY(i);
+  const rr = Math.max(Math.hypot(x, pos.getZ(i) / 0.9), 1e-3);
+  col.push(...back.clone().lerp(belly, THREE.MathUtils.smoothstep(x / rr, -0.7, 0.95)).toArray()); // lathe +x ends up as the belly
+}
+bodyGeo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); bodyGeo.computeVertexNormals();
+skin.vertexColors = true;
+const body = new THREE.Mesh(bodyGeo, skin); body.rotation.z = -Math.PI / 2; narwhal.add(body);
+
+// Flukes
+const flukeShape = new THREE.Shape();
+flukeShape.moveTo(0, 0); flukeShape.bezierCurveTo(-0.3, 0.2, -0.75, 0.75, -0.95, 0.85); flukeShape.bezierCurveTo(-0.7, 0.4, -0.75, 0.15, -0.6, 0);
+flukeShape.bezierCurveTo(-0.75, -0.15, -0.7, -0.4, -0.95, -0.85); flukeShape.bezierCurveTo(-0.75, -0.75, -0.3, -0.2, 0, 0);
+const fluke = new THREE.Mesh(new THREE.ExtrudeGeometry(flukeShape, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 4 }), new THREE.MeshPhysicalMaterial({ color: 0xc4b6be, roughness: 0.45, clearcoat: 0.5 }));
+fluke.rotation.x = Math.PI / 2 - 0.75; fluke.position.set(-2.32, 0.03, 0); fluke.rotation.y = 0.1; narwhal.add(fluke);
+
+// Flippers
+for (const s of [1, -1]) {
+  const f = new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 16), new THREE.MeshPhysicalMaterial({ color: 0xc9bcc3, roughness: 0.45, clearcoat: 0.5 }));
+  f.scale.set(1.0, 0.12, 0.45); f.position.set(0.7, -0.55, 0.62 * s); f.rotation.set(0.5 * s, 0.6 * s, -0.4); narwhal.add(f);
+}
+
+// Mottled spots on the back
+const spotMat = new THREE.MeshStandardMaterial({ color: 0x8a7a83, roughness: 0.6, transparent: true, opacity: 0.55 });
+const spots = [[-0.2, 0.8, 0.3, 0.11], [0.35, 0.82, -0.1, 0.1], [-0.8, 0.6, 0.18, 0.08], [0.7, 0.72, 0.3, 0.09], [-0.5, 0.72, -0.3, 0.09], [-1.35, 0.42, 0.1, 0.06], [0.1, 0.72, 0.45, 0.07], [-1.0, 0.5, 0.35, 0.06]];
+body.updateMatrixWorld();
+const ray = new THREE.Raycaster();
+for (const [x, y, z, s] of spots) { // drop each spot onto the skin from outside
+  const dir = new THREE.Vector3(0, y, z).normalize(), from = new THREE.Vector3(x, 0, 0).addScaledVector(dir, 3);
+  ray.set(from, dir.clone().negate()); const hit = ray.intersectObject(body)[0]; if (!hit) continue;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(s, 16, 8), spotMat);
+  m.position.copy(hit.point).addScaledVector(dir, -0.012); m.lookAt(hit.point.clone().add(dir)); m.scale.set(1.4, 1, 0.12); narwhal.add(m);
+}
+
+// Eyes
+for (const s of [1, -1]) {
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.115, 24, 16), new THREE.MeshPhysicalMaterial({ color: 0x1a1418, roughness: 0.1, clearcoat: 1 }));
+  eye.position.set(1.28, 0.16, 0.6 * s); narwhal.add(eye);
+}
+
+// Spiral tusk: cone with a helical groove texture, ivory to brand blue
+const tc = document.createElement("canvas"); tc.width = 64; tc.height = 512; const g = tc.getContext("2d");
+const grd = g.createLinearGradient(0, 512, 0, 0); grd.addColorStop(0, "#f2ece6"); grd.addColorStop(0.55, "#dcd6ee"); grd.addColorStop(1, "#6f8fff");
+g.fillStyle = grd; g.fillRect(0, 0, 64, 512);
+g.strokeStyle = "rgba(40,30,50,.28)"; g.lineWidth = 6;
+for (let k = -12; k < 24; k++) { g.beginPath(); g.moveTo(0, k * 32); g.lineTo(64, k * 32 + 32); g.stroke(); }
+const tex = new THREE.CanvasTexture(tc); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(3, 1);
+const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.1, 2.3, 48, 1, true), new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.15 }));
+tusk.geometry.translate(0, 1.15, 0); tusk.position.set(1.62, 0.1, 0); tusk.rotation.z = -Math.PI / 2 + 0.3; narwhal.add(tusk);
+
+narwhal.rotation.set(0.15, -0.3, 0.6);
+// Centre the animal and back the camera off until it fills the square with a small margin.
+const box = new THREE.Box3().setFromObject(narwhal), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+narwhal.position.sub(c);
+const dist = (Math.max(sz.x, sz.y) * 1.04) / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) + sz.z / 2;
+cam.position.set(0.3, 0.6, dist); cam.lookAt(0, 0, 0);
+if (location.hash === "#head") { // avatar crop: head and tusk base fill the square, the body runs off the edge
+  narwhal.updateMatrixWorld(); const head = narwhal.localToWorld(new THREE.Vector3(0.75, 0.05, 0));
+  const span = 3.4, d = span / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+  cam.position.set(head.x + 0.4, head.y + 0.5, d); cam.lookAt(head);
+}
+r.render(scene, cam);
+window.png = r.domElement.toDataURL("image/png");
+</script></body></html>

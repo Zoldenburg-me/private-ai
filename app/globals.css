@@ -191,7 +191,8 @@ details summary { cursor: pointer; color: var(--text); }
 .suggestion:hover { border-color: var(--hairline); color: var(--text); }
 .msg { display: flex; gap: 12px; margin: 22px auto; }
 .msg-user { justify-content: flex-end; }
-.avatar { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 2px; border-radius: 8px; background: var(--mark-bg); border: 1px solid var(--line-card); }
+.avatar { flex: none; width: 32px; height: 32px; margin-top: 0; overflow: hidden; border-radius: 9px; background: var(--mark-bg); border: 1px solid var(--line-card); }
+.avatar img { display: block; width: 100%; height: 100%; }
 .bubble { min-width: 0; font-size: 14.5px; line-height: 1.65; }
 .msg-assistant .bubble { flex: 1; }
 .msg-user .bubble { max-width: 80%; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: var(--panel2); }
