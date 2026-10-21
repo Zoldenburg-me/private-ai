@@ -92,7 +92,13 @@ describe("gateway reports", () => {
     const n = newNonce();
     const p = proofFromResponse("redpill:qwen/qwen3", { ...mockReport(n), api_version: "aci/v1" }, n);
     expect(p.reports.map((r) => r.role)).toEqual(["gateway"]);
+    // A gateway-only proof makes no enclave claim for the model.
+    expect(p.level).toBe("gateway-checked");
+    expect(text(badge(p))).not.toMatch(/Enclave/);
+    expect(claimsVerified(badge(p))).toBe(false);
     const html = text(drawer(p));
+    expect(html).toContain("Gateway signing key");
+    expect(html).not.toContain("Enclave signing key");
     expect(html).toContain("RedPill gateway (TDX)");
     expect(html).not.toContain("NEAR AI");
     expect(html).not.toContain("Model enclave");

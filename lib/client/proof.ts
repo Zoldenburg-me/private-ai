@@ -62,7 +62,7 @@ export interface ReportProof {
   items: ProofItem[];
 }
 
-export type ProofLevel = "verified" | "checks-passed" | "server-checked" | "failed" | "unavailable" | "pending" | "no-enclave";
+export type ProofLevel = "verified" | "checks-passed" | "gateway-checked" | "server-checked" | "failed" | "unavailable" | "pending" | "no-enclave";
 
 export interface Proof {
   modelRef: string;
@@ -123,6 +123,8 @@ export function summarise(modelRef: string, reports: ReportProof[], chainVerifie
   let level: ProofLevel;
   if (!reports.length) level = "unavailable";
   else if (failed) level = "failed";
+  // Only a gateway attested (e.g. RedPill's aci/ report): the model behind it is not, so no enclave claim for the model.
+  else if (!reports.some((r) => r.role === "model")) level = "gateway-checked";
   else if (chainVerified && all.every((i) => i.state === "pass")) level = "verified";
   else level = "checks-passed";
   return { modelRef, level, label: LEVEL_LABEL[level], chainVerified: level === "verified", checkedAt: now, reports, notVerified: level === "verified" ? [] : NOT_VERIFIED, signingAddress };
@@ -131,6 +133,7 @@ export function summarise(modelRef: string, reports: ReportProof[], chainVerifie
 export const LEVEL_LABEL: Record<ProofLevel, string> = {
   verified: "Verified",
   "checks-passed": "Enclave checks passed · chain not verified",
+  "gateway-checked": "Gateway checks passed · model not attested",
   "server-checked": "Checked by our server · Tinfoil SDK",
   failed: "Proof failed",
   unavailable: "No proof available",

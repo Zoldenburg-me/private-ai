@@ -27,6 +27,7 @@ function Item({ i }: { i: ProofItem }) {
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
   "checks-passed": "Enclave checks passed, but the hardware chain is not verified yet.",
+  "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
   "server-checked": "Our server checked this enclave's attestation and code with the Tinfoil SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
   unavailable: "No enclave proof is available right now.",
@@ -113,7 +114,9 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
               <div><dt>Certificate chain</dt><dd className={proof.chainVerified ? "c-ok" : "c-warn"}>
                 {proof.chainVerified ? <CheckCircle weight="fill" aria-hidden /> : <MinusCircle aria-hidden />}
                 <b>{proof.chainVerified ? "verified" : "NOT verified"}</b></dd></div>
-              {proof.signingAddress && <div><dt>Enclave signing key</dt><dd><CopyHash value={proof.signingAddress} label="enclave signing key" short /></dd></div>}
+              {proof.signingAddress && (proof.level === "gateway-checked"
+                ? <div><dt>Gateway signing key</dt><dd><CopyHash value={proof.signingAddress} label="gateway signing key" short /></dd></div>
+                : <div><dt>Enclave signing key</dt><dd><CopyHash value={proof.signingAddress} label="enclave signing key" short /></dd></div>)}
             </dl>
             <p className="summary-note">
               {proof.chainVerified ? "The hardware quote chains to the vendor root." :

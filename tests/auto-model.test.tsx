@@ -47,6 +47,7 @@ describe("auto model in the app", () => {
     expect(got?.modelRef).toBe("c");
     expect(tried).toEqual(["a", "b", "c"]);
     expect(await firstPassing(["a", "b"], async (r) => proof(r, levels[r]))).toBeUndefined();
+    expect(await firstPassing(["g"], async (r) => proof(r, "gateway-checked"))).toBeUndefined(); // a gateway alone never wins Auto
   });
 
   it("Tinfoil passes only when our server's SDK check passed, so a broken Tinfoil route lets Auto fall through", async () => {
@@ -73,5 +74,10 @@ describe("auto model in the app", () => {
 
   it("a server-checked proof counts as passing for Auto", async () => {
     expect((await firstPassing(["tinfoil:kimi-k3"], async (r) => serverCheckedProof(r)))?.level).toBe("server-checked");
+  });
+
+  it("a gateway-only provider is never described as running the model inside an attested enclave", () => {
+    expect(enclaveLine("redpill:qwen/qwen3")).toBe("Runs behind RedPill's attested gateway; the model itself is not attested.");
+    expect(enclaveLine("near:m")).toBe("Runs inside an attested enclave on NEAR AI Cloud.");
   });
 });

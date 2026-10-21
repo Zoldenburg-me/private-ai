@@ -189,7 +189,8 @@ export default function Home() {
   const verifySignature = useCallback(async (receipt: Receipt): Promise<Signed> => {
     const ref = `${receipt.provider}:${receipt.model}`;
     const a = proofs[ref] ?? await checkProof(ref);
-    if (!a || a.level === "failed" || a.level === "unavailable" || !a.signingAddress || !receipt.chat_id) return "n/a";
+    // A gateway-only proof's key is the gateway's: a match would not mean the model's enclave signed the reply.
+    if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return "n/a";
     const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
     if (!r.ok) return "n/a";
     return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok);

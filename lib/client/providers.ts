@@ -8,6 +8,8 @@ import { CURATED, routesByPrice } from "@/lib/routing";
  */
 export const ENABLED_PROVIDERS = ["near", "venice", "mock"] as const;
 
+/** Providers whose attestation covers their gateway, not the model behind it (lib/providers.ts: privacy "tee-gateway"). */
+export const GATEWAY_ONLY = new Set(["redpill"]);
 export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", redpill: "RedPill", venice: "Frontier · anonymized", mock: "Mock enclave (dev)" };
 
 /** One-line explanation shown wherever an anonymized model is offered or selected. */

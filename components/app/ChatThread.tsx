@@ -14,11 +14,12 @@ import { publicHttpUrl } from "@/lib/web-search";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
-import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, GATEWAY_ONLY, PROVIDER_LABEL } from "@/lib/client/providers";
 
 /** Names the provider this chat is actually sent to (Auto picks it per proof), or none while Auto is still choosing. */
 export function enclaveLine(modelRef: string): string {
   const p = modelRef.split(":")[0];
+  if (GATEWAY_ONLY.has(p)) return `Runs behind ${PROVIDER_LABEL[p] ?? p}'s attested gateway; the model itself is not attested.`;
   return p ? `Runs inside an attested enclave on ${PROVIDER_LABEL[p] ?? p}.` : "Runs inside an attested enclave.";
 }
 

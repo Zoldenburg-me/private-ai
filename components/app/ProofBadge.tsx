@@ -3,7 +3,7 @@ import { CircleNotch, Shield, ShieldCheck, ShieldSlash } from "@phosphor-icons/r
 import type { Proof, ProofLevel } from "@/lib/client/proof";
 
 const TONE: Record<ProofLevel, string> = {
-  verified: "ok", "checks-passed": "warn", "server-checked": "warn", failed: "bad", unavailable: "muted", pending: "muted", "no-enclave": "warn",
+  verified: "ok", "checks-passed": "warn", "gateway-checked": "warn", "server-checked": "warn", failed: "bad", unavailable: "muted", pending: "muted", "no-enclave": "warn",
 };
 
 function LevelIcon({ level }: { level: ProofLevel }) {
@@ -16,7 +16,7 @@ function LevelIcon({ level }: { level: ProofLevel }) {
 
 // Short visible text; the full label stays the accessible name. Never "Verified" unless level === "verified".
 const SHORT: Record<ProofLevel, string> = {
-  verified: "Verified", "checks-passed": "Enclave", "server-checked": "Server-checked", failed: "Proof failed", unavailable: "No proof", pending: "Checking…", "no-enclave": "No enclave",
+  verified: "Verified", "checks-passed": "Enclave", "gateway-checked": "Gateway only", "server-checked": "Server-checked", failed: "Proof failed", unavailable: "No proof", pending: "Checking…", "no-enclave": "No enclave",
 };
 
 /** Compact per-model/per-chat proof badge. Click opens the details drawer. */
