@@ -14,8 +14,8 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { readSidebarCollapsed, sidebarHidden, writeSidebarCollapsed } from "@/lib/client/ui-prefs";
-import { noEnclaveProof, proofFromResponse, signatureLevel, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
-import { visibleModels, defaultModelRef } from "@/lib/client/providers";
+import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { autoEntryOf, autoModels, visibleModels, defaultModelRef, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
@@ -37,6 +37,8 @@ const SHEET_MQ = "(max-width: 820px)";
 const CRAMPED_MQ = "(max-width: 1279px)";
 /** Homepage hand-off: how long to wait for a model and its enclave check before only prefilling the prompt. */
 const HANDOFF_WAIT_MS = 10_000;
+/** Auto found no passing route: how long until it checks the routes again. */
+const AUTO_RETRY_MS = 30_000;
 const SUGGESTIONS = ["Summarise a document without it leaving the enclave", "Draft a sensitive email for me", "Explain how this app proves privacy"];
 
 export default function Home() {
@@ -54,6 +56,9 @@ export default function Home() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState("");
   const [proofs, setProofs] = useState<Record<string, Proof>>({});
+  // Auto routes whose chat failed at the provider; a ref, so a check that started before a failure sees it when it ends.
+  const routeFailedAt = useRef<Record<string, number>>({});
+  const candidates = useCallback((routes: string[]) => autoCandidates(routes, nearDefault(models), routeFailedAt.current), [models]);
   const [drawer, setDrawer] = useState(false);
   const [navOpen, setNavOpen] = useState(false); // narrow only: rail + sidebar as a drawer
   const [narrow, setNarrow] = useState(false);
@@ -86,7 +91,7 @@ export default function Home() {
     setCollapsed(readSidebarCollapsed());
     refreshSession();
     fetch("/api/models").then((r) => r.json()).then((all: ModelEntry[]) => {
-      const m = visibleModels(all); setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
+      const m = [...autoModels(all), ...visibleModels(all)]; setModels(m); setModelRef((cur) => cur || defaultModelRef(m));
     }).catch(() => setNotice("Could not load models"));
   }, []);
 
@@ -143,27 +148,90 @@ export default function Home() {
 
   const checkProof = useCallback(async (ref: string): Promise<Proof | null> => {
     if (!ref || !models.length) return null; // the catalog decides whether this model has an enclave at all
-    const nonce = newNonce();
-    let proof: Proof;
-    if (models.find((m) => `${m.provider}:${m.id}` === ref)?.tee === false) proof = noEnclaveProof(ref);
-    else try {
-      const r = await fetch(`/api/attestation?model=${encodeURIComponent(ref)}&nonce=${nonce}`);
-      if (r.status === 401) return null; // no session yet: do not cache, the next check retries
-      proof = r.ok ? proofFromResponse(ref, await r.json(), nonce)
-        : { modelRef: ref, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] };
-    } catch {
-      proof = { modelRef: ref, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] };
-    }
-    setProofs((p) => ({ ...p, [ref]: proof }));
+    const unavailable = (r: string): Proof => ({ modelRef: r, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: Date.now(), reports: [], notVerified: [] });
+    // One provider ref, no state: null means no session yet, so nothing is cached and the next check retries.
+    const one = async (r: string): Promise<Proof | null> => {
+      if (models.find((m) => `${m.provider}:${m.id}` === r)?.tee === false) return noEnclaveProof(r);
+      const nonce = newNonce();
+      try {
+        const res = await fetch(`/api/attestation?model=${encodeURIComponent(r)}&nonce=${nonce}`);
+        if (res.status === 401) return null;
+        if (!res.ok) return unavailable(r);
+        const body: unknown = await res.json();
+        // Tinfoil: passes only if the SDK on our server holds a verified attestation; a broken Tinfoil route is unavailable, so Auto moves on.
+        if (r.startsWith("tinfoil:")) return tinfoilProof(r, body);
+        return proofFromResponse(r, body, nonce);
+      } catch {
+        return unavailable(r);
+      }
+    };
+    const auto = autoEntryOf(models, ref);
+    let proof: Proof | null;
+    if (auto) {
+      // Cheapest route whose proof holds; its modelRef is where messages go. State is set once, at the end:
+      // setting it per route re-ran the check effect before this ref was stored (render loop).
+      let noSession = false;
+      const won = await firstPassing(candidates(auto.routes), async (r) => { const p = await one(r); if (!p) noSession = true; return p; });
+      proof = won ?? (noSession ? null : unavailable(ref));
+      // A route benched while this check ran must not come back: the check the failure started decides instead.
+      if (won && isBenched(won.modelRef, routeFailedAt.current)) return null;
+    } else proof = await one(ref);
+    if (!proof) return null;
+    const done = proof;
+    setProofs((p) => ({ ...p, [ref]: done, [done.modelRef]: done })); // the route's own key serves its signature checks
     return proof;
-  }, [models]);
+  }, [models, candidates]);
+
+  // An Auto route that failed a chat at the provider is skipped for a while: drop the cached choice so Auto picks again.
+  // Keyed on the failed route, not the current selection, so a model switch mid-reply still benches it, and every
+  // Auto choice that sends there (not only this one) picks again.
+  // An "unavailable" Auto proof goes too, so a check always follows. The notice is about the current selection (read
+  // from a ref: ChatThread holds the callback of the render its reply started in), and only if it uses that route.
+  const selection = useRef({ modelRef, models, proofs }); selection.current = { modelRef, models, proofs };
+  const onProviderFailure = useCallback((ref: string) => {
+    routeFailedAt.current = { ...routeFailedAt.current, [ref]: Date.now() };
+    setProofs((p) => Object.fromEntries(Object.entries(p).filter(([k, v]) => !(k.startsWith("auto:") && (v.modelRef === ref || v.level === "unavailable")))));
+    const { modelRef: now, models: all, proofs: cached } = selection.current;
+    const auto = autoEntryOf(all, now);
+    if (!auto || cached[now]?.modelRef !== ref) return; // only if this selection was sending there
+    setNotice(candidates(auto.routes).length
+      ? "Auto: that provider failed, so it switches to the next enclave (NEAR AI Cloud last). Send again once the badge shows a proof."
+      : `Auto: every enclave for ${auto.name.replace(/^Auto · /, "")} failed in the last few minutes. It tries again in about ${ROUTE_COOLDOWN_MS / 60_000} minutes.`);
+  }, [candidates]);
 
   useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
+  // Auto with no passing route (e.g. a brief attestation outage) leaves Send disabled: check again after a pause,
+  // until a route passes or the selection changes (the cleanup cancels the pending retry).
+  // Off its cheapest route (another route or the NEAR fallback), check again once benched routes are back.
+  const autoEntry = autoEntryOf(models, modelRef);
+  const autoProof = autoEntry ? proofs[modelRef] : undefined;
+  const fallbackRef = fallbackOf(autoEntry?.routes, autoProof);
+  const [retryTick, setRetryTick] = useState(0); // a re-check that stored nothing (e.g. a 401) still arms the next one
+  useEffect(() => {
+    const delay = autoEntry ? autoRetryDelay(autoProof, autoEntry.routes, AUTO_RETRY_MS) : 0;
+    if (!sessionReady || !delay) return;
+    const t = setTimeout(() => void checkProof(modelRef).then((p) => { if (!p) setRetryTick((n) => n + 1); }), delay);
+    return () => clearTimeout(t);
+  }, [sessionReady, modelRef, autoEntry, autoProof, checkProof, retryTick]);
+  // Say so when Auto lands on the NEAR fallback (a model other than the one picked), and when it is back on its own route.
+  const lastFallback = useRef({ modelRef: "", fallbackRef: "" });
+  useEffect(() => {
+    const was = lastFallback.current;
+    // Proof cleared for a re-pick, or nothing passes for now: remember where it was, for "back on".
+    if (autoEntry && (!autoProof || autoProof.level === "unavailable") && was.modelRef === modelRef) return;
+    lastFallback.current = { modelRef, fallbackRef };
+    if (!autoEntry || !autoProof) return;
+    const name = (ref: string) => models.find((x) => `${x.provider}:${x.id}` === ref)?.name ?? ref;
+    const picked = autoEntry.name.replace(/^Auto · /, "");
+    if (fallbackRef) setNotice(`Auto: no enclave for ${picked} is available right now, so this chat uses ${name(fallbackRef)} on NEAR AI Cloud.`);
+    else if (was.modelRef === modelRef && was.fallbackRef && autoProof.level !== "unavailable") setNotice(`Auto: back on ${picked}.`);
+  }, [modelRef, fallbackRef, autoProof?.modelRef]); // eslint-disable-line react-hooks/exhaustive-deps -- once per selection and route, not on every catalog or proof change
 
   const verifySignature = useCallback(async (receipt: Receipt): Promise<Signed> => {
     const ref = `${receipt.provider}:${receipt.model}`;
     const a = proofs[ref] ?? await checkProof(ref);
-    if (!a || a.level === "failed" || a.level === "unavailable" || !a.signingAddress || !receipt.chat_id) return "n/a";
+    // A gateway-only proof's key is the gateway's: a match would not mean the model's enclave signed the reply.
+    if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return "n/a";
     const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
     if (!r.ok) return "n/a";
     return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok);
@@ -298,6 +366,8 @@ export default function Home() {
 
   const persona = personas.find((p) => p.id === personaId);
   const proof = proofs[modelRef] ?? null;
+  // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
+  const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
   // Incognito models have their own quota, so the limit comes from the same response as the remaining count.
   const onUsage = useCallback((rem: string | null, limit?: string | null) => { if (rem != null) setUsage((u) => ({ remaining: Number(rem), limit: limit ? Number(limit) : u?.limit })); }, []);
@@ -307,7 +377,9 @@ export default function Home() {
   const promptSignup = (why: string) => { setNotice(`${why} Create an account with a passkey: no email, no password.`); go("settings"); };
 
   // Homepage hand-off: send once a model is chosen and its enclave check is in; otherwise only prefill.
-  const proofReady = !!proof && !["failed", "unavailable", "pending"].includes(proof.level);
+  // No hand-off to a gateway-only proof: the prompt would be sent before anyone chose a model that is not attested.
+  // Nor when Auto fell back to a different model: the user has not seen that yet, so only prefill.
+  const proofReady = handoffReady(proof, fallbackRef);
   useEffect(() => {
     if (!pending) return;
     const give = (send: boolean) => { setHandoff({ text: pending, send }); setPending(""); };
@@ -409,8 +481,8 @@ export default function Home() {
 
         {view === "chat" && (
           kv || ghost
-            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={modelRef} persona={persona} ghost={ghost} webSearch={webSearch}
-                onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature}
+            ? <ChatThread key={chat.id + (ghost ? ":g" : "")} scope={scope} chat={chat} modelRef={sendRef} persona={persona} ghost={ghost} webSearch={webSearch}
+                onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature} onProviderFailure={onProviderFailure}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
                 hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>
                   : sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}

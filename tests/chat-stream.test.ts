@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { streamChat, toChatMessages, toStoredMessages } from "@/lib/client/chat-stream";
+import { ProviderFailure, streamChat, toChatMessages, toStoredMessages } from "@/lib/client/chat-stream";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import type { ModelEntry } from "@/lib/catalog";
 
@@ -63,6 +63,27 @@ describe("client chat stream", () => {
     })();
     await expect(run(['data: {"choices":[{"delta":{"content":"a"}}]}\n\n', 'event: agent_error\ndata: {"message":"daily limit reached"}\n\n'])).rejects.toThrow("daily limit reached");
     await expect(run(['data: {"choices":[{"delta":{"content":"a"}}]}\n\n'])).rejects.toThrow(/connection lost/);
+  });
+
+  it("marks provider failures apart from our own limits, so Auto can move to another route", async () => {
+    const first = async (res: () => Response, agent = false) => {
+      try { for await (const _ of streamChat({ model: "near:m", messages: [], agent, fetchImpl: (async () => res()) as unknown as typeof fetch })) void _; } catch (e) { return e; }
+    };
+    expect(await first(() => Response.json({ error: { message: "provider error 401" } }, { status: 502 }))).toBeInstanceOf(ProviderFailure);
+    expect(await first(() => Response.json({ error: { message: "provider timeout" } }, { status: 504 }))).toBeInstanceOf(ProviderFailure);
+    expect(await first(() => sse(['event: agent_error\ndata: {"message":"provider stream ended early"}\n\n']), true)).toBeInstanceOf(ProviderFailure);
+    expect(await first(() => sse(['event: agent_error\ndata: {"message":"model did not answer"}\n\n']), true)).toBeInstanceOf(ProviderFailure);
+    expect(await first(() => Response.json({ error: { message: "provider not configured" } }, { status: 503 }))).toBeInstanceOf(ProviderFailure);
+
+    for (const e of [await first(() => Response.json({ error: { message: "daily limit reached" } }, { status: 429 })),
+      await first(() => sse(['event: agent_error\ndata: {"message":"rate limit, slow down"}\n\n']), true),
+      await first(() => new Response("<html>Bad gateway</html>", { status: 502 })), // the tunnel, not the provider
+      await first(() => Response.json({ error: { message: "service temporarily unavailable" } }, { status: 503 })), // our store
+      await first(() => sse(['event: agent_error\ndata: {"message":"provider x"}\n\n'])), // a relayed provider faking our agent event
+      // A stream that breaks after the headers: maybe the relay, maybe the user's own network, so no route is benched.
+      await first(() => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n')); c.error(new TypeError("network error")); } })))]) {
+      expect(e).toBeInstanceOf(Error); expect(e).not.toBeInstanceOf(ProviderFailure);
+    }
   });
 
   it("surfaces server errors (e.g. tier limit)", async () => {

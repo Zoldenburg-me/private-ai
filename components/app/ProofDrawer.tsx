@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, CheckCircle, Circle, Code, MinusCircle, Shield, ShieldCheck, ShieldSlash, X, XCircle } from "@phosphor-icons/react";
 import type { Proof, ProofItem } from "@/lib/client/proof";
-import { ANONYMIZED_NOTE } from "@/lib/client/providers";
+import { ANONYMIZED_NOTE, PROVIDER_LABEL } from "@/lib/client/providers";
 import { CopyHash } from "./CopyHash";
 
 const STATE_TEXT = { pass: "passed", fail: "failed", "not-checked": "not checked" } as const;
@@ -27,6 +27,8 @@ function Item({ i }: { i: ProofItem }) {
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
   "checks-passed": "Enclave checks passed, but the hardware chain is not verified yet.",
+  "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
+  "server-checked": "Our server checked this enclave's attestation and code with the Tinfoil SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
   unavailable: "No enclave proof is available right now.",
   pending: "Checking…",
@@ -67,6 +69,8 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
   if (!open) return null;
   const title = proof?.level === "no-enclave" ? "Privacy details" : "Enclave proof";
   const items = proof?.reports.flatMap((r) => r.items) ?? [];
+  const provider = proof?.modelRef.split(":")[0] ?? "";
+  const gatewayName = PROVIDER_LABEL[provider] ?? provider;
   const failed = items.filter((i) => i.state === "fail");
   return (
     <aside className="drawer" data-testid="proof-drawer" aria-label={title}>
@@ -119,7 +123,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
             {proof.reports.map((r, idx) => (
               <section key={idx} className="report">
-                <h3>{r.role === "gateway" ? "NEAR AI gateway (TDX)" : "Model enclave (TDX + GPU)"}</h3>
+                <h3>{r.role === "gateway" ? `${gatewayName} gateway (TDX)` : "Model enclave (TDX + GPU)"}</h3>
                 <ul className="proof-list">{r.items.map((i) => <Item key={i.id} i={i} />)}</ul>
                 {r.measurements.length > 0 && (
                   <details className="measure">
@@ -142,7 +146,9 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
             <section className="report">
               <h3>Per message</h3>
-              <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>
+              {proof.level === "gateway-checked" ? (
+                <p className="small muted" data-testid="gateway-signature-note">Replies are not signature-checked here: only the gateway is attested, so a signature from its key would not show that the model&apos;s enclave produced the reply.</p>
+              ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>}
             </section>
 
             <button type="button" className="btn ghost drawer-actions" aria-expanded={showRaw} onClick={() => setShowRaw((v) => !v)}><Code aria-hidden />{showRaw ? "Hide" : "Show"} raw result</button>

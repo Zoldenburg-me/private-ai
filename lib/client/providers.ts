@@ -1,5 +1,6 @@
 import type { ModelEntry } from "@/lib/catalog";
 import { VENICE_MODELS } from "@/lib/providers";
+import { CURATED, routesByPrice } from "@/lib/routing";
 
 /**
  * Client-side provider allowlist: NEAR AI (TEE), Venice and Liquid (incognito: anonymized, non-TEE); "mock" is the dev/test enclave
@@ -8,7 +9,9 @@ import { VENICE_MODELS } from "@/lib/providers";
  */
 export const ENABLED_PROVIDERS = ["near", "venice", "liquid", "mock"] as const;
 
-export const PROVIDER_LABEL: Record<string, string> = { near: "NEAR AI Cloud", incognito: "Incognito", mock: "Mock enclave (dev)" };
+/** Providers whose attestation covers their gateway, not the model behind it (lib/providers.ts: privacy "tee-gateway"). */
+export const GATEWAY_ONLY = new Set(["redpill"]);
+export const PROVIDER_LABEL: Record<string, string> = { auto: "Auto · cheapest enclave", phala: "Phala Confidential AI", tinfoil: "Tinfoil", near: "NEAR AI Cloud", redpill: "RedPill", incognito: "Incognito", mock: "Mock enclave (dev)" };
 
 /** Picker group: every selectable non-TEE model goes to one Incognito group, whatever its provider; the rest by provider. */
 export const pickerGroup = (m: ModelEntry) => (!m.tee && m.selectable ? "incognito" : m.provider);
@@ -34,6 +37,27 @@ function oneRowPerModel(models: ModelEntry[]): ModelEntry[] {
   }
   return out;
 }
+
+/** An "auto:<curated model>" picker entry; routes are its TEE providers' refs, cheapest first. */
+export type AutoEntry = ModelEntry & { routes: string[] };
+
+/**
+ * Auto entries for the picker, built from the full catalog (Phala and Tinfoil included, though they are not
+ * offered for manual picks). The chat page sends to the cheapest route whose proof holds, never to "auto:" itself.
+ */
+export function autoModels(all: ModelEntry[]): AutoEntry[] {
+  return Object.keys(CURATED).flatMap((id) => {
+    const routes = routesByPrice(all, id);
+    return routes.length ? [{ id, provider: "auto", name: `Auto · ${routes[0].name.replace(/^[^:]+:\s*/, "")}`, privacy: "tee" as const, tee: true, e2ee: false, selectable: true, routes: routes.map((m) => `${m.provider}:${m.id}`) }] : [];
+  });
+}
+
+/** The Auto entry `ref` selects, if any (checked, not cast: it must carry its routes). */
+export const autoEntryOf = (models: ModelEntry[], ref: string): AutoEntry | undefined =>
+  models.find((m): m is AutoEntry => m.provider === "auto" && `auto:${m.id}` === ref && Array.isArray((m as Partial<AutoEntry>).routes));
+
+/** Auto's universal fallback: NEAR's default model, if NEAR offers one. */
+export const nearDefault = (models: ModelEntry[]) => defaultModelRef(models.filter((m) => m.provider === "near")) || undefined;
 
 export function defaultModelRef(models: ModelEntry[]): string {
   // Incognito models leave the enclave path, so they are only ever an explicit choice.

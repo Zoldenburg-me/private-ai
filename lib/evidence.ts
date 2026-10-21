@@ -5,6 +5,7 @@ import { getCatalog } from "./catalog-cache";
 import { identityFrom } from "./session";
 import { withStores } from "./store";
 import { LIMITS, overLimit } from "./limits";
+import { tinfoilVerified } from "./tinfoil";
 
 const fail = (status: number, message: string) => Response.json({ error: { message } }, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -23,7 +24,11 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   if (!p) return fail(503, "provider not configured");
   const entry = (await getCatalog()).find((m) => m.provider === ref.provider && m.id === ref.model);
   if (!entry) return fail(400, "unknown model");
-  if (!entry.tee) return fail(404, "no enclave evidence: incognito models do not run in an enclave");
+  if (!entry.tee) return fail(404, "no enclave evidence: this model does not run in an enclave");
+  // Tinfoil's reports are not NEAR-shaped: the SDK on this server checks them (lib/tinfoil.ts). server_checked: true
+  // only when it holds a verified attestation, else 502. Tinfoil signature requests are not covered by this branch.
+  if (kind === "attestation" && p.id === "tinfoil")
+    return (await tinfoilVerified()) ? Response.json({ server_checked: true }, { headers: { "Cache-Control": "no-store" } }) : fail(502, "evidence unavailable");
   let target: string;
   if (kind === "attestation") {
     const nonce = url.searchParams.get("nonce") ?? "";
