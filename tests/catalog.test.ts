@@ -39,6 +39,10 @@ describe("model catalog + privacy policy", () => {
     expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "plain" }).selectable).toBe(false);
+    // RedPill's /models marks confidential models with is_tee; standard ones stay unselectable.
+    expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "deepseek/v4", is_tee: true })).toMatchObject({ privacy: "tee", selectable: true });
+    expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "openai/o3", is_tee: false }).selectable).toBe(false);
+    expect(loadProviders({ REDPILL_API_KEY: "k" }).map((p) => p.baseUrl)).toEqual(["https://api.redpill.ai/v1"]);
   });
   it("fetches /models and applies policy", async () => {
     const providers = loadProviders({ MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://m/v1" });
