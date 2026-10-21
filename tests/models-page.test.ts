@@ -22,6 +22,15 @@ describe("models page rows", () => {
     expect(toRows([m({ id: "x", provider: "near" })])[0].ctx).toBeUndefined();
   });
 
+  it("keeps a model's Anon route next to its Medium one: both can be picked in the chat", () => {
+    const rows = toRows([
+      m({ id: "kimi-k3", provider: "venice", privacy: "private", tee: false, incognito: true }),
+      m({ id: "kimi-k3", provider: "liquid", privacy: "anonymized", tee: false, incognito: true }),
+      m({ id: "kimi-k3-alias", provider: "venice", privacy: "anonymized", tee: false, incognito: true }),
+    ]);
+    expect(rows.map((r) => [r.key, r.privacy])).toEqual([["venice:kimi-k3", "private"], ["liquid:kimi-k3", "anonymized"], ["venice:kimi-k3-alias", "anonymized"]]);
+  });
+
   it("filters by privacy, provider, plan and search; skip ignores one filter", () => {
     const [glm, gpt] = toRows(catalog);
     expect(passes(gpt, { ...NO_FILTERS, plan: "free" })).toBe(false);

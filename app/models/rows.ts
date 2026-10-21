@@ -1,6 +1,7 @@
 import type { ModelEntry, Privacy } from "@/lib/catalog";
 import { DEFS } from "@/lib/providers";
-import { PROVIDER_LABEL, visibleModels } from "@/lib/client/providers";
+import { ENABLED_PROVIDERS, PROVIDER_LABEL } from "@/lib/client/providers";
+import { LEVELS, levelModels } from "@/lib/client/levels";
 import { TIERS, type TierId } from "@/lib/tiers";
 
 /** One row of the public /models page: only what the live catalog says, nothing invented. */
@@ -12,9 +13,10 @@ export interface ModelRow {
 export const PRIVACY_ORDER: Privacy[] = ["tee", "private", "anonymized"];
 const shortName = (id: string) => PROVIDER_LABEL[id] ?? DEFS.find((d) => d.id === id)?.name.replace(/\s*\(.*\)$/, "") ?? id;
 
-/** The models a user can actually pick in the chat, one row each (same dedupe as the picker). */
+/** The models a user can actually pick in the chat, one row per model and privacy level (same dedupe as the picker's levels). */
 export function toRows(catalog: ModelEntry[]): ModelRow[] {
-  return visibleModels(catalog.filter((m) => m.selectable)).map((m) => {
+  const offered = catalog.filter((m) => m.selectable && (ENABLED_PROVIDERS as readonly string[]).includes(m.provider));
+  return LEVELS.flatMap((l) => levelModels(offered, l.id, false)).map((m) => {
     // Providers often name a model "Maker: Model"; split it rather than guess a maker.
     const i = m.name.indexOf(": ");
     return {

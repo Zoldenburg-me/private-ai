@@ -17,6 +17,8 @@ describe("client chat stream", () => {
       { role: "user", content: [{ type: "text", text: "q1" }] },
       { role: "assistant", content: [{ type: "text", text: "a1" }], metadata: { custom: { signed: "key-match" } } },
       { role: "assistant", content: [{ type: "text", text: "a0" }], metadata: { custom: { signed: "ok" } } },
+      { role: "assistant", content: [{ type: "text", text: "a2" }], metadata: { custom: { incognito: "anonymized" } } },
+      { role: "assistant", content: [{ type: "text", text: "a3" }], metadata: { custom: { incognito: "tee" } } },
       { role: "user", content: [{ type: "text", text: "q2" }], metadata: { custom: { signed: "enclave" } } },
       { role: "tool", content: [] },
     ];
@@ -24,9 +26,11 @@ describe("client chat stream", () => {
       { role: "user", content: "q1" },
       { role: "assistant", content: "a1", signed: "key-match" },
       { role: "assistant", content: "a0", signed: "key-match" },
+      { role: "assistant", content: "a2", incognito: "anonymized" },
+      { role: "assistant", content: "a3" },
       { role: "user", content: "q2" },
     ]);
-    expect(toChatMessages(ui).some((m) => "signed" in m)).toBe(false);
+    expect(toChatMessages(ui).some((m) => "signed" in m || "incognito" in m)).toBe(false);
   });
 
   it("streams deltas, usage header and the relay receipt", async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { replyView, turnToStore } from "@/components/app/ChatThread";
+import { incognitoLine, replyView, turnToStore } from "@/components/app/ChatThread";
 
 describe("assistant reply bubble", () => {
   it("offers Try again only on the last reply, so a retry never drops later messages", () => {
@@ -19,11 +19,23 @@ describe("assistant reply bubble", () => {
 
 describe("stored turn", () => {
   const stored = [{ role: "user" as const, content: "q" }];
-  it("never stores an empty assistant message", () => {
-    expect(turnToStore(stored, "")).toBeNull();
+  it("never stores an empty assistant message, but keeps the submitted prompt", () => {
+    expect(turnToStore(stored, "")).toEqual(stored);
+    expect(turnToStore(stored, "", "enclave", "anonymized")).toEqual(stored);
+  });
+  it("stores which incognito route a reply came from, so later model switches do not relabel it", () => {
+    expect(turnToStore(stored, "a", undefined, "anonymized")).toEqual([...stored, { role: "assistant", content: "a", incognito: "anonymized" }]);
   });
   it("appends the reply and its signature", () => {
     expect(turnToStore(stored, "a", "enclave")).toEqual([...stored, { role: "assistant", content: "a", signed: "enclave" }]);
     expect(turnToStore(stored, "a")).toEqual([...stored, { role: "assistant", content: "a" }]);
+  });
+});
+
+describe("incognito line", () => {
+  it("comes from the reply's own route; replies without one (enclave or older history) show none", () => {
+    expect(incognitoLine("private")).toBe("Incognito · zero-retention");
+    expect(incognitoLine("anonymized")).toBe("Incognito · anonymized");
+    expect(incognitoLine(undefined)).toBeUndefined();
   });
 });

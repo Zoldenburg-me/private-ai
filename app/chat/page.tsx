@@ -12,7 +12,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
-import { AUTO, autoRouteNote, levelModels, resolveRef } from "@/lib/client/levels";
+import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, autoEntryOf, autoModels, nearDefault } from "@/lib/client/providers";
@@ -207,13 +207,18 @@ export default function Home() {
   // An "unavailable" Auto proof goes too, so a check always follows. The notice is about the current selection (read
   // from a ref: ChatThread holds the callback of the render its reply started in), and only if it uses that route.
   const incognitoAuto = autoOn && mode.level !== "max";
-  const selection = useRef({ modelRef, models, proofs, incognitoAuto }); selection.current = { modelRef, models, proofs, incognitoAuto };
+  const selection = useRef({ modelRef, models, proofs, incognitoAuto, level: mode.level }); selection.current = { modelRef, models, proofs, incognitoAuto, level: mode.level };
   const onProviderFailure = useCallback((ref: string) => {
     routeFailedAt.current = { ...routeFailedAt.current, [ref]: Date.now() };
     setFailedAt(routeFailedAt.current);
     setProofs((p) => Object.fromEntries(Object.entries(p).filter(([k, v]) => !(k.startsWith("auto:") && (v.modelRef === ref || v.level === "unavailable")))));
-    const { modelRef: now, models: all, proofs: cached, incognitoAuto: onList } = selection.current;
-    if (onList && now === ref) { setNotice("Auto: that model failed at the provider, so Auto moves to the next one on its list. Send again."); return; }
+    const { modelRef: now, models: all, proofs: cached, incognitoAuto: onList, level } = selection.current;
+    if (onList && now === ref) {
+      setNotice(autoRef(all, level, routeFailedAt.current)
+        ? "Auto: that model failed at the provider, so Auto moves to the next one on its list. Send again."
+        : `Auto: every model on this level failed at its provider in the last few minutes. It tries again in about ${ROUTE_COOLDOWN_MS / 60_000} minutes.`);
+      return;
+    }
     const auto = autoEntryOf(all, now);
     if (!auto || cached[now]?.modelRef !== ref) return; // only if this selection was sending there
     setNotice(candidates(auto.routes).length
@@ -222,6 +227,14 @@ export default function Home() {
   }, [candidates]);
 
   useEffect(() => { if (sessionReady && modelRef && !proofs[modelRef]) void checkProof(modelRef); }, [sessionReady, modelRef, proofs, checkProof]);
+  // Medium/Anon Auto with every model benched has nothing to send to (Send is off): pick again once the first one is back.
+  useEffect(() => {
+    if (!incognitoAuto || modelRef) return;
+    const ms = nextUnbench(failedAt);
+    if (ms === undefined) return;
+    const t = setTimeout(() => setFailedAt({ ...routeFailedAt.current }), ms + 50);
+    return () => clearTimeout(t);
+  }, [incognitoAuto, modelRef, failedAt]);
   // Auto with no passing route (e.g. a brief attestation outage) leaves Send disabled: check again after a pause,
   // until a route passes or the selection changes (the cleanup cancels the pending retry).
   // Off its cheapest route (another route or the NEAR fallback), check again once benched routes are back.
@@ -390,7 +403,7 @@ export default function Home() {
   const proof = proofs[modelRef] ?? null;
   // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
   const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
-  const routeNote = autoRouteNote({ models, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt });
+  const routeNote = autoRouteNote({ models, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt, level: mode.level });
   // Web search: on by default (Settings can turn it off); in ghost chat off until switched on in the "+" menu, never saved.
   const searchPref = ghost ? ghostSearch : mode.webSearch;
   const webSearch = searchAvailable && searchPref;
@@ -533,7 +546,7 @@ export default function Home() {
                   : sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
                 anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/private/i.test(s)) : SUGGESTIONS}
                 onOpenProof={() => setDrawer(true)}
-                incognitoLine={selectedPrivacy === "private" ? "Incognito · zero-retention" : selectedPrivacy === "anonymized" ? "Incognito · anonymized" : undefined}
+                incognito={selectedPrivacy === "private" || selectedPrivacy === "anonymized" ? selectedPrivacy : undefined}
                 ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
                   <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
                 webSearch={webSearch}
