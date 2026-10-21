@@ -2,22 +2,26 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, DownloadSimple, Eye, EyeSlash, Fingerprint, Ghost, LockKey, Tag, UserFocus, Vault,
+  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, Eye, EyeSlash, LockKey, SealCheck, ShieldCheck,
 } from "@phosphor-icons/react/dist/ssr";
-import { LEVEL_LABEL, NOT_VERIFIED } from "@/lib/client/proof";
+import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
-import { loadProviders } from "@/lib/providers";
+import { DEFS, loadProviders } from "@/lib/providers";
+import { liveProviders } from "@/lib/provider-keys";
 import { TIERS, type TierId } from "@/lib/tiers";
 import { HeroComposer } from "./HeroComposer";
 import { HeroSky } from "./HeroSky";
 import { MotionToggle } from "./MotionToggle";
-import { ProofDemo } from "./ProofDemo";
 
 export const BRAND = "Hiddensee";
 /** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
 const gated = () => inviteCodes().length > 0;
 /** Frontier models are only offered when a gateway is configured (VENICE_API_KEY or LIQUID_API_KEY; an empty <PREFIX>_MODELS turns it off). */
 const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
+/** The same check with admin-panel keys (what the chat uses). If the key store is down, fall back to env keys: claim less, never more. */
+export async function frontierOn(load: () => Promise<{ privacy: string }[]> = liveProviders): Promise<boolean> {
+  try { return (await load()).some((p) => p.privacy === "anon-gateway"); } catch { return frontier(); }
+}
 const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 
 function Mark({ size = 28 }: { size?: number }) {
@@ -30,7 +34,7 @@ function Roll({ children }: { children: string }) {
 }
 
 const NAV: readonly { href: string; label: string }[] = [
-  { href: "#compare", label: "Compare" }, { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" },
+  { href: "#compare", label: "Compare" }, { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" }, { href: "/models", label: "Models" },
   { href: "#pricing", label: "Pricing" }, { href: "#faq", label: "FAQ" },
 ];
 
@@ -66,11 +70,55 @@ export function Hero() {
   );
 }
 
-/** Large statement whose words ink in as they scroll into view (CSS scroll timeline; static where unsupported). */
-export function Statement({ text }: { text: string }) {
+/** The opening claim, in three inks: statement, accent, and the quieter tail. */
+export function Statement() {
   return (
     <section className="l-statement">
-      <p className="reveal">{text.split(" ").map((w, i) => <span key={i} className="w">{w} </span>)}</p>
+      <p>Most AI apps ask you to trust them. <em>{BRAND} shows you what it checked,</em> <span>what it could not check yet, and every field the server keeps.</span></p>
+    </section>
+  );
+}
+
+/** Enclave providers this deployment actually routes to; nothing is listed that is not configured. */
+/** Partner logos (from each brand's kit, in public/brand/partners); providers without one show their name. */
+const LOGO: Record<string, { src: string; w: number; h: number }> = {
+  near: { src: "/brand/partners/near-ai.svg", w: 449, h: 85 },
+  phala: { src: "/brand/partners/phala.svg", w: 138, h: 48 },
+  venice: { src: "/brand/partners/venice.svg", w: 467, h: 212 },
+};
+
+function Partner({ id, name }: { id: string; name: string }) {
+  const logo = LOGO[id];
+  return <li>{logo ? <Image src={logo.src} alt={name} width={logo.w} height={logo.h} unoptimized className={`partner partner-${id}`} /> : name}</li>;
+}
+
+/** The partners we run on. Shown always: their keys live in the admin panel (the database), which the
+ *  landing page does not read. Gateways (Venice, Liquid) are not confidential compute, so they get their own row. */
+const TEE_PARTNERS = ["near", "phala", "tinfoil"];
+const GATEWAY_PARTNERS = ["venice", "liquid"];
+const partnerName = (id: string) => (DEFS.find((d) => d.id === id)?.name ?? id).replace(/ \(.*\)$/, "");
+
+export function PoweredBy() {
+  return (
+    <section className="l-powered" aria-label="Powered by">
+      <p className="l-kicker">Powered by confidential compute from</p>
+      <ul>{TEE_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
+      <p className="l-kicker">Frontier models via</p>
+      <ul>{GATEWAY_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
+    </section>
+  );
+}
+
+export function Video() {
+  return (
+    <section id="video" className="l-section" aria-labelledby="vid-h">
+      <div className="vid-head">
+        <SectionHead id="vid-h" eyebrow="Watch" title={<>How it works, <em>in two minutes</em></>} />
+        <p>From your browser, through our relay, into the enclave and back, with what each step can and can&rsquo;t see.</p>
+      </div>
+      <div className="vid-frame">
+        <video src="/media/hiddensee-how-it-works.mp4" controls playsInline preload="metadata" aria-label="How Hiddensee works" />
+      </div>
     </section>
   );
 }
@@ -81,17 +129,17 @@ type Cell = readonly [Mark3, string];
 type Row = { label: string; cells: readonly [us: Cell, chatgpt: Cell, lumo: Cell, duck: Cell] };
 const RIVALS = [BRAND, "ChatGPT", "Lumo", "Duck.ai"] as const;
 // Competitor facts from each provider's public privacy pages; re-check before each release.
-const compareRows = (): readonly Row[] => [
+const compareRows = (frontierLive: boolean): readonly Row[] => [
   { label: "Use it without an account", cells: [gated() ? ["part", "Invite-only beta"] : ["yes", "No signup"], ["part", "Limited"], ["part", "Limited"], ["yes", "No signup"]] },
   { label: "Chat history kept off their servers", cells: [["yes", "Only in your browser"], ["no", "Saved to your account"], ["part", "Saved, encrypted"], ["yes", "On your device"]] },
   { label: "Your chats never train models", cells: [["yes", "Never"], ["part", "Opt-out needed"], ["yes", "Never"], ["yes", "Never"]] },
-  { label: "Shows what ran your chat", cells: [["part", "Enclave proof per model, every reply signed"], ["no", "No"], ["no", "No"], ["no", "No"]] },
+  { label: "Shows what ran your chat", cells: [["part", "Enclave proof per model, replies signed where supported"], ["no", "No"], ["no", "No"], ["no", "No"]] },
   { label: "Open models", cells: [["yes", "Yes"], ["no", "No"], ["yes", "Yes"], ["part", "Some"]] },
-  { label: "Frontier models (GPT, Claude, Gemini)", cells: [frontier() ? ["yes", "Anonymized"] : ["part", "Coming soon, anonymized"], ["part", "OpenAI only"], ["no", "No"], ["yes", "Anonymized"]] },
+  { label: "Frontier models (GPT, Claude, Gemini)", cells: [frontierLive ? ["yes", "Anonymized"] : ["part", "Coming soon, anonymized"], ["part", "OpenAI only"], ["no", "No"], ["yes", "Anonymized"]] },
 ];
 const MARK_ICON = { yes: Check, part: Minus, no: X };
 
-export function Compare() {
+export function Compare({ frontier: frontierLive = frontier() }: { frontier?: boolean } = {}) {
   return (
     <section id="compare" className="l-section" aria-labelledby="cmp-h">
       <SectionHead id="cmp-h" eyebrow="Compare" title={<>How it <em>stacks up</em></>} />
@@ -100,7 +148,7 @@ export function Compare() {
         <table className="cmp">
           <thead><tr><th scope="col"><span className="sr-only">Feature</span></th>{RIVALS.map((r, i) => <th key={r} scope="col" className={i === 0 ? "us" : undefined}>{r}</th>)}</tr></thead>
           <tbody>
-            {compareRows().map(({ label, cells }) => (
+            {compareRows(frontierLive).map(({ label, cells }) => (
               <tr key={label}>
                 <th scope="row">{label}</th>
                 {cells.map(([m, note], i) => {
@@ -119,8 +167,8 @@ export function Compare() {
 
 const HOPS = [
   { icon: LockKey, title: "Your browser", body: "Encrypts and keeps your history. The key never leaves it.", note: "AES-256-GCM" },
-  { icon: ArrowsLeftRight, title: "Our server", body: "Relays messages to the enclave. Never stores or logs them.", note: "in transit only" },
-  { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs each reply.", note: "attested" },
+  { icon: ArrowsLeftRight, title: "Our server", body: "Relays messages to the enclave. Never stores or logs them.", note: "in transit only · hosted in Germany" },
+  { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs replies where the provider supports it.", note: "attested · Privatemode runs in Bochum, Germany" },
 ];
 
 function SectionHead({ id, eyebrow, title }: { id: string; eyebrow: string; title: ReactNode }) {
@@ -133,9 +181,9 @@ export function HowItWorks() {
       <SectionHead id="how-h" eyebrow="How it works" title={<>Where your words <em>go</em></>} />
       <ol className="hops">
         {HOPS.map(({ icon: Icon, title, body, note }, i) => (
-          <li key={title} className="card">
-            <span className="num" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
-            <Icon className="hop-icon" aria-hidden /><h3>{title}</h3><p>{body}</p><span className="l-note">{note}</span>
+          <li key={title}>
+            <div className="hop-top"><span className="num" aria-hidden>{String(i + 1).padStart(2, "0")}</span><Icon weight="duotone" className="hop-icon" aria-hidden /></div>
+            <h3>{title}</h3><p>{body}</p><span className="l-note">{note}</span>
           </li>
         ))}
       </ol>
@@ -143,21 +191,28 @@ export function HowItWorks() {
   );
 }
 
+/** The design's proof card: an illustration of what each reply shows, labelled as an example (the landing page checks nothing). */
 export function Proof() {
-  const labels = { verified: LEVEL_LABEL.verified, "checks-passed": LEVEL_LABEL["checks-passed"], failed: LEVEL_LABEL.failed, unavailable: LEVEL_LABEL.unavailable };
   return (
     <section id="proof" className="l-section" aria-labelledby="proof-h">
-      <div className="l-proof card">
+      <div className="l-proof">
         <div className="proof-copy">
           <p className="eyebrow">Proof</p>
           <h2 id="proof-h">Proof, not <em>promises</em></h2>
-          <p>Every chat shows what the app checked about the enclave, and every reply carries a signature line. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified.</p>
+          <p>Every chat shows what the app checked about the enclave, and replies carry a signature line where the provider supports it. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified.</p>
           <details className="not-yet">
             <summary>What we do not verify yet ({NOT_VERIFIED.length})</summary>
             <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
           </details>
         </div>
-        <ProofDemo labels={labels} />
+        <figure className="demo-card">
+          <div className="demo-top">
+            <span className="demo-model">Example reply · Private enclave</span>
+            <span className="demo-status"><ShieldCheck weight="duotone" aria-hidden />Enclave checks passed</span>
+          </div>
+          <p className="demo-reply">Narwhals are toothed whales that live year-round in the Arctic. The long &ldquo;tusk&rdquo; is an elongated canine tooth…</p>
+          <figcaption className="l-sig"><SealCheck weight="duotone" aria-hidden />Signed in the enclave · chain not verified yet</figcaption>
+        </figure>
       </div>
     </section>
   );
@@ -171,30 +226,10 @@ export function ServerSees() {
     <section className="l-section" aria-labelledby="sees-h">
       <SectionHead id="sees-h" eyebrow="Transparency" title={<>What the server <em>sees</em></>} />
       <div className="ledger">
-        <div className="card"><h3><Eye aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
-        <div className="card"><h3><EyeSlash aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
+        <div><h3><Eye weight="duotone" aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
+        <div><h3><EyeSlash weight="duotone" aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
       </div>
       <Link href="/privacy/metadata" className="link-arrow">Every stored field, listed <ArrowRight aria-hidden /></Link>
-    </section>
-  );
-}
-
-const FEATURES = [
-  { icon: Ghost, title: "Ghost chat", body: "Never saved, not even encrypted." },
-  { icon: UserFocus, title: "Personas", body: "Private system prompts that stay in this browser." },
-  { icon: Vault, title: "Encrypted backup", body: "Export and restore with a passphrase." },
-  { icon: Fingerprint, title: "Passkeys", body: "No email. The same plan on every device." },
-  { icon: Tag, title: "Privacy tags", body: "Every model labelled TEE, private or anonymized." },
-  { icon: DownloadSimple, title: "Your data, on request", body: "Download or delete your account data in one click." },
-];
-
-export function Features() {
-  return (
-    <section className="l-section" aria-labelledby="feat-h">
-      <SectionHead id="feat-h" eyebrow="Features" title={<>Also in <em>the box</em></>} />
-      <ul className="features">
-        {FEATURES.map(({ icon: Icon, title, body }) => <li key={title} className="card"><Icon aria-hidden /><h3>{title}</h3><p>{body}</p></li>)}
-      </ul>
     </section>
   );
 }
@@ -211,8 +246,8 @@ export function Pricing() {
       <SectionHead id="price-h" eyebrow="Pricing" title={<>Simple <em>plans</em></>} />
       <div className="plans-row">
         {(Object.keys(TIERS) as TierId[]).map((id) => (
-          <div key={id} className={`l-plan card ${id === "pro" ? "featured l-band theme-dark" : ""}`}>
-            <h3>{TIERS[id].name}</h3>
+          <div key={id} className={`l-plan ${id === "pro" ? "featured" : ""}`}>
+            <div className="plan-top"><h3>{TIERS[id].name}</h3>{id === "pro" && <span className="l-kicker">most picked</span>}</div>
             <p className="l-price">€{TIERS[id].priceEurMonth}<span>/ month</span></p>
             <ul>{PLAN_LINES[id].map((l) => <li key={l}>{l}</li>)}</ul>
             <Link href="/chat" className={id === "pro" ? "btn-solid" : "btn-outline"}>{id === "free" ? "Start free" : `Choose ${TIERS[id].name}`}</Link>
@@ -261,7 +296,7 @@ export function SiteFooter() {
         <nav aria-label="Legal">
           <Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/agb">AGB</Link><Link href="/privacy/metadata">What the server stores</Link>
         </nav>
-        <span className="copy">© 2026 Zoldenburg UG · {BRAND}</span>
+        <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt) · {BRAND}</span>
       </div>
       <p className="giant" aria-hidden>{BRAND}</p>
     </footer>

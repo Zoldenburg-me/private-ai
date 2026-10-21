@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
+  ActionBarPrimitive, AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
 } from "@assistant-ui/react";
-import Image from "next/image";
-import { ArrowUp, CheckCircle, MagnifyingGlass, MinusCircle, Stop, XCircle } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowUp, CheckCircle, Copy, EyeSlash, Lightbulb, MagnifyingGlass, MinusCircle, Paperclip, Stop, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
 import { ProviderFailure, streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
@@ -45,8 +44,26 @@ export interface ThreadProps {
   onProviderFailure: (modelRef: string) => void;
   /** Small line under the composer (e.g. the sign-up hint for signed-out visitors). */
   hint?: ReactNode;
-  /** The server offers agent mode with web search (/api/session features.webSearch). */
+  /** Controls placed in the composer toolbar: the ghost toggle (left) and the model picker (right). */
+  ghostToggle?: ReactNode;
+  modelSlot?: ReactNode;
+  /** Opens the enclave proof sheet (from a reply's signature line). */
+  onOpenProof?: () => void;
+  /** The selected model has no enclave: replies without a signature show this line instead (the design's incognito label). */
+  incognitoLine?: string;
+  /** Send through /api/agent: the model may search the web. A standing line under the composer says so. */
   webSearch?: boolean;
+  /** The composer's "+" tools menu; without one the design's "coming soon" icons show. */
+  toolsSlot?: ReactNode;
+}
+
+/** Shown under the composer while web search is on: what leaves, to whom, and what it costs. */
+export const SEARCH_NOTE = "Searches the web when needed: only the search query goes to Brave, without your identity. Each search step counts as a message.";
+
+/** The design's greeting: by time of day, or the ghost-chat warning. */
+export function greeting(hour: number, ghost: boolean): [string, string] {
+  if (ghost) return ["Nothing here", "will be saved."];
+  return [hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.", "What's on your mind?"];
 }
 
 function textOf(content: readonly { type: string; text?: string }[]) {
@@ -77,31 +94,63 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
   );
 }
 
-function Message({ role, content, signed, tools }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[] }) {
+const SIG = {
+  enclave: { cls: "ok", Icon: CheckCircle, text: "Signed in the enclave", testid: "signed" },
+  "key-match": { cls: "warn", Icon: CheckCircle, text: "Signature matches the enclave's reported key · chain not verified", testid: "signed-key-match" },
+  fail: { cls: "bad", Icon: XCircle, text: "Signature mismatch", testid: "signed-fail" },
+  "n/a": { cls: "muted", Icon: MinusCircle, text: "Signature not available", testid: "signed-na" },
+} as const;
+
+/** What an assistant bubble shows. Try again only on the last reply: retrying an older one would save over the later messages. */
+export function replyView(content: string, running: boolean, isLast: boolean) {
+  const done = !running;
+  return { body: content ? "text" : running ? "writing" : "empty", copy: done && !!content, retry: done && isLast, sig: done && !!content } as const;
+}
+
+/** The history to store after a turn, or null when the reply is empty (nothing to keep). */
+export function turnToStore(stored: StoredMsg[], text: string, signed?: Signed): StoredMsg[] | null {
+  return text ? [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}) }] : null;
+}
+
+function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognitoLine }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognitoLine?: string }) {
+  const sig = signed ? SIG[signed] : undefined;
+  const view = replyView(content, running, isLast);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
-      {role === "assistant" && <div className="avatar" aria-hidden><Image src="/brand/narwhal-avatar.png" alt="" width={32} height={32} unoptimized /></div>}
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {tools && tools.length > 0 && <ToolSteps tools={tools} />}
-        {role === "assistant" ? <div className="md"><SafeMarkdown text={content || "…"} /></div> : <span className="pre">{content}</span>}
-        {signed === "enclave" && <div className="sig ok" data-testid="signed"><CheckCircle weight="fill" aria-hidden />signed by enclave</div>}
-        {signed === "key-match" && <div className="sig warn" data-testid="signed-key-match"><CheckCircle aria-hidden />signature matches the enclave&apos;s reported key · chain not verified</div>}
-        {signed === "fail" && <div className="sig bad" data-testid="signed-fail"><XCircle aria-hidden />signature mismatch</div>}
-        {signed === "n/a" && <div className="sig muted"><MinusCircle aria-hidden />signature not available</div>}
+        {role === "assistant"
+          ? view.body === "text" ? <div className="md"><SafeMarkdown text={content} /></div> : view.body === "writing" ? <p className="writing">Writing…</p> : <p className="writing" data-testid="no-reply">No reply received</p>
+          : <span className="pre">{content}</span>}
+        {role === "assistant" && (view.copy || view.retry) && (
+          <div className="msg-actions">
+            {view.copy && <ActionBarPrimitive.Copy className="icon-btn" title="Copy" aria-label="Copy"><Copy weight="duotone" aria-hidden /></ActionBarPrimitive.Copy>}
+            {view.retry && <ActionBarPrimitive.Reload className="icon-btn" title="Try again" aria-label="Try again"><ArrowCounterClockwise weight="duotone" aria-hidden /></ActionBarPrimitive.Reload>}
+            {view.sig && sig && <button type="button" className={`sig ${sig.cls}`} data-testid={sig.testid} onClick={onOpenProof}><sig.Icon weight="duotone" aria-hidden />{sig.text}</button>}
+            {view.sig && !sig && incognitoLine && <button type="button" className="sig muted" data-testid="sig-incognito" onClick={onOpenProof}><EyeSlash weight="duotone" aria-hidden />{incognitoLine}</button>}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+/** A control the design shows that has no backend yet: a quiet icon that says "Coming soon" only when clicked. */
+function Soon({ icon, label }: { icon: ReactNode; label: string }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => { if (!shown) return; const t = setTimeout(() => setShown(false), 2000); return () => clearTimeout(t); }, [shown]);
+  return (
+    <span className="soon-wrap">
+      <button type="button" className="tool-toggle soon" aria-disabled="true" aria-label={`${label} (coming soon)`} title={label} onClick={() => setShown(true)}>{icon}</button>
+      {shown && <span className="soon-pop" role="status">Coming soon</span>}
+    </span>
   );
 }
 
 /** One conversation, rendered with assistant-ui primitives on a LocalRuntime backed by /api/chat. */
 export function ChatThread(props: ThreadProps) {
   const ref = useRef(props); ref.current = props;
-  const [search, setSearch] = useState(false);
-  const searchOn = search && !!props.webSearch;
-  const searchRef = useRef(searchOn); searchRef.current = searchOn;
-  // Losing the feature (e.g. signing out) clears the opt-in, so it never comes back switched on by itself.
-  useEffect(() => { if (!props.webSearch) setSearch(false); }, [props.webSearch]);
 
   const adapter = useMemo<ChatModelAdapter>(() => ({
     async *run({ messages, abortSignal }) {
@@ -112,13 +161,13 @@ export function ChatThread(props: ThreadProps) {
       const history = toChatMessages(messages as never);
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
-      const agent = searchRef.current; // fixed for this turn
+      const agent = !!p.webSearch; // the model decides per message whether to search
       // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
       const settled = () => tools.map((t) => (t.status === "running" ? { ...t, status: "error" as const } : t));
       const save = (signed?: Signed) => {
-        if (turn.discarded()) return; // chat was deleted or wiped meanwhile
-        const msgs: StoredMsg[] = [...stored, { role: "assistant", content: text, ...(signed ? { signed } : {}) }];
+        const msgs = turnToStore(stored, text, signed);
+        if (!msgs || turn.discarded()) return; // empty reply, or the chat was deleted or wiped meanwhile
         const first = history.find((m) => m.role === "user")?.content ?? "New chat";
         p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost, turn.current());
       };
@@ -161,51 +210,71 @@ export function ChatThread(props: ThreadProps) {
     else runtime.thread.composer.setText(handoff.text);
   }, [handoff, onHandoff, runtime]);
 
+  const [hi, em] = greeting(new Date().getHours(), props.ghost);
+  const composer = (big: boolean) => (
+    <ComposerPrimitive.Root className={`composer ${big ? "big" : ""}`}>
+      <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" rows={big ? 3 : 1} autoFocus
+        placeholder={big ? (props.ghost ? "Ask anything. This chat won't be saved." : "Ask anything, privately…") : (props.ghost ? "Reply — not saved" : "Reply…")} />
+      <div className="composer-bar">
+        {props.toolsSlot ?? <>
+          <Soon icon={<Paperclip weight="duotone" aria-hidden />} label="Attach a file" />
+          <Soon icon={<Lightbulb weight="duotone" aria-hidden />} label="Think longer" />
+        </>}
+        {props.ghostToggle}
+        <div className="grow" />
+        {props.modelSlot}
+        <ThreadPrimitive.If running={false}>
+          <ComposerPrimitive.Send className="send-btn" data-testid="send" disabled={!props.modelRef} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></ComposerPrimitive.Send>
+        </ThreadPrimitive.If>
+        <ThreadPrimitive.If running>
+          <ComposerPrimitive.Cancel className="send-btn stop" data-testid="stop" aria-label="Stop"><Stop weight="fill" aria-hidden /></ComposerPrimitive.Cancel>
+        </ThreadPrimitive.If>
+      </div>
+    </ComposerPrimitive.Root>
+  );
+  const hints = <>
+    {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
+    {props.webSearch && <p className="composer-hint" data-testid="search-note">{SEARCH_NOTE}</p>}
+  </>;
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="thread">
-        <ThreadPrimitive.Viewport className="viewport">
-          <ThreadPrimitive.Empty>
-            <div className="welcome" data-testid="welcome">
-              <div className="logo-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={40} height={22} unoptimized /></div>
-              <h1>{props.persona ? props.persona.name : "Ask anything, privately"}</h1>
-              <p className="muted">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)} {props.ghost ? "Ghost chat: nothing is saved." : "Your history stays encrypted in this browser."}</p>
+        <ThreadPrimitive.Empty>
+          <div className="welcome" data-testid="welcome">
+            <div className="welcome-col">
+              <h1>{props.persona ? props.persona.name : <>{hi} <em>{em}</em></>}</h1>
+              <p className="sr-only">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)}</p>
+              {composer(true)}
+              {hints}
               <div className="suggestions">
                 {(props.suggestions ?? []).map((s) => (
                   <ThreadPrimitive.Suggestion key={s} prompt={s} send className="suggestion">{s}</ThreadPrimitive.Suggestion>
                 ))}
               </div>
             </div>
-          </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages>
-            {({ message }) => (
-              <Message role={message.role} content={textOf(message.content as never)}
-                signed={normalizeSigned((message.metadata?.custom as { signed?: unknown } | undefined)?.signed)}
-                tools={(message.metadata?.custom as { tools?: ToolEvent[] } | undefined)?.tools} />
-            )}
-          </ThreadPrimitive.Messages>
-        </ThreadPrimitive.Viewport>
+          </div>
+        </ThreadPrimitive.Empty>
+        <ThreadPrimitive.If empty={false}>
+          <ThreadPrimitive.Viewport className="viewport">
+            <ThreadPrimitive.Messages>
+              {({ message }) => (
+                <Message role={message.role} content={textOf(message.content as never)} running={message.status?.type === "running"} isLast={message.isLast}
+                  signed={normalizeSigned((message.metadata?.custom as { signed?: unknown } | undefined)?.signed)}
+                  tools={(message.metadata?.custom as { tools?: ToolEvent[] } | undefined)?.tools} onOpenProof={props.onOpenProof} incognitoLine={props.incognitoLine} />
+              )}
+            </ThreadPrimitive.Messages>
+          </ThreadPrimitive.Viewport>
+          <div className="composer-dock">
+            {composer(false)}
+            {hints}
+            {!props.hint && <p className="composer-hint">{props.ghost ? "Close the tab and it's gone." : "Encrypted in this browser. Relayed, never logged."}</p>}
+          </div>
+        </ThreadPrimitive.If>
         <div className="sr-only" role="status">
           <ThreadPrimitive.If running>Assistant is responding</ThreadPrimitive.If>
           <ThreadPrimitive.If running={false} empty={false}>Reply ready</ThreadPrimitive.If>
         </div>
-        <ComposerPrimitive.Root className="composer">
-          {props.webSearch && (
-            <button type="button" className={`tool-toggle ${searchOn ? "on" : ""}`} data-testid="web-search-toggle" aria-pressed={searchOn}
-              title="Let the model search the web. The search queries it writes are sent to Brave Search." onClick={() => setSearch((s) => !s)}>
-              <MagnifyingGlass aria-hidden /><span className="tool-toggle-label">Web search</span>
-            </button>
-          )}
-          <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" placeholder={props.ghost ? "Ghost chat: nothing will be saved…" : "Ask privately…"} rows={1} autoFocus />
-          <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send className="send-btn" data-testid="send" disabled={!props.modelRef} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></ComposerPrimitive.Send>
-          </ThreadPrimitive.If>
-          <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel className="send-btn stop" data-testid="stop" aria-label="Stop"><Stop weight="fill" aria-hidden /></ComposerPrimitive.Cancel>
-          </ThreadPrimitive.If>
-        </ComposerPrimitive.Root>
-        {searchOn && <p className="composer-hint" data-testid="web-search-hint">Web search is on: search queries the model writes, which can repeat parts of your message, go to Brave Search. Your chat history does not.</p>}
-        {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );

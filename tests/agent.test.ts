@@ -199,6 +199,25 @@ describe("agent limits, receipts and timeouts", () => {
     expect(out.receipt).toBeUndefined();
   });
 
+  it("a model that rejects tool calls answers without search, as one message", async () => {
+    const { token } = issueToken(); // free: 20 a day
+    const u = upstream((n) => (n === 1 ? new Response("tools not supported", { status: 400 }) : answerStream("c2")));
+    const res = await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl });
+    const p = parseSseChunk((await res.text()) + "\n");
+    expect(p.deltas.join("")).toBe("Answer [1]");
+    expect(u.model).toHaveLength(2);
+    expect(u.model[1].tools).toBeUndefined();
+    expect(p.remaining).toBe("19");
+  });
+
+  it("a mid-run failure still reports the allowance the run used", async () => {
+    const { token } = issueToken();
+    const u = upstream((n) => (n === 1 ? toolCallStream("c1") : new Response("boom", { status: 500 })));
+    const p = parseSseChunk((await (await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl })).text()) + "\n");
+    expect(p.error).toBe("provider error 500");
+    expect(p.remaining).toBe("18");
+  });
+
   it("reports the daily allowance left after the last step, not after the first", async () => {
     const { token } = issueToken(); // free: 20 a day
     const u = upstream((n) => (n === 1 ? toolCallStream("c1") : answerStream("c2")));

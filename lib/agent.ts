@@ -77,8 +77,17 @@ export function runAgent(o: AgentOpts): Response {
             const body = stepBody(o.body, messages, last);
             if (step > 1) { const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
             steps = step;
-            const r = await callStep(o.provider, body, step, modelFetch, abort, room, (content, id) => send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }));
-            if (!r.calls.length || last) {
+            const text = (content: string, id: string) => send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] });
+            let r: Step; let toolless = last;
+            try {
+              r = await callStep(o.provider, body, step, modelFetch, abort, room, text);
+            } catch (e) {
+              // A model without tool calls rejects the first step: answer it without search, still one message.
+              if (step !== 1 || last || !(e instanceof ProviderError && e.status !== undefined && TOOLS_REJECTED.includes(e.status))) throw e;
+              r = await callStep(o.provider, stepBody(o.body, messages, true), step, modelFetch, abort, room, text);
+              toolless = true;
+            }
+            if (!r.calls.length || toolless) {
               // A provider may still call a tool on the tool-less last step: without text that is no answer.
               if (!r.text.trim()) throw new ProviderError("model did not answer");
               const remaining = o.remaining?.();
@@ -103,7 +112,11 @@ export function runAgent(o: AgentOpts): Response {
           const message = timedOut ? "provider timeout" : refused || e instanceof ProviderError ? (e as Error).message : store ? "service temporarily unavailable" : "agent run failed";
           o.log({ route: o.route, provider: o.provider.id, model, steps, ms: Date.now() - started,
             event: timedOut ? "upstream_timeout" : refused ? "agent_gated" : store ? "store_unavailable" : "agent_error", status: timedOut ? 504 : refused ? 429 : store ? 503 : 502 });
-          try { send("agent_error", { message }); ctrl.close(); } catch { /* client went away meanwhile */ }
+          try {
+            const remaining = o.remaining?.(); // the steps before the failure counted too
+            if (remaining !== undefined) send("pai_usage", { remaining_daily: remaining });
+            send("agent_error", { message }); ctrl.close();
+          } catch { /* client went away meanwhile */ }
           if (!refused && !store) void o.onFailure?.().catch(() => o.log({ route: o.route, event: "budget_write_failed", status: 500 }));
         } finally {
           clearTimeout(deadline);
@@ -118,7 +131,11 @@ export function runAgent(o: AgentOpts): Response {
 /** A rate-limit refusal between steps: shown to the user, but not an upstream failure. */
 class Refusal extends Error {}
 /** An upstream failure whose message is one of our fixed texts, safe to show. */
-class ProviderError extends Error {}
+class ProviderError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
+}
+/** Upstream statuses a model without tool support answers a `tools` field with. */
+const TOOLS_REJECTED = [400, 404, 422];
 
 /** Runs one tool call; returns the text fed back to the model. Failures go back as text, never as a throw. */
 async function runTool(c: Call, o: AgentOpts, fetchImpl: typeof fetch, signal: AbortSignal, searches: { left: number }, emit: (e: ToolEvent) => void): Promise<string> {
@@ -159,7 +176,7 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   const res = await timed(fetchImpl(`${provider.baseUrl}/chat/completions`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.apiKey}` }, body: reqText, signal: abort.signal,
   }).catch((err: unknown) => { throw abort.signal.aborted ? err : new ProviderError("provider unreachable"); }), FIRST_BYTE_TIMEOUT_MS.stream, abort);
-  if (!res.ok || !res.body) { res.body?.cancel().catch(() => {}); throw new ProviderError(`provider error ${res.status}`); }
+  if (!res.ok || !res.body) { res.body?.cancel().catch(() => {}); throw new ProviderError(`provider error ${res.status}`, res.status); }
   const hash = createHash("sha256"); const dec = new TextDecoder(); const reader = res.body.getReader();
   const calls: Call[] = []; let buf = ""; let text = ""; let chatId = ""; let finished = false;
   const onLine = (line: string) => {

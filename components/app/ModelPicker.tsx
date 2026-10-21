@@ -1,21 +1,44 @@
 "use client";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { CaretDown, Check, LockSimple, Prohibit } from "@phosphor-icons/react";
+import { CaretDown, Check, Detective, EyeSlash, LockSimple, MaskHappy, Prohibit, Question, ShieldCheck } from "@phosphor-icons/react";
+import type { ProofLevel } from "@/lib/client/proof";
 import type { ModelEntry } from "@/lib/catalog";
 import { ANONYMIZED_NOTE, PROVIDER_LABEL, pickerGroup } from "@/lib/client/providers";
+import { LEVELS, type Level } from "@/lib/client/levels";
+
+/** The chat bar's privacy level and Auto switch; `models` are then only that level's manual picks. */
+export interface PrivacyControl { level: Level; onLevel: (l: Level) => void; auto: boolean; onAuto: () => void; note?: string }
 
 const ref = (m: ModelEntry) => `${m.provider}:${m.id}`;
 /** Paid-only models are locked once the plan is known to be free; `paidPlan` is undefined while the tier loads. */
 export const isLocked = (m: ModelEntry, paidPlan: boolean | undefined) => !!m.paid && paidPlan === false;
 
+/** Menu badges, as in the design. */
+const BADGE: Record<string, string> = { tee: "TEE", private: "PRIVATE", anonymized: "ANON" };
+
+/** The model's privacy at a glance: a shield (green once the enclave is verified, orange until then),
+ *  a detective for anonymized incognito models, a mask for zero-retention private ones. */
+export function PrivacyIcon({ m, level }: { m?: ModelEntry; level?: ProofLevel }) {
+  if (m?.privacy === "anonymized") return <Detective weight="duotone" aria-hidden className="pi-ico pi-incognito" />;
+  if (m?.privacy === "private") return <MaskHappy weight="duotone" aria-hidden className="pi-ico pi-incognito" />;
+  return <ShieldCheck weight="duotone" aria-hidden className={`pi-ico ${level === "verified" ? "pi-verified" : "pi-unverified"}`} />;
+}
+
 /** Model picker: TEE models by provider, all non-TEE models in one Incognito group. Blocked models are shown but not selectable. */
-export function ModelPicker({ models, value, onChange, paidPlan }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void; paidPlan?: boolean }) {
+export function ModelPicker({ models, value, onChange, paidPlan, onExplain, level, loadFailed, privacy }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void; paidPlan?: boolean; onExplain?: () => void; level?: ProofLevel; loadFailed?: boolean; privacy?: PrivacyControl }) {
   const [open, setOpen] = useState(false);
   const uid = useId(); // ids stay unique if two pickers render
   const reasonId = (m: ModelEntry) => `${uid}why-${ref(m).replace(/[^\w-]/g, "_")}`;
   const root = useRef<HTMLDivElement>(null);
   const sel = models.find((m) => ref(m) === value);
-  const groups = [...new Set(models.map(pickerGroup))];
+  // With privacy levels, a curated model reads as itself: "Auto" is the separate row that also picks the model.
+  const nameOf = (m: ModelEntry) => (privacy ? m.name.replace(/^Auto · /, "") : m.name);
+  const isOn = (m: ModelEntry) => !privacy?.auto && ref(m) === value;
+  const levelLabel = privacy && LEVELS.find((l) => l.id === privacy.level)?.label;
+  const shown = privacy ? `${levelLabel} · ${privacy.auto ? "Auto" : sel ? nameOf(sel) : "Select a model"}` : sel ? sel.name : "Select a model";
+  // The design's two groups: where the model runs.
+  const groupOf = (m: ModelEntry) => (pickerGroup(m) === "incognito" ? "incognito" : "enclave");
+  const groups = [...new Set(models.map(groupOf))];
   const locked = (m: ModelEntry) => isLocked(m, paidPlan);
 
   // Close on outside click; focus the selected (or first enabled) option when the menu opens.
@@ -30,7 +53,8 @@ export function ModelPicker({ models, value, onChange, paidPlan }: { models: Mod
 
   const focusTrigger = () => root.current?.querySelector<HTMLButtonElement>(".picker-btn")?.focus();
   const onMenuKey = (e: KeyboardEvent) => {
-    const opts = [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=option]") ?? [])];
+    // The explain link sits after the options in the same arrow-key order, so the keyboard can reach it.
+    const opts = [...(root.current?.querySelectorAll<HTMLButtonElement>(".picker-level, [role=option], .picker-explain") ?? [])];
     const i = opts.indexOf(document.activeElement as HTMLButtonElement);
     // Focus outside the options: down goes to the first, up to the last.
     const move = (n: number) => { e.preventDefault(); opts[i < 0 ? (n > 0 ? 0 : opts.length - 1) : (i + n + opts.length) % opts.length]?.focus(); };
@@ -45,35 +69,52 @@ export function ModelPicker({ models, value, onChange, paidPlan }: { models: Mod
   return (
     <div className="picker" ref={root}>
       <button type="button" className="picker-btn" data-testid="model-picker" aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${uid}menu` : undefined}
-        aria-label={`Model: ${sel ? `${sel.name}, ${sel.privacy}` : "none selected"}`} onClick={() => setOpen((o) => !o)}
+        aria-label={privacy ? `Privacy and model: ${shown}` : `Model: ${sel ? `${sel.name}, ${sel.privacy}` : "none selected"}`} onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); }
           else if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); }
         }}>
-        <span className="picker-name">{sel ? sel.name : "Select a model"}</span>
-        {sel && <span className={`tag t-${sel.privacy}`} data-testid={`badge-${sel.privacy}`}
+        <PrivacyIcon m={sel} level={level} />
+        <span className="picker-name">{shown}</span>
+        {sel && <span className="sr-only" data-testid={`badge-${sel.privacy}`}
           title={sel.incognito ? ANONYMIZED_NOTE : undefined}>{sel.privacy.toUpperCase()}</span>}
         {sel?.incognito && <span className="sr-only">{ANONYMIZED_NOTE}</span>}
         <CaretDown aria-hidden />
       </button>
       {open && (
-        <div className="picker-menu" data-testid="model-menu">
-        {!models.length && <div className="picker-group" role="status">No models configured (set NEAR_AI_API_KEY)</div>}
-        <div role="listbox" id={`${uid}menu`} aria-label="Models" onKeyDown={onMenuKey}>
+        <div className="picker-menu" data-testid="model-menu" onKeyDown={onMenuKey}>
+        {!models.length && <div className="picker-group" role="status">{loadFailed ? "Could not load models. Reload to try again." : privacy ? "This server offers no models at this privacy level." : "No models configured (set NEAR_AI_API_KEY)"}</div>}
+        {privacy && (
+          <div className="picker-levels" role="group" aria-label="Privacy level">
+            {LEVELS.map((l) => (
+              <button type="button" key={l.id} className={`picker-level ${l.id === privacy.level ? "on" : ""}`} aria-pressed={l.id === privacy.level} data-testid={`level-${l.id}`}
+                title={l.note} onClick={() => privacy.onLevel(l.id)}><span className="pi-name">{l.label}</span><span className="pi-desc">{l.note}</span></button>
+            ))}
+          </div>
+        )}
+        <div role="listbox" id={`${uid}menu`} aria-label="Models">
+          {privacy && (
+            <button type="button" role="option" aria-selected={privacy.auto} className={`picker-item ${privacy.auto ? "on" : ""}`} data-testid="model-auto"
+              onClick={() => { privacy.onAuto(); setOpen(false); focusTrigger(); }}>
+              <span className="pi-text"><span className="pi-name">Auto</span>
+                <span className="pi-desc">{privacy.auto && privacy.note ? privacy.note : "Picks the model and provider for you"}</span></span>
+              <span className="tags"><Check weight="bold" aria-hidden className="pi-check" style={{ visibility: privacy.auto ? "visible" : "hidden" }} /></span>
+            </button>
+          )}
           {groups.map((g) => (
             <div key={g} role="group" aria-labelledby={`${uid}group-${g}`} aria-describedby={g === "incognito" ? `${uid}note-${g}` : undefined}>
-              <div className="picker-group" id={`${uid}group-${g}`}>{PROVIDER_LABEL[g] ?? g}</div>
+              <div className="picker-group" id={`${uid}group-${g}`}>{g === "incognito" ? <><EyeSlash weight="duotone" aria-hidden />Incognito</> : <><ShieldCheck weight="duotone" aria-hidden />Private enclave</>}</div>
               {g === "incognito" && <p className="picker-note" id={`${uid}note-${g}`}>{ANONYMIZED_NOTE}</p>}
-              {models.filter((m) => pickerGroup(m) === g).map((m) => (
-                <button type="button" role="option" aria-selected={ref(m) === value} key={ref(m)} aria-disabled={!m.selectable || locked(m) || undefined}
+              {models.filter((m) => groupOf(m) === g).map((m) => (
+                <button type="button" role="option" aria-selected={isOn(m)} key={ref(m)} aria-disabled={!m.selectable || locked(m) || undefined}
                   aria-describedby={!m.selectable || locked(m) ? reasonId(m) : undefined}
-                  className={`picker-item ${ref(m) === value ? "on" : ""}`} onClick={() => { if (!m.selectable || locked(m)) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
-                  <span className="pi-name">{ref(m) === value && <Check weight="bold" aria-hidden />}{m.name}</span>
+                  className={`picker-item ${isOn(m) ? "on" : ""}`} onClick={() => { if (!m.selectable || locked(m)) return; onChange(ref(m)); setOpen(false); focusTrigger(); }}>
+                  <span className="pi-text"><span className="pi-name">{nameOf(m)}</span>
+                    <span className="pi-desc">{[PROVIDER_LABEL[m.provider] ?? m.provider, m.contextLength && `${Math.round(m.contextLength / 1000)}k context`, m.paid && "Pro"].filter(Boolean).join(" · ")}</span></span>
                   <span className="tags">
-                    <span className={`tag t-${m.privacy}`}>{m.privacy.toUpperCase()}</span>
-                    {m.paid && <span className="tag t-pro">PRO</span>}
-                    {m.e2ee && <span className="tag t-e2ee"><LockSimple aria-hidden />E2EE</span>}
-                    {m.contextLength && <span className="tag t-ctx">{Math.round(m.contextLength / 1000)}k</span>}
+                    <span className="pi-badge">{BADGE[m.privacy] ?? m.privacy.toUpperCase()}</span>
+                    <Check weight="bold" aria-hidden className="pi-check" style={{ visibility: isOn(m) ? "visible" : "hidden" }} />
+                    {m.e2ee && <span className="pi-badge"><LockSimple aria-hidden />E2EE</span>}
                   </span>
                   {!m.selectable && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />blocked by privacy policy</span>}
                   {m.selectable && locked(m) && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />paid plans only</span>}
@@ -82,6 +123,7 @@ export function ModelPicker({ models, value, onChange, paidPlan }: { models: Mod
             </div>
           ))}
         </div>
+        {onExplain && <button type="button" className="picker-explain" onClick={() => { setOpen(false); onExplain(); }}><Question weight="duotone" aria-hidden />Enclave, private, anonymized — what&apos;s the difference?</button>}
         </div>
       )}
     </div>
