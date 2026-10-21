@@ -74,7 +74,8 @@ export function Hero() {
 export function Statement() {
   return (
     <section className="l-statement">
-      <p>Most AI apps ask you to trust them. <em>{BRAND} shows you what it checked,</em> <span>what it could not check yet, and every field the server keeps.</span></p>
+      <p>Most AI apps ask you to trust them. <em>{BRAND} proves your data is private.</em></p>
+      <a href="#faq" className="link-arrow">See how <ArrowRight aria-hidden /></a>
     </section>
   );
 }
@@ -199,19 +200,20 @@ export function Proof() {
         <div className="proof-copy">
           <p className="eyebrow">Proof</p>
           <h2 id="proof-h">Proof, not <em>promises</em></h2>
-          <p>Every chat shows what the app checked about the enclave, and replies carry a signature line where the provider supports it. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified.</p>
+          <p>Before you chat, the app checks that your model runs in a sealed enclave the host machine can&rsquo;t read, and shows you the result.</p>
           <details className="not-yet">
-            <summary>What we do not verify yet ({NOT_VERIFIED.length})</summary>
+            <summary>Technical details</summary>
+            <p>Replies carry a signature line where the provider supports it. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified. Not verified yet:</p>
             <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
           </details>
         </div>
         <figure className="demo-card">
           <div className="demo-top">
-            <span className="demo-model">Example reply · Private enclave</span>
-            <span className="demo-status"><ShieldCheck weight="duotone" aria-hidden />Enclave checks passed</span>
+            <span className="demo-model">Example · fully verified reply</span>
+            <span className="demo-status"><ShieldCheck weight="duotone" aria-hidden />Verified</span>
           </div>
           <p className="demo-reply">Narwhals are toothed whales that live year-round in the Arctic. The long &ldquo;tusk&rdquo; is an elongated canine tooth…</p>
-          <figcaption className="l-sig"><SealCheck weight="duotone" aria-hidden />Signed in the enclave · chain not verified yet</figcaption>
+          <figcaption className="l-sig"><SealCheck weight="duotone" aria-hidden />Signed in the enclave · chain verified</figcaption>
         </figure>
       </div>
     </section>
@@ -254,17 +256,17 @@ export function Pricing() {
           </div>
         ))}
       </div>
-      <p className="fine">Proposed prices, not final. You upgrade inside the app; card data goes to Stripe.</p>
+      <p className="fine">You upgrade inside the app; card data goes to Stripe.</p>
     </section>
   );
 }
 
 const FAQ = [
-  ["Can you read my chats?", "Not stored ones: your history is encrypted in your browser. Messages do pass through our server on the way to the enclave. We relay them and never store or log their content."],
+  ["Can you read my chats?", "Your messages pass through our server in Germany on their way to the enclave. We relay them, but we don't log or store them. Your history is encrypted in your browser, so we never hold a readable copy."],
   ["What is an enclave?", "A sealed area of a processor, here Intel TDX with NVIDIA confidential GPUs, whose memory the host machine cannot read. It produces a signed report of what is running, and this app checks that report."],
   ["What if I lose my browser data?", "Your history is gone unless you exported an encrypted backup. Your plan is safe if you saved a passkey: log in with it on any device."],
   ["Why no email?", "We do not need it. Your account is an opaque id, and a passkey links it across devices."],
-  ["Is this GDPR compliant?", "We keep only what plans and limits need, and you can download or delete it in one click. The details are in the Datenschutzerklärung."],
+  ["Is this GDPR compliant?", "Our server runs in Germany, and we keep only what plans and limits need, and you can download or delete it in one click. The details are in the Datenschutzerklärung."],
 ];
 
 export function Faq() {

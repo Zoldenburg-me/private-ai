@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { NOT_VERIFIED } from "../lib/client/proof";
-import { Closing, Compare, Hero, HowItWorks, PoweredBy, Proof, frontierOn } from "../components/landing/Sections";
+import { Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Proof, frontierOn } from "../components/landing/Sections";
 
 const render = (c: () => React.ReactElement | null) => renderToStaticMarkup(createElement(c));
 
@@ -53,6 +53,12 @@ describe("landing claims follow the invite gate", () => {
     expect(html).not.toContain("chain unverified");
   });
 
+  it("the FAQ says plainly that messages pass through our server", () => {
+    const html = render(Faq);
+    expect(html).toMatch(/pass through our server in Germany.*log or store/);
+    expect(html).not.toMatch(/Can you read my chats\?<\/summary><p>No\b/); // the relay sees live messages: no blanket denial
+  });
+
   it("does not claim per-reply attestation", () => {
     expect(render(Compare)).not.toContain("Checked on every reply");
   });
@@ -79,10 +85,12 @@ describe("landing claims follow the invite gate", () => {
     expect(all).not.toMatch(/not even the machine's owner/i);
   });
 
-  it("proof section lists what we do not verify yet", () => {
+  it("proof section lists what we do not verify yet, behind the technical details", () => {
     const html = render(Proof);
     expect(html).toContain("<details");
-    expect(html).toContain("What we do not verify yet");
+    expect(html).toContain("Technical details");
+    expect(html).toContain("Not verified yet");
+    expect(html).toContain("Example · fully verified reply"); // the verified demo is labelled as an example
     for (const n of NOT_VERIFIED) expect(html).toContain(n.replace(/&/g, "&amp;"));
   });
 });
