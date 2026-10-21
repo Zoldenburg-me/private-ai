@@ -16,7 +16,7 @@ import { ProofDemo } from "./ProofDemo";
 export const BRAND = "Hiddensee";
 /** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
 const gated = () => inviteCodes().length > 0;
-/** Anonymized frontier models are only offered when the gateway is configured (VENICE_API_KEY + VENICE_MODELS). */
+/** Frontier models are only offered when a gateway is configured (VENICE_API_KEY or LIQUID_API_KEY; an empty <PREFIX>_MODELS turns it off). */
 const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
 const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 

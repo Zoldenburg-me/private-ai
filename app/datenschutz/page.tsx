@@ -25,11 +25,16 @@ export default function Datenschutz() {
           verarbeitet, weder gespeichert noch protokolliert. Standardmäßig nutzen wir nur Anbieter, deren Modelle in vertraulichen Rechenumgebungen (TEE) laufen oder die vertraglich keine Daten aufbewahren.
           Empfänger: <Todo>Liste der Inferenz-Anbieter mit Sitz, AVV und ggf. Drittlandtransfer (Art. 44 ff. DSGVO), z. B. NEAR AI Cloud</Todo>.
           Im Ghost-Chat wird der Verlauf auch in Ihrem Browser nicht gespeichert.</p>
-        <p>Anonymisierte Frontier-Modelle (optional): Modelle mit der Kennzeichnung „ANONYMIZED“ (z. B. GPT, Claude, Gemini) laufen nicht in einer TEE und werden nie automatisch ausgewählt.
-          Wählen Sie eines aus, leiten wir Ihre Nachricht über Venice (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Venice ergänzen</Todo>) an den jeweiligen
-          Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>). Die Anfrage läuft unter unserem Konto bei Venice;
-          Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt. Venice und der Modellanbieter erhalten aber den Inhalt Ihrer Nachricht und der Antwort,
-          und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
+        <p>Inkognito-Modelle (optional): Modelle in der Gruppe „Incognito“ laufen nicht in einer TEE und werden nie automatisch ausgewählt. Wählen Sie eines aus, geht Ihre Nachricht
+          unter unserem Konto an einen dieser Dienste; Ihre Konto-ID, Ihre IP-Adresse und Ihr Session-Token werden nicht übermittelt:</p>
+        <ul>
+          <li>„PRIVATE“ über Venice (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Venice ergänzen</Todo>): Venice betreibt das Modell selbst und speichert nach eigenen Angaben weder Anfrage noch Antwort.</li>
+          <li>„ANONYMIZED“ über Venice: Venice leitet die Nachricht an den jeweiligen Modellanbieter weiter (<Todo>OpenAI, Anthropic, Google u. a.: Rolle, Sitz, Aufbewahrung und Drittlandtransfer prüfen</Todo>).</li>
+          <li>„ANONYMIZED“ über Liquid Inference (<Todo>Firma, Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) für Liquid Inference ergänzen</Todo>): Liquid vergibt die Anfrage an einen
+            Anbieter auf seiner Börse. Wir verlangen bei jeder Anfrage, dass nur Anbieter teilnehmen, die zusagen, die Anfrage nicht zu speichern; Liquid prüft diese Zusage nicht selbst
+            (<Todo>Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
+        </ul>
+        <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
         <p>Websuche (optional, standardmäßig aus): Schalten Sie im Chat „Websuche“ ein, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
           (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
           Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.</p>
@@ -66,11 +71,16 @@ export default function Datenschutz() {
         <p>Your messages are relayed through our server to the selected AI provider and the reply is streamed back. Content is processed in memory only; it is never stored or logged.
           By default we only offer providers that run models in confidential computing environments (TEE) or retain no data by contract.
           Recipients: <Todo>list of inference providers with location, DPA and any third-country transfer</Todo>. Ghost chats are not stored even in your browser.</p>
-        <p>Anonymized frontier models (optional): models labelled “ANONYMIZED” (e.g. GPT, Claude, Gemini) do not run in a TEE and are never selected automatically.
-          If you pick one, we relay your message via Venice (<Todo>Venice company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>) to the model vendor
-          (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>). The request runs under our Venice account;
-          your account id, IP address and session token are not sent. Venice and the model vendor do receive the content of your message and the reply,
-          and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
+        <p>Incognito models (optional): models in the “Incognito” group do not run in a TEE and are never selected automatically. If you pick one, your message goes
+          to one of these services under our account; your account id, IP address and session token are not sent:</p>
+        <ul>
+          <li>“PRIVATE” via Venice (<Todo>Venice company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>): Venice runs the model itself and, by its own account, stores neither the request nor the reply.</li>
+          <li>“ANONYMIZED” via Venice: Venice relays the message to the model vendor (<Todo>OpenAI, Anthropic, Google etc.: confirm role, location, retention and third-country transfer</Todo>).</li>
+          <li>“ANONYMIZED” via Liquid Inference (<Todo>Liquid Inference company, location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>): Liquid awards the request to a provider
+            on its exchange. On every request we require that only providers promising not to keep it take part; Liquid does not check that promise itself
+            (<Todo>providers on Liquid: confirm role and third-country transfer</Todo>).</li>
+        </ul>
+        <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
         <p>Web search (optional, off by default): if you turn on “Web search” in a chat, the model may write search queries, which our server sends to the Brave Search API
           (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). Only the query text is sent, not your chat history,
           account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.</p>
