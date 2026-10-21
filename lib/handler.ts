@@ -10,7 +10,7 @@ import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
 import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS, type TierId } from "./tiers";
 import { relay } from "./relay";
-import { runAgent } from "./agent";
+import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
 import { metaLogger, type Logger } from "./log";
 import { isUnavailable, unavailableResponse } from "./store";
@@ -40,13 +40,16 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
   const env = deps.env ?? process.env;
   if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
   return failClosed(route, deps, async () => {
-    const p = await prepareChat(req, route, deps, { webSearch: true });
+    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier) => firstStepBody(prompt, TIERS[tier].agentMaxSteps));
     if (p instanceof Response) return p;
+    let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
-      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify(body)));
+      // Like the first check: the cache secret uses no model context (JSON.stringify drops undefined).
+      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify({ ...body, user_cache_secret: undefined })));
+      remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
-    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onFailure: () => recordFailure(p.id),
+    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }
@@ -61,8 +64,12 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
 
 interface Prepared { id: string; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
 
-/** Identity, body, model, tier and the first rate-limit check: everything before the upstream call. */
-async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow: { webSearch?: boolean }): Promise<Prepared | Response> {
+/**
+ * Identity, body, model, tier and the first rate-limit check: everything before the upstream call.
+ * `sent` maps the prompt to the body the first upstream call really carries, for the context estimate.
+ */
+async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow: { webSearch?: boolean },
+  sent: (prompt: Record<string, unknown>, tier: TierId) => unknown = (prompt) => prompt): Promise<Prepared | Response> {
   const log = deps.log ?? metaLogger;
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
@@ -98,7 +105,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
   const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
-  const g = await gate(id, tier, estimateTokens(JSON.stringify(prompt))); // the cache secret uses no model context
+  const g = await gate(id, tier, estimateTokens(JSON.stringify(sent(prompt, tier)))); // the cache secret uses no model context
   const body = { ...prompt, ...cacheScope };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget

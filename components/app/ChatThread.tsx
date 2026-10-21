@@ -10,6 +10,7 @@ import { SafeMarkdown } from "@/components/markdown";
 import { streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt, ToolEvent } from "@/lib/sse";
+import { publicHttpUrl } from "@/lib/web-search";
 import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
@@ -43,7 +44,6 @@ function textOf(content: readonly { type: string; text?: string }[]) {
   return content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
 }
 
-const httpUrl = (u: string) => /^https?:\/\//i.test(u);
 /** The real host, shown next to the page-chosen title so a title cannot pass for another site. */
 const hostOf = (u: string) => { try { return new URL(u).hostname; } catch { return ""; } };
 
@@ -57,7 +57,7 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
           <li key={t.id} data-status={t.status}>
             <span className="tool-query"><MagnifyingGlass aria-hidden /> {t.query ?? t.name}{t.status === "error" && " · failed"}</span>
             {t.results && t.results.length > 0 && (
-              <ul>{t.results.filter((r) => httpUrl(r.url)).map((r, i) => (
+              <ul>{t.results.filter((r) => publicHttpUrl(r.url)).map((r, i) => (
                 <li key={`${i}:${r.url}`}><a href={r.url} target="_blank" rel="noopener noreferrer nofollow">{r.title || r.url}<span className="sr-only"> (opens in a new tab)</span></a> <span>· {hostOf(r.url)}</span></li>
               ))}</ul>
             )}

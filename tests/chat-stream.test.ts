@@ -46,7 +46,7 @@ describe("client chat stream", () => {
     let url = ""; let body: Record<string, unknown> = {};
     const tool = (status: string, extra = {}) => `event: agent_tool\ndata: ${JSON.stringify({ id: "t1", name: "web_search", status, query: "q", ...extra })}\n\n`;
     const fetchImpl = (async (u: string, init: RequestInit) => { url = u; body = JSON.parse(String(init.body)); return sse([
-      tool("running"), tool("done", { results: [{ title: "A", url: "https://a.example" }] }), 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n',
+      tool("running"), tool("done", { results: [{ title: "A", url: "https://a.example" }] }), 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\nevent: pai_usage\ndata: {"remaining_daily":"5"}\n\ndata: [DONE]\n\n',
     ]); }) as unknown as typeof fetch;
     const out = [];
     for await (const u of streamChat({ model: "near:m", messages: [{ role: "user", content: "x" }], agent: true, fetchImpl })) out.push(u);
@@ -54,6 +54,7 @@ describe("client chat stream", () => {
     expect(body.pai_options).toEqual({ web_search: true });
     expect(out.at(-1)!.tools).toEqual([{ id: "t1", name: "web_search", status: "done", query: "q", results: [{ title: "A", url: "https://a.example" }] }]);
     expect(out.at(-1)!.text).toBe("ok");
+    expect(out.at(-1)!.remaining).toBe("5"); // the header said 7: later agent steps used two more
   });
 
   it("agent mode: agent_error and a stream cut before [DONE] both surface as errors", async () => {

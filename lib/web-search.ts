@@ -13,6 +13,17 @@ const BRAVE_URL = "https://api.search.brave.com/res/v1/web/search";
 
 export interface SearchResult { title: string; url: string; snippet: string }
 
+/**
+ * A link we may show and feed back: http(s) to a public DNS name. IP literals (any range, also the decimal and
+ * hex forms URL normalises), localhost, single-label and local-only names could point a click at the user's own network.
+ */
+export function publicHttpUrl(u: string): boolean {
+  let h: string;
+  try { const url = new URL(u); if (url.protocol !== "http:" && url.protocol !== "https:") return false; h = url.hostname.toLowerCase().replace(/\.+$/, ""); } catch { return false; }
+  if (!h.includes(".") || h.startsWith("[") || /^[\d.]+$/.test(h)) return false;
+  return !/(^|\.)(localhost|localdomain|local|internal|lan|arpa|intranet|corp|home|test|ts\.net)$/.test(h);
+}
+
 export const searchConfigured = (env: Env) => !!env.BRAVE_SEARCH_API_KEY || env.MOCK_PROVIDER === "1";
 
 /** The tool definition offered to the model (OpenAI function-calling format). */
@@ -44,7 +55,7 @@ export async function webSearch(query: string, env: Env, fetchImpl: typeof fetch
   if (!res.ok) throw Object.assign(new Error(`search provider error ${res.status}`), { status: res.status });
   const j = (await res.json()) as { web?: { results?: { title?: unknown; url?: unknown; description?: unknown }[] } };
   return (j.web?.results ?? [])
-    .filter((r) => typeof r.url === "string" && r.url.length <= MAX_URL_CHARS && /^https?:\/\//.test(r.url))
+    .filter((r) => typeof r.url === "string" && r.url.length <= MAX_URL_CHARS && publicHttpUrl(r.url))
     .slice(0, SEARCH_RESULTS)
     .map((r) => ({ title: String(r.title ?? "").slice(0, 200), url: String(r.url), snippet: String(r.description ?? "").slice(0, 500) }));
 }

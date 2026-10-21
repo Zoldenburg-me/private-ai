@@ -31,10 +31,19 @@ type Msg = Record<string, unknown>;
 interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string }
 
+/** The upstream body for one step; the last step offers no tools, so the model must answer. */
+const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean) =>
+  ({ ...base, messages, stream: true, ...(last ? {} : { tools: [WEB_SEARCH_TOOL] }) });
+/** The first step's body, so the first rate-limit check can estimate what is really sent (system prompt and tool included). */
+export const firstStepBody = (base: Record<string, unknown>, maxSteps: number) =>
+  stepBody(base, [{ role: "system", content: AGENT_SYSTEM }, ...(base.messages as Msg[])], maxSteps <= 1);
+
 export interface AgentOpts {
   provider: ProviderConfig; body: Record<string, unknown>; maxSteps: number;
   /** Rate-limit check before every step after the first; returns the refusal reason or null. */
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
+  /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
+  remaining?: () => string | undefined;
   /** Upstream failure (counts toward the error budget, like a 5xx on /api/chat). */
   onFailure?: () => Promise<void>;
   env: Env; log: Logger; route: string; fetchImpl?: typeof fetch; headers?: Record<string, string>;
@@ -62,14 +71,18 @@ export function runAgent(o: AgentOpts): Response {
       void (async () => {
         let steps = 0;
         try {
-          let messages: Msg[] = [{ role: "system", content: AGENT_SYSTEM }, ...(o.body.messages as Msg[])];
+          let messages = firstStepBody(o.body, o.maxSteps).messages;
           for (let step = 1; ; step++) {
             const last = step >= o.maxSteps;
-            const body = { ...o.body, messages, stream: true, ...(last ? {} : { tools: [WEB_SEARCH_TOOL] }) };
+            const body = stepBody(o.body, messages, last);
             if (step > 1) { const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
             steps = step;
             const r = await callStep(o.provider, body, step, modelFetch, abort, room, (content, id) => send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }));
             if (!r.calls.length || last) {
+              // A provider may still call a tool on the tool-less last step: without text that is no answer.
+              if (!r.text.trim()) throw new ProviderError("model did not answer");
+              const remaining = o.remaining?.();
+              if (remaining !== undefined) send("pai_usage", { remaining_daily: remaining });
               send("pai_receipt", { chat_id: r.chatId, provider: o.provider.id, model, req_sha256: r.reqSha256, resp_sha256: r.respSha256 });
               ctrl.enqueue(enc.encode("data: [DONE]\n\n"));
               break;
@@ -135,7 +148,7 @@ function timed<T>(p: Promise<T>, ms: number, abort: AbortController): Promise<T>
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-type Chunk = { id?: unknown; choices?: { delta?: { content?: unknown; tool_calls?: unknown } }[] };
+type Chunk = { id?: unknown; choices?: { delta?: { content?: unknown; tool_calls?: unknown }; finish_reason?: unknown }[] };
 type ToolDelta = { index?: unknown; id?: unknown; function?: { name?: unknown; arguments?: unknown } };
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
@@ -148,16 +161,19 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   }).catch((err: unknown) => { throw abort.signal.aborted ? err : new ProviderError("provider unreachable"); }), FIRST_BYTE_TIMEOUT_MS.stream, abort);
   if (!res.ok || !res.body) { res.body?.cancel().catch(() => {}); throw new ProviderError(`provider error ${res.status}`); }
   const hash = createHash("sha256"); const dec = new TextDecoder(); const reader = res.body.getReader();
-  const calls: Call[] = []; let buf = ""; let text = ""; let chatId = "";
+  const calls: Call[] = []; let buf = ""; let text = ""; let chatId = ""; let finished = false;
   const onLine = (line: string) => {
     const l = line.trim();
     if (!l.startsWith("data:")) return;
+    if (l.slice(5).trim() === "[DONE]") { finished = true; return; }
     let j: unknown;
-    try { j = JSON.parse(l.slice(5)); } catch { return; } // also "[DONE]"
+    try { j = JSON.parse(l.slice(5)); } catch { return; }
     if (!isObj(j)) return;
     const chunk = j as Chunk;
     if (!chatId && typeof chunk.id === "string") chatId = chunk.id;
-    const d = Array.isArray(chunk.choices) && isObj(chunk.choices[0]) ? chunk.choices[0].delta : undefined;
+    const choice = Array.isArray(chunk.choices) && isObj(chunk.choices[0]) ? chunk.choices[0] : undefined;
+    if (choice?.finish_reason) finished = true;
+    const d = choice?.delta;
     if (!isObj(d)) return;
     if (typeof d.content === "string" && d.content) { text += d.content; onText(d.content, chatId); }
     for (const t of (Array.isArray(d.tool_calls) ? d.tool_calls : []).filter(isObj) as ToolDelta[]) {
@@ -184,6 +200,8 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   }
   const found = calls.filter(Boolean);
   if (!text && !found.length) throw new ProviderError("empty provider response");
+  // A stream cut before [DONE] or a finish_reason is a partial answer (or partial tool arguments), not a finished one.
+  if (!finished) throw new ProviderError("provider stream ended early");
   // Our own ids: providers may reuse theirs across steps, and the client merges tool events by id.
   return { text, calls: found.map((c, i) => ({ ...c, id: `call_${step}_${i}` })), chatId, reqSha256: createHash("sha256").update(reqText).digest("hex"), respSha256: hash.digest("hex") };
 }

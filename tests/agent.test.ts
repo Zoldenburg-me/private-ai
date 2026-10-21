@@ -182,6 +182,50 @@ describe("agent loop", () => {
 describe("agent limits, receipts and timeouts", () => {
   afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
+  it("a model stream cut before [DONE] or a finish_reason is an error, not a finished answer", async () => {
+    const { token } = issueToken();
+    const cut = () => new Response('data: {"id":"c","choices":[{"delta":{"content":"The result is"}}]}\n\n');
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: upstream(cut).fetchImpl }));
+    expect(out.error).toBe("provider stream ended early");
+    expect(out.receipt).toBeUndefined();
+  });
+
+  it("a tool call on the tool-less last step is an error, not an empty answer", async () => {
+    const { token } = issueToken(); // free: 3 steps
+    const u = upstream((n) => toolCallStream(`c${n}`));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(u.model).toHaveLength(3);
+    expect(out.error).toBe("model did not answer");
+    expect(out.receipt).toBeUndefined();
+  });
+
+  it("reports the daily allowance left after the last step, not after the first", async () => {
+    const { token } = issueToken(); // free: 20 a day
+    const u = upstream((n) => (n === 1 ? toolCallStream("c1") : answerStream("c2")));
+    const res = await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl });
+    expect(res.headers.get("x-usage-remaining-daily")).toBe("19");
+    expect(parseSseChunk((await res.text()) + "\n").remaining).toBe("18");
+  });
+
+  it("the first step's context check counts the agent's system prompt and tool definition", async () => {
+    const { token } = issueToken(); // free: 8,000 tokens
+    const u = upstream(() => answerStream("c"));
+    // Fits the cap on its own (about 7,970 tokens), not with the agent's additions.
+    const near = { ...ask, messages: [{ role: "user", content: "x".repeat(23_800) }] };
+    expect((await handleChat(req(token, { ...near, pai_options: undefined }), "/api/chat", { catalog, env, fetchImpl: u.fetchImpl })).status).toBe(200);
+    expect((await handleAgent(req(token, near), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl })).status).toBe(413);
+  });
+
+  it("drops search results that point at IP literals or local-network names", async () => {
+    const { token } = issueToken();
+    const urls = ["https://example.org/a", "http://192.168.1.1/admin", "http://2130706433/", "http://[::1]/", "http://localhost:8080/", "http://router/", "http://nas.local/", "http://db.internal/", "http://localhost../", "http://nas.local../", "http://box.tail1.ts.net/"];
+    const brave = () => Response.json({ web: { results: urls.map((url) => ({ title: "t", url, description: "d" })) } });
+    const u = upstream((n) => (n === 1 ? toolCallStream("c1") : answerStream("c2")), brave);
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(out.tools.at(-1)!.results!.map((r) => r.url)).toEqual(["https://example.org/a"]);
+    expect(String((u.model[1].messages as { content: string }[]).at(-1)!.content)).not.toContain("192.168");
+  });
+
   it(`stops calling the search provider after ${MAX_SEARCHES_PER_RUN} searches in one run, whatever the tier allows`, async () => {
     const { id, token } = issueToken(); await setTier(id, "max");
     const two = (cid: string) => sse([{ id: cid, choices: [{ delta: { tool_calls: [

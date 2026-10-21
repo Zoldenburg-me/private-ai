@@ -6,14 +6,14 @@ const isToolEvent = (v: unknown): v is ToolEvent => typeof v === "object" && v !
   typeof (v as ToolEvent).id === "string" && typeof (v as ToolEvent).name === "string" && ["running", "done", "error"].includes((v as ToolEvent).status);
 
 /**
- * Parse OpenAI-style SSE chunks into text deltas; also picks up our `pai_receipt`, `agent_tool` and `agent_error`
+ * Parse OpenAI-style SSE chunks into text deltas; also picks up our `pai_receipt`, `pai_usage`, `agent_tool` and `agent_error`
  * events. An `event:` line whose `data:` line has not arrived yet stays in `rest`, so a read that splits them loses nothing.
  */
-export function parseSseChunk(buffer: string): { deltas: string[]; rest: string; done: boolean; receipt?: Receipt; tools: ToolEvent[]; error?: string } {
+export function parseSseChunk(buffer: string): { deltas: string[]; rest: string; done: boolean; receipt?: Receipt; tools: ToolEvent[]; error?: string; remaining?: string } {
   const lines = buffer.split("\n");
   const rest = lines.pop() ?? "";
   const deltas: string[] = []; const tools: ToolEvent[] = [];
-  let done = false; let receipt: Receipt | undefined; let event = ""; let error: string | undefined;
+  let done = false; let receipt: Receipt | undefined; let event = ""; let error: string | undefined; let remaining: string | undefined;
   let pending = ""; // the event line, until its data line is seen
   for (const line of lines) {
     const l = line.trim();
@@ -24,9 +24,10 @@ export function parseSseChunk(buffer: string): { deltas: string[]; rest: string;
     const data = l.slice(5).trim();
     if (event === "pai_receipt") { try { receipt = JSON.parse(data) as Receipt; } catch { /* ignore */ } continue; }
     if (event === "agent_error") { try { error = String((JSON.parse(data) as { message?: unknown }).message ?? "agent run failed"); } catch { error = "agent run failed"; } continue; }
+    if (event === "pai_usage") { try { const r: unknown = JSON.parse(data)?.remaining_daily; if (typeof r === "string") remaining = r; } catch { /* ignore */ } continue; }
     if (event === "agent_tool") { try { const t: unknown = JSON.parse(data); if (isToolEvent(t)) tools.push(t); } catch { /* ignore */ } continue; }
     if (data === "[DONE]") { done = true; continue; }
     try { const d = JSON.parse(data)?.choices?.[0]?.delta?.content; if (d) deltas.push(d); } catch { /* partial */ }
   }
-  return { deltas, rest: pending ? `${pending}\n${rest}` : rest, done, receipt, tools, error };
+  return { deltas, rest: pending ? `${pending}\n${rest}` : rest, done, receipt, tools, error, remaining };
 }

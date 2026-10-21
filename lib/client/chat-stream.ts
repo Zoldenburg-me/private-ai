@@ -49,7 +49,7 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, stream: true, messages, ...(Object.keys(opts).length ? { pai_options: opts } : {}) }),
   });
-  const remaining = res.headers.get("x-usage-remaining-daily");
+  let remaining = res.headers.get("x-usage-remaining-daily"); // /api/agent updates it in `pai_usage` after its last step
   if (!res.ok || !res.body) {
     const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     throw new Error(j.error?.message || `HTTP ${res.status}`);
@@ -60,11 +60,11 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     const { value, done } = await reader.read();
     if (done) break;
     const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
-    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); finished ||= p.done;
+    buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); finished ||= p.done; remaining = p.remaining ?? remaining;
     if (p.error) throw new Error(p.error);
     yield { text, remaining, tools };
   }
-  const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools);
+  const p = parseSseChunk(buf + "\n"); text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); remaining = p.remaining ?? remaining;
   if (p.error) throw new Error(p.error);
   // /api/agent always ends with [DONE] or agent_error: anything else is a cut connection, not an answer.
   if (agent && !(finished || p.done)) throw new Error("connection lost before the answer finished");
