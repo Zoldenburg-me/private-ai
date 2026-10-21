@@ -6,7 +6,10 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: `${BRAND} · Ask anything, privately`,
-  description: "Open models in hardware enclaves. Your chat history stays encrypted in your browser. No email needed.",
+  description: "Open models in hardware enclaves, hosted in Germany. Your chat history stays encrypted in your browser. No email needed.",
+  // Absolute og:image URLs for WhatsApp and Facebook previews; the image is app/opengraph-image.tsx.
+  metadataBase: new URL("https://hiddensee.app"),
+  openGraph: { title: `${BRAND} · Ask AI privately, out of sight`, description: "Open models in hardware enclaves, hosted in Germany. No email needed.", siteName: BRAND, type: "website" },
 };
 
 export default async function Landing() {

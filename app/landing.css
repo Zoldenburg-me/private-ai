@@ -126,6 +126,7 @@ html:has(.landing) { scroll-padding-top: 84px; }
 .l-statement p { max-width: 26ch; margin: 0; font-size: clamp(32px, 4.4vw, 58px); line-height: 1.1; letter-spacing: -.02em; text-wrap: balance; }
 .l-statement em { color: var(--accent); }
 .l-statement span { color: var(--ink-faint); }
+.l-statement .link-arrow { margin-top: 28px; }
 
 .l-powered { max-width: var(--content); margin: 0 auto; padding: 0 var(--gutter) 40px; }
 .l-powered .l-kicker { color: var(--ink-faint); margin-bottom: 18px; }
