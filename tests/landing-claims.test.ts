@@ -54,7 +54,9 @@ describe("landing claims follow the invite gate", () => {
   });
 
   it("the FAQ says plainly that messages pass through our server", () => {
-    expect(render(Faq)).toMatch(/pass through our server in Germany.*log or store/);
+    const html = render(Faq);
+    expect(html).toMatch(/pass through our server in Germany.*log or store/);
+    expect(html).not.toMatch(/Can you read my chats\?<\/summary><p>No\b/); // the relay sees live messages: no blanket denial
   });
 
   it("does not claim per-reply attestation", () => {

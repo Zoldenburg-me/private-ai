@@ -262,7 +262,7 @@ export function Pricing() {
 }
 
 const FAQ = [
-  ["Can you read my chats?", "No. Your messages pass through our server in Germany on their way to the enclave, and we don't log or store them. Your history is encrypted in your browser, so we can't read that either."],
+  ["Can you read my chats?", "Your messages pass through our server in Germany on their way to the enclave. We relay them, but we don't log or store them. Your history is encrypted in your browser, so we never hold a readable copy."],
   ["What is an enclave?", "A sealed area of a processor, here Intel TDX with NVIDIA confidential GPUs, whose memory the host machine cannot read. It produces a signed report of what is running, and this app checks that report."],
   ["What if I lose my browser data?", "Your history is gone unless you exported an encrypted backup. Your plan is safe if you saved a passkey: log in with it on any device."],
   ["Why no email?", "We do not need it. Your account is an opaque id, and a passkey links it across devices."],
