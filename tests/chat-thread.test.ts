@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { incognitoLine, replyView, turnToStore } from "@/components/app/ChatThread";
+import { SIG, incognitoLine, replyView, turnToStore } from "@/components/app/ChatThread";
 
 describe("assistant reply bubble", () => {
   it("offers Try again only on the last reply, so a retry never drops later messages", () => {
@@ -37,5 +37,13 @@ describe("incognito line", () => {
     expect(incognitoLine("private")).toBe("Incognito · zero-retention");
     expect(incognitoLine("anonymized")).toBe("Incognito · anonymized");
     expect(incognitoLine(undefined)).toBeUndefined();
+  });
+});
+
+describe("signature line under a reply", () => {
+  it("says why there is no signature", () => {
+    expect(SIG.server.text).toMatch(/Tinfoil/);
+    expect(SIG.gateway.text).toMatch(/gateway/);
+    for (const s of Object.values(SIG)) expect(s.text).not.toMatch(/^Signature not available$/);
   });
 });

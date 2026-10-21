@@ -212,16 +212,27 @@ export function proofFromResponse(modelRef: string, body: unknown, nonce: string
   // With its own gateway report present, the tag cannot relabel model reports (that would move the signing key to the gateway's).
   const roleOf = (r: NearReport): ReportProof["role"] =>
     (!j.gateway_attestation && typeof r.api_version === "string" && r.api_version.startsWith("aci/") ? "gateway" : "model");
-  for (const m of j.model_attestations ?? []) reports.push(buildReportProof(m, roleOf(m), nonce));
+  // NEAR's Chutes-hosted models (e.g. Kimi) attest in Chutes' own format: no signing key or TDX quote we can check.
+  // Left out, so only NEAR's gateway counts (gateway-checked) and its key never stands in for the model's.
+  const chutes = (j.model_attestations ?? []).filter((m) => (m as { provider?: unknown }).provider === "chutes" && !m.intel_quote);
+  for (const m of j.model_attestations ?? []) if (!chutes.includes(m)) reports.push(buildReportProof(m, roleOf(m), nonce));
   if (!reports.length && j.intel_quote) reports.push(buildReportProof(j as NearReport, roleOf(j as NearReport), nonce));
-  return summarise(modelRef, reports, false);
+  const p = summarise(modelRef, reports, false);
+  return chutes.length && reports.length ? { ...p, notVerified: [...p.notVerified, CHUTES_NOT_CHECKED] } : p;
+}
+
+export const CHUTES_NOT_CHECKED = "The model's own enclave report: it comes in Chutes' format, which carries no signing key this app can check, so replies are signed by the gateway only";
+
+/** Why a reply has no enclave signature, from its route's proof: Tinfoil never signs replies; a gateway key proves no model enclave. */
+export function unsignedReason(level: ProofLevel): Signed {
+  return level === "server-checked" ? "server" : level === "gateway-checked" ? "gateway" : "n/a";
 }
 
 /**
  * Per-reply signature status. "enclave" needs a chain-verified quote; while the chain is unchecked the
  * signing key comes from an unverified quote, so a matching signature is only "key-match".
  */
-export type Signed = "enclave" | "key-match" | "fail" | "n/a";
+export type Signed = "enclave" | "key-match" | "fail" | "server" | "gateway" | "n/a";
 
 export function signatureLevel(proof: Pick<Proof, "chainVerified">, signatureOk: boolean): Signed {
   if (!signatureOk) return "fail";
@@ -231,5 +242,5 @@ export function signatureLevel(proof: Pick<Proof, "chainVerified">, signatureOk:
 /** Reads a stored status; legacy "ok" was written without chain verification, so it is a key match. */
 export function normalizeSigned(s: unknown): Signed | undefined {
   if (s === "ok") return "key-match";
-  return s === "enclave" || s === "key-match" || s === "fail" || s === "n/a" ? s : undefined;
+  return s === "enclave" || s === "key-match" || s === "fail" || s === "server" || s === "gateway" || s === "n/a" ? s : undefined;
 }

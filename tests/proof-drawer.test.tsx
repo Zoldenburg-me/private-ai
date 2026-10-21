@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { newNonce } from "@/lib/attestation";
 import { mockReport } from "@/lib/mock-tee";
-import { proofFromResponse, summarise, type Proof } from "@/lib/client/proof";
+import { proofFromResponse, serverCheckedProof, summarise, type Proof } from "@/lib/client/proof";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
 
@@ -132,3 +132,30 @@ describe("badge tone and no-enclave notes", () => {
   });
 });
 
+
+describe("Chutes-hosted model reports (NEAR Kimi, live shape)", () => {
+  // NEAR's model_attestations entry for Chutes-hosted models: no signing_address, no intel_quote.
+  const chutes = (nonce: string) => ({ provider: "chutes", verified: true, model: "moonshotai/kimi-k3", nonce, quote_b64: "AAAA", e2e_pubkey: "x", gpu_verdict: "PASS" });
+
+  it("does not crash: the gateway stays checked, the model report is named as not checkable, and no key stands in", () => {
+    const n = newNonce();
+    const p = proofFromResponse("near:moonshotai/kimi-k3", { gateway_attestation: mockReport(n), model_attestations: [chutes(n)] }, n);
+    expect(p.level).toBe("gateway-checked");
+    expect(p.signingAddress).toBeUndefined();
+    expect(p.notVerified.join(" ")).toMatch(/Chutes/);
+  });
+
+  it("a Chutes report alone is no proof", () => {
+    const n = newNonce();
+    expect(proofFromResponse("near:moonshotai/kimi-k3", { model_attestations: [chutes(n)] }, n).level).toBe("unavailable");
+  });
+});
+
+describe("Tinfoil proof sheet", () => {
+  it("says the checks ran on our server and that replies carry no signature, not '0 of 0 checks'", () => {
+    const html = text(drawer(serverCheckedProof("tinfoil:kimi-k3")));
+    expect(html).not.toMatch(/0 of 0/);
+    expect(html).toMatch(/on our server/);
+    expect(html).toContain("Tinfoil does not sign each reply");
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { newNonce } from "@/lib/attestation";
 import { mockReport, mockQuote } from "@/lib/mock-tee";
-import { proofFromResponse, summarise, readMeasurements, expectedMrConfigId, TD_FIELDS, LEVEL_LABEL, signatureLevel, normalizeSigned } from "@/lib/client/proof";
+import { proofFromResponse, summarise, readMeasurements, expectedMrConfigId, TD_FIELDS, LEVEL_LABEL, signatureLevel, normalizeSigned, unsignedReason } from "@/lib/client/proof";
 import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 
 describe("proof model (honest badge)", () => {
@@ -62,5 +62,16 @@ describe("proof model (honest badge)", () => {
     expect(normalizeSigned("ok")).toBe("key-match"); // legacy entries were never chain-verified
     expect(normalizeSigned("enclave")).toBe("enclave");
     expect(normalizeSigned("bogus")).toBeUndefined();
+  });
+});
+
+describe("why a reply has no signature", () => {
+  it("names Tinfoil (server-checked) and gateway-only proofs instead of a bare 'not available'", () => {
+    expect(unsignedReason("server-checked")).toBe("server");
+    expect(unsignedReason("gateway-checked")).toBe("gateway");
+    expect(unsignedReason("unavailable")).toBe("n/a");
+    expect(unsignedReason("failed")).toBe("n/a");
+    expect(normalizeSigned("server")).toBe("server");
+    expect(normalizeSigned("gateway")).toBe("gateway");
   });
 });

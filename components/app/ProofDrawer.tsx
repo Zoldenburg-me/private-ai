@@ -129,7 +129,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
               <div><dt>Model</dt><dd>{modelName ? <>{modelName} <code className="muted">{proof.modelRef}</code></> : <code>{proof.modelRef}</code>}</dd></div>
               <div><dt>Provider</dt><dd>{gatewayName}</dd></div>
               <div><dt>Checked</dt><dd>{new Date(proof.checkedAt).toLocaleTimeString()}</dd></div>
-              <div><dt>Checks</dt><dd data-testid="check-count">{checkCount(items)}</dd></div>
+              <div><dt>Checks</dt><dd data-testid="check-count">{items.length ? checkCount(items) : proof.level === "server-checked" ? "Run on our server by the Tinfoil SDK, not in this browser" : "None this browser could run"}</dd></div>
             </dl>
           </section>
 
@@ -185,7 +185,9 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
 
             <section className="report">
               <h3>Per message</h3>
-              {proof.level === "gateway-checked" ? (
+              {proof.level === "server-checked" ? (
+                <p className="small muted" data-testid="tinfoil-signature-note">Tinfoil does not sign each reply, so replies show no signature. The enclave check above ran on our server before anything was sent.</p>
+              ) : proof.level === "gateway-checked" ? (
                 <p className="small muted" data-testid="gateway-signature-note">Replies are not signature-checked here: only the gateway is attested, so a signature from its key would not show that the model&apos;s enclave produced the reply.</p>
               ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>}
             </section>
