@@ -7,7 +7,7 @@ import {
 import Image from "next/image";
 import { ArrowUp, CheckCircle, MagnifyingGlass, MinusCircle, Stop, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
-import { streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
+import { ProviderFailure, streamChat, toChatMessages, toStoredMessages, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt, ToolEvent } from "@/lib/sse";
 import { publicHttpUrl } from "@/lib/web-search";
@@ -41,6 +41,8 @@ export interface ThreadProps {
   /** Homepage hand-off: send this prompt as the first message, or only put it in the composer. */
   handoff?: { text: string; send: boolean } | null;
   onHandoff?: () => void;
+  /** The provider behind `modelRef` failed this turn (e.g. so Auto can move to its next route). */
+  onProviderFailure: (modelRef: string) => void;
   /** Small line under the composer (e.g. the sign-up hint for signed-out visitors). */
   hint?: ReactNode;
   /** The server offers agent mode with web search (/api/session features.webSearch). */
@@ -128,6 +130,7 @@ export function ChatThread(props: ThreadProps) {
           }
         } catch (e) {
           if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } } }; return; } // keep what streamed so far, no error text
+          if (e instanceof ProviderFailure) p.onProviderFailure(p.modelRef);
           text = `⚠️ ${(e as Error).message}`; save();
           yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled() } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
           return;

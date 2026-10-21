@@ -33,6 +33,13 @@ export function autoModels(all: ModelEntry[]): AutoEntry[] {
   });
 }
 
+/** The Auto entry `ref` selects, if any (checked, not cast: it must carry its routes). */
+export const autoEntryOf = (models: ModelEntry[], ref: string): AutoEntry | undefined =>
+  models.find((m): m is AutoEntry => m.provider === "auto" && `auto:${m.id}` === ref && Array.isArray((m as Partial<AutoEntry>).routes));
+
+/** Auto's universal fallback: NEAR's default model, if NEAR offers one. */
+export const nearDefault = (models: ModelEntry[]) => defaultModelRef(models.filter((m) => m.provider === "near")) || undefined;
+
 export function defaultModelRef(models: ModelEntry[]): string {
   // Anonymized models leave the enclave path, so they are only ever an explicit choice.
   const m = models.find((x) => x.selectable && x.privacy !== "anonymized");

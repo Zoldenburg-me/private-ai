@@ -114,9 +114,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
               <div><dt>Certificate chain</dt><dd className={proof.chainVerified ? "c-ok" : "c-warn"}>
                 {proof.chainVerified ? <CheckCircle weight="fill" aria-hidden /> : <MinusCircle aria-hidden />}
                 <b>{proof.chainVerified ? "verified" : "NOT verified"}</b></dd></div>
-              {proof.signingAddress && (proof.level === "gateway-checked"
-                ? <div><dt>Gateway signing key</dt><dd><CopyHash value={proof.signingAddress} label="gateway signing key" short /></dd></div>
-                : <div><dt>Enclave signing key</dt><dd><CopyHash value={proof.signingAddress} label="enclave signing key" short /></dd></div>)}
+              {proof.signingAddress && <div><dt>Enclave signing key</dt><dd><CopyHash value={proof.signingAddress} label="enclave signing key" short /></dd></div>}
             </dl>
             <p className="summary-note">
               {proof.chainVerified ? "The hardware quote chains to the vendor root." :
@@ -148,7 +146,9 @@ export function ProofDrawer({ proof, open, onClose, onRecheck }: { proof: Proof 
 
             <section className="report">
               <h3>Per message</h3>
-              <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>
+              {proof.level === "gateway-checked" ? (
+                <p className="small muted" data-testid="gateway-signature-note">Replies are not signature-checked here: only the gateway is attested, so a signature from its key would not show that the model&apos;s enclave produced the reply.</p>
+              ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>}
             </section>
 
             <button type="button" className="btn ghost drawer-actions" aria-expanded={showRaw} onClick={() => setShowRaw((v) => !v)}><Code aria-hidden />{showRaw ? "Hide" : "Show"} raw result</button>

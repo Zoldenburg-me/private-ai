@@ -6,7 +6,8 @@ import { TDX, verifyReport, type AttestationReport, type Check } from "@/lib/att
  * Client-side proof model for the attestation badge + drawer.
  * Honesty rule: the word "Verified" is only ever produced when the full certificate chain
  * (Intel DCAP quote chain + TCB, and NVIDIA NRAS for GPU evidence) was verified.
- * Today nothing in this app verifies the chain, so the best state is "checks passed, chain unverified".
+ * This client never verifies those chains, so its best state is "checks passed, chain unverified"; Tinfoil's SDK
+ * checks run on our server instead and are labelled "server-checked".
  */
 
 /** Offsets inside a TDX quote (48-byte header + TD report body), per Intel TDX DCAP quote layout. */
@@ -119,7 +120,8 @@ export function buildReportProof(r: NearReport, role: ReportProof["role"], nonce
 export function summarise(modelRef: string, reports: ReportProof[], chainVerified = false, now = Date.now()): Proof {
   const all = reports.flatMap((r) => r.items);
   const failed = all.some((i) => i.state === "fail");
-  const signingAddress = reports.find((r) => r.role === "model")?.signingAddress ?? reports[0]?.signingAddress;
+  // Only a model enclave's key: a gateway-only proof (gateway-checked) carries none, so no reply is checked against the gateway's key.
+  const signingAddress = reports.find((r) => r.role === "model")?.signingAddress;
   let level: ProofLevel;
   if (!reports.length) level = "unavailable";
   else if (failed) level = "failed";
@@ -163,6 +165,29 @@ export function tinfoilProof(modelRef: string, body: unknown, now = Date.now()):
 }
 
 const PASSING: ProofLevel[] = ["verified", "checks-passed", "server-checked"];
+
+/** Auto skips a route this long after a chat through it failed at the provider. */
+export const ROUTE_COOLDOWN_MS = 5 * 60_000;
+/**
+ * What Auto tries, in order: its routes (cheapest first), then NEAR's default model as the universal fallback when
+ * the caller passes one, minus any route whose chat failed at the provider within the cooldown.
+ */
+export const autoCandidates = (routes: string[], nearFallback: string | undefined, failedAt: Record<string, number>, now = Date.now()) =>
+  [...new Set([...routes, ...(nearFallback ? [nearFallback] : [])])].filter((r) => !(now - (failedAt[r] ?? -Infinity) < ROUTE_COOLDOWN_MS));
+
+/** Whether a chat through `ref` failed at the provider within the cooldown. */
+export const isBenched = (ref: string, failedAt: Record<string, number>, now = Date.now()) => now - (failedAt[ref] ?? -Infinity) < ROUTE_COOLDOWN_MS;
+
+/** The NEAR fallback Auto is on (a model other than the ones picked), or "" when it is on one of its own routes. */
+export const fallbackOf = (routes: string[] | undefined, proof: Proof | undefined) =>
+  routes && proof && PASSING.includes(proof.level) && !routes.includes(proof.modelRef) ? proof.modelRef : "";
+
+/** Homepage hand-off may send by itself only to a passing proof the user picked: not a gateway-only proof, not a fallback. */
+export const handoffReady = (proof: Proof | null | undefined, fallback: string) => !!proof && !fallback && PASSING.includes(proof.level);
+
+/** Auto's next re-check: soon while nothing passes, after the cooldown while on the NEAR fallback, else none. */
+export const autoRetryDelay = (proof: Proof | undefined, fallback: string, soonMs: number) =>
+  proof?.level === "unavailable" ? soonMs : fallback ? ROUTE_COOLDOWN_MS : 0;
 
 /** Auto: check routes in order (cheapest first) and return the first proof that holds, or undefined if none does. */
 export async function firstPassing(routes: string[], check: (ref: string) => Promise<Proof | null>): Promise<Proof | undefined> {

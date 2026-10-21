@@ -25,7 +25,8 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   const entry = (await getCatalog()).find((m) => m.provider === ref.provider && m.id === ref.model);
   if (!entry) return fail(400, "unknown model");
   if (entry.privacy === "anonymized") return fail(404, "no enclave evidence: anonymized models run at the model vendor");
-  // Tinfoil's reports are not NEAR-shaped: the SDK on this server checks them (lib/tinfoil.ts); we report whether that passed.
+  // Tinfoil's reports are not NEAR-shaped: the SDK on this server checks them (lib/tinfoil.ts). server_checked: true
+  // only when it holds a verified attestation, else 502. Tinfoil signature requests are not covered by this branch.
   if (kind === "attestation" && p.id === "tinfoil")
     return (await tinfoilVerified()) ? Response.json({ server_checked: true }, { headers: { "Cache-Control": "no-store" } }) : fail(502, "evidence unavailable");
   let target: string;

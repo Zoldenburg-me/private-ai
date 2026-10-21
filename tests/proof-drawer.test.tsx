@@ -97,8 +97,10 @@ describe("gateway reports", () => {
     expect(text(badge(p))).not.toMatch(/Enclave/);
     expect(claimsVerified(badge(p))).toBe(false);
     const html = text(drawer(p));
-    expect(html).toContain("Gateway signing key");
+    expect(p.signingAddress).toBeUndefined(); // the gateway's key never stands in for the model's
     expect(html).not.toContain("Enclave signing key");
+    expect(html).toContain("Replies are not signature-checked here");
+    expect(html).not.toContain("After each reply we fetch");
     expect(html).toContain("RedPill gateway (TDX)");
     expect(html).not.toContain("NEAR AI");
     expect(html).not.toContain("Model enclave");

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { normaliseModel } from "@/lib/catalog";
 import { routesByPrice } from "@/lib/routing";
-import { autoModels, defaultModelRef, visibleModels } from "@/lib/client/providers";
-import { firstPassing, serverCheckedProof, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { autoEntryOf, autoModels, defaultModelRef, visibleModels } from "@/lib/client/providers";
+import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, serverCheckedProof, tinfoilProof, LEVEL_LABEL, ROUTE_COOLDOWN_MS, type Proof } from "@/lib/client/proof";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ModelPicker } from "@/components/app/ModelPicker";
 import { enclaveLine } from "@/components/app/ChatThread";
@@ -79,5 +79,44 @@ describe("auto model in the app", () => {
   it("a gateway-only provider is never described as running the model inside an attested enclave", () => {
     expect(enclaveLine("redpill:qwen/qwen3")).toBe("Runs behind RedPill's attested gateway; the model itself is not attested.");
     expect(enclaveLine("near:m")).toBe("Runs inside an attested enclave on NEAR AI Cloud.");
+  });
+
+  it("Auto tries its routes cheapest first, then NEAR's default model, and skips a route whose chat just failed", () => {
+    const routes = ["phala:z-ai/glm-5.3", "tinfoil:glm-5-3"];
+    expect(autoCandidates(routes, "near:deepseek/deepseek-v4.1-flash", {})).toEqual([...routes, "near:deepseek/deepseek-v4.1-flash"]);
+    // The NEAR route is not tried twice when it is already one of Auto's routes.
+    expect(autoCandidates(["near:moonshotai/kimi-k3", "tinfoil:kimi-k3"], "near:moonshotai/kimi-k3", {})).toEqual(["near:moonshotai/kimi-k3", "tinfoil:kimi-k3"]);
+    const now = 1_000_000;
+    const failed = { "phala:z-ai/glm-5.3": now - 1_000, "tinfoil:glm-5-3": now - ROUTE_COOLDOWN_MS };
+    expect(autoCandidates(routes, "near:x", failed, now)).toEqual(["tinfoil:glm-5-3", "near:x"]); // tinfoil's cooldown is over
+    expect(autoCandidates(routes, undefined, { ...failed, "tinfoil:glm-5-3": now }, now)).toEqual([]);
+    // A check that ends after its winner was benched discards it, whether or not NEAR is still available.
+    expect(isBenched("phala:z-ai/glm-5.3", failed, now)).toBe(true);
+    expect(isBenched("tinfoil:glm-5-3", failed, now)).toBe(false);
+    expect(isBenched("near:x", failed, now)).toBe(false);
+  });
+
+  it("knows when Auto is on the NEAR fallback, when the hand-off may send by itself, and when to check again", () => {
+    const routes = ["phala:glm", "tinfoil:glm"];
+    expect(fallbackOf(routes, proof("tinfoil:glm", "server-checked"))).toBe("");
+    expect(fallbackOf(routes, proof("near:ds", "checks-passed"))).toBe("near:ds");
+    expect(fallbackOf(routes, proof("auto:glm", "unavailable"))).toBe("");
+    expect(fallbackOf(undefined, proof("near:ds", "checks-passed"))).toBe(""); // not an Auto selection
+
+    for (const level of ["verified", "checks-passed", "server-checked"] as const) expect(handoffReady(proof("near:m", level), "")).toBe(true);
+    for (const level of ["gateway-checked", "failed", "unavailable", "pending", "no-enclave"] as const) expect(handoffReady(proof("near:m", level), "")).toBe(false);
+    expect(handoffReady(proof("near:ds", "checks-passed"), "near:ds")).toBe(false); // a model the user did not pick: prefill only
+    expect(handoffReady(null, "")).toBe(false);
+
+    expect(autoRetryDelay(proof("auto:glm", "unavailable"), "", 30_000)).toBe(30_000);
+    expect(autoRetryDelay(proof("near:ds", "checks-passed"), "near:ds", 30_000)).toBe(ROUTE_COOLDOWN_MS);
+    expect(autoRetryDelay(proof("tinfoil:glm", "server-checked"), "", 30_000)).toBe(0);
+  });
+
+  it("an Auto entry must carry its routes", () => {
+    const auto = autoModels([tinfoil, near]);
+    expect(autoEntryOf(auto, "auto:kimi-k3")?.routes).toEqual(["near:moonshotai/kimi-k3", "tinfoil:kimi-k3"]);
+    expect(autoEntryOf([{ ...near, provider: "auto", id: "kimi-k3" }], "auto:kimi-k3")).toBeUndefined();
+    expect(autoEntryOf(auto, "near:moonshotai/kimi-k3")).toBeUndefined();
   });
 });
