@@ -4,7 +4,7 @@
 
 ```bash
 npm run build
-SESSION_SECRET=$(openssl rand -hex 24) MOCK_PROVIDER=1 PAI_ALLOW_MOCK_PROVIDER=1 PORT=3000 npm start &
+SESSION_SECRET=$(openssl rand -hex 24) INVITE_ONLY=1 MOCK_PROVIDER=1 PAI_ALLOW_MOCK_PROVIDER=1 PORT=3000 npm start &
 npx -y rea-agents capture-browser-scenario tests/e2e/rea-own-app-scenario.json --json > /tmp/rea-capture.json
 node tests/e2e/check-rea-capture.mjs /tmp/rea-capture.json
 ```

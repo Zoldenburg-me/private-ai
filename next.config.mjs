@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 export default {
   poweredByHeader: false,
+  // Every <Image> is unoptimized; turning the optimizer off also closes /_next/image (GHSA-2464-fhr4-w9xw).
+  images: { unoptimized: true },
   // Self-contained server bundle for the Docker image (Dockerfile copies .next/standalone).
   output: "standalone",
   // The Privatemode SDK reads privatemode.wasm beside its own JS at runtime, a path no bundler or tracer can see:

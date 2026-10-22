@@ -112,7 +112,7 @@ Redis 7; run that script yourself before a release if you change the image.
 | `APP_URL` | yes, with Stripe | Stripe return URLs. |
 | `ADMIN_KEY_KEK` | for stored provider keys | 32 random bytes, base64. Only in `.env`. |
 | `ADMIN_ACCOUNT_IDS` | for `/admin` | Account ids allowed into the admin panel. |
-| `INVITE_CODES` / `INVITE_ONLY` | recommended | Signup gate (see below). |
+| `INVITE_CODES` / `INVITE_ONLY` | in production (boot fails without) | Signup gate (see below). |
 | `NEAR_AI_API_KEY` etc., `DEFAULT_PROVIDER` | at least one provider | Inference providers (`.env.example` lists all). |
 | `STRIPE_*` | for payments | Secret key, webhook secret, price ids. |
 | `DOMAIN` | yes (Caddy) | Public host name for TLS. |

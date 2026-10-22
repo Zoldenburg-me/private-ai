@@ -2,6 +2,7 @@
 const BOOT_CHECK_MESSAGES = new Set([
   "SESSION_SECRET must be at least 32 characters in production",
   "MOCK_PROVIDER=1 is not allowed in production",
+  "INVITE_CODES or INVITE_ONLY=1 is required in production",
   "ADMIN_KEY_KEK must be 32 bytes, base64-encoded",
 ]);
 

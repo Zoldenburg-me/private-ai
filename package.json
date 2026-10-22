@@ -20,7 +20,7 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.3",
     "ioredis": "^6.0.0",
-    "next": "^15.5.0",
+    "next": "^15.5.28",
     "openai": "^6.49.0",
     "postgres": "^3.4.9",
     "privatemode-ai": "^1.59.0",
@@ -37,7 +37,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^15.5.27",
+    "eslint-config-next": "^15.5.28",
     "typescript": "^5.6.0",
     "vitest": "^3.2.0"
   }
