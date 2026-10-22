@@ -145,6 +145,20 @@ describe("relay receipt framing", () => {
     }
   });
 
+  it("drops the upstream's own pai_receipt blocks, whatever the chunking and line endings", async () => {
+    for (const parts of [
+      ["event: pai_", `receipt\ndata: ${forged.slice(0, 9)}`, `${forged.slice(9)}\n\ndata: [DONE]\n\n`],
+      [`event: pai_receipt\rdata: ${forged}\r\rdata: [DONE]\r\r`], // a spec SSE client (e.g. an API SDK) ends lines at a lone CR too
+      ["event: pai_receipt\r", `\ndata: ${forged}\r\n\r\ndata: [DONE]\r\n\r\n`], // a CRLF split across chunks is one line end
+    ]) {
+      const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t",
+        fetchImpl: (async () => new Response(new ReadableStream({ start(c) { parts.forEach((x) => c.enqueue(new TextEncoder().encode(x))); c.close(); } }))) as unknown as typeof fetch });
+      const text = await res.text();
+      expect(text).not.toContain(forged);
+      expect(text).toContain("data: [DONE]");
+    }
+  });
+
   it("still relays the upstream's own events and deltas", async () => {
     const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t",
       fetchImpl: (async () => new Response('event: other\ndata: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n')) as unknown as typeof fetch });

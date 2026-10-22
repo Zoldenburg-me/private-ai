@@ -55,6 +55,9 @@ export async function relay({ provider, body, log, route, fetchImpl = provider.i
   let chatId = "";
   const dec = new TextDecoder();
   let head = "";
+  // Only the relay writes `pai_receipt`: upstream blocks of that event are dropped, line by line across chunks.
+  const sse = new TextDecoder();
+  let line = ""; let dropping = false;
   const reader = upstream.body.getReader();
   const out = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
@@ -73,7 +76,8 @@ export async function relay({ provider, body, log, route, fetchImpl = provider.i
         const respSha256 = hash.digest("hex");
         if (streaming) {
           const receipt = { chat_id: chatId, provider: provider.id, model: body.model, req_sha256: reqSha256, resp_sha256: respSha256 };
-          ctrl.enqueue(new TextEncoder().encode(`event: pai_receipt\ndata: ${JSON.stringify(receipt)}\n\n`));
+          // The blank line ends whatever the upstream left open, so the receipt is an event of its own.
+          ctrl.enqueue(new TextEncoder().encode(`${dropping ? "" : line}\n\nevent: pai_receipt\ndata: ${JSON.stringify(receipt)}\n\n`));
         }
         log({ route, provider: provider.id, model: String(body.model ?? ""), status: 200, ms: Date.now() - started, outputBytes: bytes });
         ctrl.close();
@@ -84,7 +88,20 @@ export async function relay({ provider, body, log, route, fetchImpl = provider.i
         head += dec.decode(value, { stream: true });
         const m = /"id"\s*:\s*"([^"]+)"/.exec(head); if (m) chatId = m[1];
       }
-      ctrl.enqueue(value);
+      if (!streaming) { ctrl.enqueue(value); return; }
+      // SSE ends a line at CRLF, CR or LF; a trailing CR waits for the next chunk, which may start with its LF.
+      const text = line + sse.decode(value, { stream: true });
+      const cr = text.endsWith("\r");
+      const lines = (cr ? text.slice(0, -1) : text).split(/\r\n|\r|\n/);
+      line = (lines.pop() ?? "") + (cr ? "\r" : "");
+      const kept = lines.filter((l) => {
+        const t = l.trim();
+        if (t.startsWith("event:")) dropping = t.slice(6).trim() === "pai_receipt";
+        else if (t === "") dropping = false;
+        return !dropping;
+      });
+      // Enqueued even when empty: a pull that enqueues nothing is not called again.
+      ctrl.enqueue(new TextEncoder().encode(kept.length ? kept.join("\n") + "\n" : ""));
     },
     cancel() { stopTimers(); abort.abort(); reader.cancel().catch(() => {}); },
   });
