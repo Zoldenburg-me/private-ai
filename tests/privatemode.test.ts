@@ -8,6 +8,7 @@ let apiError: APIError | undefined;
 let failVerify = false;
 let verifies = 0;
 let streamFailsAfterFirstChunk = false;
+let upstreamPulls: number | undefined;
 vi.mock("privatemode-ai", () => ({
   PrivatemodeAI: class {
     constructor(private o: { apiKey: string; apiBaseURL?: string; openAIOptions?: { maxRetries?: number } }) { created.push(`${o.apiKey}:${o.apiBaseURL}:${o.openAIOptions?.maxRetries}`); }
@@ -23,6 +24,7 @@ vi.mock("privatemode-ai", () => ({
             let sent = false;
             return new Response(new ReadableStream({ pull(c) { if (sent) c.error(new Error("decryption failed")); else { sent = true; c.enqueue(new TextEncoder().encode("data: {}\n\n")); } } }));
           }
+          if (upstreamPulls !== undefined) return new Response(new ReadableStream({ pull(c) { upstreamPulls!++; c.enqueue(new TextEncoder().encode("data: {}\n\n")); } }, { highWaterMark: 0 }));
           return new Response("data: {}\n\n");
         },
       };
@@ -105,5 +107,15 @@ describe("privatemodeFetch", () => {
     await expect(reader.read()).rejects.toThrow("decryption failed");
     expect(await privatemodeVerified(BASE, "v4")).toBe(true);
     expect(verifies).toBe(before + 1); // attested again
+  });
+
+  it("reads upstream only when the caller reads: the wrapper does not prefetch", async () => {
+    upstreamPulls = 0;
+    const r = await privatemodeFetch("https://api.privatemode.ai/v1/chat/completions", post("v5", { model: "glm-5.3", stream: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(upstreamPulls).toBe(0);
+    await r.body!.getReader().read();
+    expect(upstreamPulls).toBe(1);
+    upstreamPulls = undefined;
   });
 });

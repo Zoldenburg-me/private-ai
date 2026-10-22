@@ -30,7 +30,7 @@ function dropPassOnStreamError(res: Response, id: string): Response {
       } catch (e) { verified.delete(id); c.error(e); }
     },
     cancel: (reason) => reader.cancel(reason),
-  });
+  }, { highWaterMark: 0 }); // pull only when the caller reads: no read-ahead from the provider
   return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
