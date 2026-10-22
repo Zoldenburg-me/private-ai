@@ -32,7 +32,7 @@ Stripe Checkout / Portal ──webhook──► /api/billing/webhook ──► e
 | phala | Phala Confidential AI | TEE, `provider.zdr` / `aci_verified` routing | https://inference.phala.com/v1 | |
 | redpill | RedPill gateway | aggregates Phala/Tinfoil/NEAR/Chutes, signed receipts | env | |
 | tinfoil | Tinfoil | TEE (SEV-SNP/TDX + NVIDIA CC) | env | |
-| privatemode | Privatemode (Edgeless) | TEE, Contrast attestation, local proxy encrypts | env | |
+| privatemode | Privatemode (Edgeless) | TEE, attestation verified and requests encrypted by the privatemode-ai SDK on our server | https://api.privatemode.ai/v1 | chat models only (task `generate`); Auto route for GLM 5.3 |
 | custom | any OpenAI-compatible | depends (ZDR by contract) | env | |
 
 Configure in `.env.local` (copy `.env.example`). Never commit keys.

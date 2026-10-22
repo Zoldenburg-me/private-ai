@@ -1,4 +1,4 @@
-// Type-only: the chat page imports this file, and catalog.ts pulls in the server-side Tinfoil SDK.
+// Type-only: the chat page imports this file, and catalog.ts pulls in the server-side Tinfoil and Privatemode SDKs.
 import type { ModelEntry } from "./catalog";
 
 /**
@@ -8,7 +8,7 @@ import type { ModelEntry } from "./catalog";
 export const CURATED: Record<string, Record<string, string>> = {
   // Not Phala: it serves Kimi K3 through Chutes, whose attestation format this app cannot check (seen 2026-10-21).
   "kimi-k3": { near: "moonshotai/kimi-k3", tinfoil: "kimi-k3" },
-  "glm-5.3": { phala: "z-ai/glm-5.3", tinfoil: "glm-5-3" },
+  "glm-5.3": { phala: "z-ai/glm-5.3", tinfoil: "glm-5-3", privatemode: "glm-5.3" },
   "deepseek-v4.1-flash": { near: "deepseek/deepseek-v4.1-flash", tinfoil: "deepseek-v4-1-flash" },
   "qwen3.8-27b": { near: "Qwen/Qwen3.8-27B", phala: "qwen/qwen3.8-27b" },
 };

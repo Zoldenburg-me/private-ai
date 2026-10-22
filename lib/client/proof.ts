@@ -136,7 +136,7 @@ export const LEVEL_LABEL: Record<ProofLevel, string> = {
   verified: "Verified",
   "checks-passed": "Enclave checks passed · chain not verified",
   "gateway-checked": "Gateway checks passed · model not attested",
-  "server-checked": "Checked by our server · Tinfoil SDK",
+  "server-checked": "Checked by our server",
   failed: "Proof failed",
   unavailable: "No proof available",
   pending: "Checking proof…",
@@ -149,17 +149,26 @@ export function noEnclaveProof(modelRef: string, now = Date.now()): Proof {
 }
 
 /**
- * Tinfoil: lib/tinfoil.ts sends nothing until the Tinfoil SDK on our server has verified the enclave's attestation
- * and code provenance, and its reports are not NEAR-shaped, so this browser cannot re-check them. Say exactly that.
- * Only for a `server_checked: true` answer from /api/attestation, i.e. after the SDK passed on our server.
+ * Providers whose SDK on our server verifies the attestation before anything is sent (lib/tinfoil.ts, lib/privatemode.ts),
+ * and what it checks. Their reports are not NEAR-shaped, so this browser cannot re-check them.
  */
+export const SERVER_CHECKED: Record<string, { sdk: string; checks: string }> = {
+  tinfoil: { sdk: "Tinfoil", checks: "Tinfoil's attestation and code provenance" },
+  privatemode: { sdk: "Privatemode", checks: "Privatemode's deployment attestation (its Contrast manifest)" },
+};
+
+/** True for a ref whose provider is in SERVER_CHECKED (own keys only: a ref is not trusted to avoid "__proto__"). */
+export const isServerChecked = (modelRef: string) => Object.hasOwn(SERVER_CHECKED, modelRef.split(":")[0]);
+
+/** A server-checked proof says exactly that: checked by the provider's SDK on our server, not in this browser. */
 export function serverCheckedProof(modelRef: string, now = Date.now()): Proof {
-  return { modelRef, level: "server-checked", label: LEVEL_LABEL["server-checked"], chainVerified: false, checkedAt: now, reports: [],
-    notVerified: ["Tinfoil's attestation and code provenance: verified by the Tinfoil SDK on our server, which keeps the result until a request fails and then attests again; not checked in this browser"] };
+  const { sdk, checks } = SERVER_CHECKED[modelRef.split(":")[0]];
+  return { modelRef, level: "server-checked", label: `${LEVEL_LABEL["server-checked"]} · ${sdk} SDK`, chainVerified: false, checkedAt: now, reports: [],
+    notVerified: [`${checks}: verified by the ${sdk} SDK on our server, which keeps the result until a request fails and then attests again; not checked in this browser`] };
 }
 
-/** Our server's /api/attestation answer for a Tinfoil model: passing only if the SDK check ran and passed there. */
-export function tinfoilProof(modelRef: string, body: unknown, now = Date.now()): Proof {
+/** Our server's /api/attestation answer for a SERVER_CHECKED model: passing only if the SDK check ran and passed there. */
+export function sdkProof(modelRef: string, body: unknown, now = Date.now()): Proof {
   return (body as { server_checked?: unknown } | null)?.server_checked === true ? serverCheckedProof(modelRef, now)
     : { modelRef, level: "unavailable", label: LEVEL_LABEL.unavailable, chainVerified: false, checkedAt: now, reports: [], notVerified: [] };
 }
@@ -223,7 +232,7 @@ export function proofFromResponse(modelRef: string, body: unknown, nonce: string
 
 export const CHUTES_NOT_CHECKED = "The model's own enclave report: it comes in Chutes' format, which carries no signing key this app can check, so replies are signed by the gateway only";
 
-/** Why a reply has no enclave signature, from its route's proof: Tinfoil never signs replies; a gateway key proves no model enclave. */
+/** Why a reply has no enclave signature, from its route's proof: Tinfoil and Privatemode never sign replies; a gateway key proves no model enclave. */
 export function unsignedReason(level: ProofLevel): Signed {
   return level === "server-checked" ? "server" : level === "gateway-checked" ? "gateway" : "n/a";
 }

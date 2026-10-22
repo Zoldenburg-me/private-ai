@@ -14,7 +14,7 @@ import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
 import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
-import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, tinfoilProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
+import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, isServerChecked, sdkProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, autoEntryOf, autoModels, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
@@ -177,8 +177,8 @@ export default function Home() {
         if (res.status === 401) return null;
         if (!res.ok) return unavailable(r);
         const body: unknown = await res.json();
-        // Tinfoil: passes only if the SDK on our server holds a verified attestation; a broken Tinfoil route is unavailable, so Auto moves on.
-        if (r.startsWith("tinfoil:")) return tinfoilProof(r, body);
+        // Tinfoil, Privatemode: pass only if the SDK on our server holds a verified attestation; a broken route is unavailable, so Auto moves on.
+        if (isServerChecked(r)) return sdkProof(r, body);
         return proofFromResponse(r, body, nonce);
       } catch {
         return unavailable(r);
