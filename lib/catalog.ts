@@ -1,7 +1,6 @@
 import type { ProviderConfig } from "./providers";
 import { LIQUID_MODELS, VENICE_PRIVATE, canonicalModelId } from "./provider-models";
-import { privatemodeFetch } from "./privatemode";
-import { tinfoilFetch } from "./tinfoil";
+import { providerFetch } from "./provider-fetch";
 import { PAID_ONLY_MODELS } from "./tiers";
 
 export type Privacy = "tee" | "private" | "anonymized";
@@ -111,7 +110,7 @@ export function isSelectable(p: Privacy): boolean {
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 /** One provider's /models, normalised. Throws when the provider fails or times out. */
-export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = p.id === "tinfoil" ? tinfoilFetch : p.id === "privatemode" ? privatemodeFetch : fetch): Promise<ModelEntry[]> {
+export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof fetch = providerFetch(p.id)): Promise<ModelEntry[]> {
   const r = await fetchImpl(`${p.baseUrl}/models`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { data?: Raw[] } | Raw[];

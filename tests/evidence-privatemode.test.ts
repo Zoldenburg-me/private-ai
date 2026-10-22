@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 let verified = true;
 const upstream: string[] = [];
 const keys: string[] = [];
-vi.mock("../lib/privatemode", () => ({ privatemodeFetch: vi.fn(), privatemodeVerified: async (k: string) => { keys.push(k); return verified; } }));
+vi.mock("../lib/privatemode", () => ({ privatemodeFetch: vi.fn(), privatemodeVerified: async (base: string, k: string) => { keys.push(`${base} ${k}`); return verified; } }));
 vi.mock("../lib/provider-keys", () => ({ liveProviders: async () => [{ id: "privatemode", baseUrl: "https://api.privatemode.ai/v1", apiKey: "k" }] }));
 vi.mock("../lib/catalog-cache", () => ({ getCatalog: async () => [{ id: "glm-5.3", provider: "privatemode", privacy: "tee", tee: true, selectable: true }] }));
 
@@ -27,7 +27,7 @@ describe("Privatemode attestation (checked by the SDK on our server)", () => {
     verified = false;
     expect((await attestation(get(s.token))).status).toBe(502);
     expect(upstream).toEqual([]);
-    expect(keys).toEqual(["k", "k"]); // checked with the provider key the relay uses
+    expect(keys).toEqual(["https://api.privatemode.ai/v1 k", "https://api.privatemode.ai/v1 k"]); // checked with the provider key the relay uses
   });
 
   it("has no NEAR-style signature endpoint to spend the key on", async () => {

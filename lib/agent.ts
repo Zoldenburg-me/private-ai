@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { ProviderConfig } from "./providers";
 import type { Logger } from "./log";
 import type { ToolEvent } from "./sse";
-import { tinfoilFetch } from "./tinfoil";
+import { providerFetch } from "./provider-fetch";
 import { FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, TOTAL_TIMEOUT_MS } from "./relay";
 import { WEB_SEARCH_TOOL, queryOf, webSearch } from "./web-search";
 import { isUnavailable } from "./store";
@@ -50,8 +50,8 @@ export interface AgentOpts {
 }
 
 export function runAgent(o: AgentOpts): Response {
-  const modelFetch = o.fetchImpl ?? (o.provider.id === "tinfoil" ? tinfoilFetch : fetch);
-  const searchFetch = o.fetchImpl ?? fetch; // never through Tinfoil's enclave transport
+  const modelFetch = o.fetchImpl ?? providerFetch(o.provider.id);
+  const searchFetch = o.fetchImpl ?? fetch; // never through a provider's enclave transport
   const abort = new AbortController();
   let cancelled = false;
   const deadline = setTimeout(() => abort.abort(), TOTAL_TIMEOUT_MS);

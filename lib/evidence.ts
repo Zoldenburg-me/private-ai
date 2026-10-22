@@ -28,7 +28,7 @@ export const proxyEvidence = (kind: "attestation" | "signature", fetchImpl: type
   if (!entry.tee) return fail(404, "no enclave evidence: this model does not run in an enclave");
   // Tinfoil's and Privatemode's reports are not NEAR-shaped: their SDK on this server checks them (lib/tinfoil.ts,
   // lib/privatemode.ts). server_checked: true only when it holds a verified attestation, else 502. Neither signs replies.
-  const sdkVerified = p.id === "tinfoil" ? () => tinfoilVerified() : p.id === "privatemode" ? () => privatemodeVerified(p.apiKey) : undefined;
+  const sdkVerified = p.id === "tinfoil" ? () => tinfoilVerified() : p.id === "privatemode" ? () => privatemodeVerified(p.baseUrl, p.apiKey) : undefined;
   if (sdkVerified && kind === "signature") return fail(404, "no per-reply signature from this provider");
   if (sdkVerified)
     return (await sdkVerified()) ? Response.json({ server_checked: true }, { headers: { "Cache-Control": "no-store" } }) : fail(502, "evidence unavailable");
