@@ -70,6 +70,7 @@ export function runAgent(o: AgentOpts): Response {
       };
       void (async () => {
         let steps = 0;
+        let shown = ""; // every text delta this run sent, across steps
         try {
           let messages = firstStepBody(o.body, o.maxSteps).messages;
           for (let step = 1; ; step++) {
@@ -77,7 +78,7 @@ export function runAgent(o: AgentOpts): Response {
             const body = stepBody(o.body, messages, last);
             if (step > 1) { const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
             steps = step;
-            const text = (content: string, id: string) => send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] });
+            const text = (content: string, id: string) => { shown += content; send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }); };
             let r: Step; let toolless = last;
             try {
               r = await callStep(o.provider, body, step, modelFetch, abort, room, text);
@@ -92,7 +93,8 @@ export function runAgent(o: AgentOpts): Response {
               if (!r.text.trim()) throw new ProviderError("model did not answer");
               const remaining = o.remaining?.();
               if (remaining !== undefined) send("pai_usage", { remaining_daily: remaining });
-              send("pai_receipt", { chat_id: r.chatId, provider: o.provider.id, model, req_sha256: r.reqSha256, resp_sha256: r.respSha256 });
+              // The receipt hashes only this step's response: text an earlier step put on screen leaves the reply unsigned.
+              if (shown === r.text) send("pai_receipt", { chat_id: r.chatId, provider: o.provider.id, model, req_sha256: r.reqSha256, resp_sha256: r.respSha256 });
               ctrl.enqueue(enc.encode("data: [DONE]\n\n"));
               break;
             }
