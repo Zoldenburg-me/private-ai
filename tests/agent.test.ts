@@ -271,6 +271,51 @@ describe("agent limits, receipts and timeouts", () => {
     expect(out.receipt).toMatchObject({ chat_id: "c2", req_sha256: sha(sent.at(-1)!), resp_sha256: sha(received.at(-1)!) });
   });
 
+  it("text from a step that ends in tool calls is never shown under the answering step's receipt", async () => {
+    const { token } = issueToken();
+    const PREAMBLE = "Unverified step-1 preamble. ";
+    const answer = 'data: {"id":"c2","choices":[{"delta":{"content":"Final answer."}}]}\n\ndata: [DONE]\n\n';
+    const u = upstream((n) => (n === 1
+      ? sse([{ id: "c1", choices: [{ delta: { content: PREAMBLE } }] },
+        { id: "c1", choices: [{ delta: { tool_calls: [{ index: 0, id: "x", function: { name: "web_search", arguments: `{"query":"${QUERY}"}` } }] }, finish_reason: "tool_calls" }] }])
+      : new Response(answer)));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(out.text).toBe(PREAMBLE + "Final answer."); // still streamed live
+    expect(out.receipt).toBeUndefined(); // step 2's receipt does not cover the preamble, so the reply carries none
+    // The model still sees its own preamble in the next step.
+    expect((u.model[1].messages as { role: string; content: string }[]).at(-2)).toMatchObject({ role: "assistant", content: PREAMBLE });
+  });
+
+  it("a step that answers without tool calls is shown in full under its receipt", async () => {
+    const { token } = issueToken();
+    const u = upstream(() => answerStream("c1"));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(u.model).toHaveLength(1);
+    expect(u.model[0].tools).toBeDefined();
+    expect(out.text).toBe("Answer [1]");
+    expect(out.receipt).toMatchObject({ chat_id: "c1" });
+  });
+
+  it("a preamble before the forced tool-less last step also leaves the reply without a receipt", async () => {
+    const { token } = issueToken(); // free: 3 steps
+    const u = upstream((n, body) => (body.tools
+      ? sse([{ id: `c${n}`, choices: [{ delta: { content: "Searching. " } }] },
+        { id: `c${n}`, choices: [{ delta: { tool_calls: [{ index: 0, id: "x", function: { name: "web_search", arguments: `{"query":"${QUERY}"}` } }] }, finish_reason: "tool_calls" }] }])
+      : answerStream(`c${n}`)));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(u.model).toHaveLength(3);
+    expect(out.text).toBe("Searching. Searching. Answer [1]");
+    expect(out.receipt).toBeUndefined();
+  });
+
+  it("a model that rejects tool calls gets the receipt of the step that answered", async () => {
+    const { token } = issueToken();
+    const u = upstream((n) => (n === 1 ? new Response("tools not supported", { status: 400 }) : answerStream("c2")));
+    const out = await events(await handleAgent(req(token, ask), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl }));
+    expect(out.text).toBe("Answer [1]");
+    expect(out.receipt).toMatchObject({ chat_id: "c2", req_sha256: createHash("sha256").update(JSON.stringify(u.model[1])).digest("hex") });
+  });
+
   it("a provider that never answers times out after the first-byte limit", async () => {
     vi.useFakeTimers();
     const { token } = issueToken();
