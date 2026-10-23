@@ -83,7 +83,9 @@ curl localhost:3000/api/health
 ```
 Sessions, plans and today's usage survive `docker compose restart` and `down`/`up` (volumes `pgdata`, `redisdata`; Redis uses AOF).
 
-**Production (Hetzner):** the `caddy` service (`deploy/caddy/`, compose profile `proxy`) is the only public entry. Point DNS at the box and set in `.env`:
+**Production:** `hiddensee.app` runs on the owner's home server behind a Cloudflare Tunnel, with no open ports and no Caddy. `AGENTS.md` ("Where it runs") has the stack and the deploy steps.
+
+**Public VPS with Caddy (not used in production):** the `caddy` service (`deploy/caddy/`, compose profile `proxy`) is the only public entry. Point DNS at the box and set in `.env`:
 ```
 DOMAIN=chat.example.com
 WEBAUTHN_RP_ID=chat.example.com
@@ -115,7 +117,7 @@ Redis 7; run that script yourself before a release if you change the image.
 | `INVITE_CODES` / `INVITE_ONLY` | in production (boot fails without) | Signup gate (see below). |
 | `NEAR_AI_API_KEY` etc., `DEFAULT_PROVIDER` | at least one provider | Inference providers (`.env.example` lists all). |
 | `STRIPE_*` | for payments | Secret key, webhook secret, price ids. |
-| `DOMAIN` | yes (Caddy) | Public host name for TLS. |
+| `DOMAIN` | only with Caddy (VPS) | Public host name for TLS. |
 | `PAI_AUTO_MIGRATE`, `PAI_RETENTION_JOB`, `PAI_LOG`, `PAI_LIMIT_*` | no | Defaults are fine (see `.env.example`). |
 
 - **Boot checks:** the server exits with code 1 and a one-line `boot check failed: …` message (the setting's name,
@@ -127,7 +129,7 @@ Redis 7; run that script yourself before a release if you change the image.
   `CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
   then apply the files in order with `psql` and insert each file name into it. Migrations are forward-only.
 - **Health:** `GET /api/health` answers 200 only when Postgres and Redis answer, otherwise 503 (no details). The image's
-  `HEALTHCHECK` polls it every 15 s; Caddy waits for `healthy` before starting.
+  `HEALTHCHECK` polls it every 15 s; on a VPS, Caddy waits for `healthy` before starting.
 - **Shutdown:** `docker compose stop` sends SIGTERM; the server stops accepting connections, finishes open requests
   and exits 0 (Docker kills it after 10 s by default).
 - **Upgrade:** take a backup (`scripts/backup-db.sh`, runbook `docs/backup-restore.md`), keep the current image as
@@ -160,8 +162,8 @@ account ids (Settings → Account) allowed in; they sign in with that account's 
 write (plan, device sign-out, account delete, keys, invites) needs a fresh passkey confirmation, and every action is
 written to the audit log (admin id, action, target, time; no IPs or secrets; kept 365 days). Admin API calls are
 limited per admin (`PAI_LIMIT_ADMIN_PER_MIN`, default 120) and admin logins instance-wide (`PAI_LIMIT_ADMIN_LOGINS_PER_MIN`, 30). The login
-limit is shared by everyone, so a flood of login attempts can delay an admin sign-in for up to a minute; Caddy's per-IP
-limits blunt that, and an existing admin session is not affected. An account listed in `ADMIN_ACCOUNT_IDS` cannot be
+limit is shared by everyone, so a flood of login attempts can delay an admin sign-in for up to a minute; on a VPS, Caddy's per-IP
+limits blunt that (the home server has none), and an existing admin session is not affected. An account listed in `ADMIN_ACCOUNT_IDS` cannot be
 deleted from the panel; remove it from the list first.
 - *Users:* search by account id prefix; see plan, Stripe status, usage, passkey count and devices; sign out a device;
   set or clear a **manual** plan (Stripe plans stay with the webhooks); delete an account through the same erasure
@@ -196,7 +198,7 @@ Export, `account.id`) to `ENTITLEMENTS='{"<account id>":"pro"}'` and restart.
 - [ ] **Lawyer review** of all `TODO` markers on the legal pages (Widerrufsrecht, Haftung, Stripe/Hetzner/provider DPAs, third-country transfers); fill in company details
 - [x] Self-service account export and deletion (incl. Stripe customer), passkey removal, sign-out and device removal
 - [x] Abuse limits on session minting and passkey login; CSP + HSTS; passkey user verification required
-- [x] Reverse proxy config (Caddy, auto TLS, per-IP limits in memory, no IP logs)
+- [x] Reverse proxy config for a public VPS (Caddy, auto TLS, per-IP limits in memory, no IP logs)
 - [ ] Session revocation (tokens are deterministic per account; a leaked cookie stays valid, and after account deletion an old token can still start a new, empty account with the same id)
 - Note: passkeys are now registered and verified with user verification required; a passkey created earlier without PIN/biometric can no longer log in.
 - [ ] Payments via crypto (x402 / Zold) as an accountless alternative

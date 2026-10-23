@@ -1,4 +1,4 @@
-# Production TLS reverse proxy for {$DOMAIN} (required, set in .env). Runs on the host network so
+# TLS reverse proxy (public VPS only, not the home server) for {$DOMAIN} (required, set in .env). Runs on the host network so
 # {remote_host} is the real client IP (docker-proxy would hide it behind the bridge gateway).
 # Privacy: no access log at all, and IPs/headers are stripped from every other log line
 # (errors, upstream failures). Rate-limit state is per client, in memory only, gone after a restart.
