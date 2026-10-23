@@ -33,7 +33,7 @@ export interface ThreadProps {
   onSaved: (chat: Chat, ghost: boolean, isCurrent: boolean) => void;
   scope: ChatScope;
   onUsage: (remaining: string | null, limit?: string | null, quota?: string | null) => void;
-  verifySignature: (r: Receipt) => Promise<Signed>;
+  verifySignature: (r: Receipt, modelRef: string) => Promise<Signed>;
   suggestions?: string[];
   /** The selected model is anonymized: no enclave, so the welcome text must not claim one. */
   anonymized?: boolean;
@@ -194,7 +194,7 @@ export function ChatThread(props: ThreadProps) {
         }
         save();
         if (receipt) {
-          const signed = await p.verifySignature(receipt).catch(() => "n/a" as const);
+          const signed = await p.verifySignature(receipt, p.modelRef).catch(() => "n/a" as const);
           save(signed);
           yield { content: [{ type: "text", text }], metadata: { custom: { signed, tools, incognito } } };
         }

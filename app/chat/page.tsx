@@ -262,8 +262,9 @@ export default function Home() {
     else if (was.modelRef === modelRef && was.fallbackRef && autoProof.level !== "unavailable") setNotice(`Auto: back on ${picked}.`);
   }, [modelRef, fallbackRef, autoProof?.modelRef]); // eslint-disable-line react-hooks/exhaustive-deps -- once per selection and route, not on every catalog or proof change
 
-  const verifySignature = useCallback(async (receipt: Receipt): Promise<Signed> => {
+  const verifySignature = useCallback(async (receipt: Receipt, modelRef: string): Promise<Signed> => {
     const ref = `${receipt.provider}:${receipt.model}`;
+    if (ref !== modelRef) return "n/a"; // a receipt for another model than the turn was sent to proves nothing about this reply
     const a = proofs[ref] ?? await checkProof(ref);
     // A gateway-only proof's key is the gateway's: a match would not mean the model's enclave signed the reply.
     if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return a ? unsignedReason(a.level) : "n/a";

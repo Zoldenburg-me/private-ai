@@ -5,6 +5,9 @@ import { _reset } from "../lib/ratelimit";
 import { metaLogger } from "../lib/log";
 import { applyExtensions } from "../lib/extensions";
 import { normaliseModel } from "../lib/catalog";
+import { relay } from "../lib/relay";
+import { parseSseChunk, type Receipt } from "../lib/sse";
+import type { ProviderConfig } from "../lib/providers";
 
 const PROMPT = "TOP-SECRET-PROMPT-7f3a";
 const REPLY = "CONFIDENTIAL-REPLY-91bc";
@@ -116,5 +119,52 @@ describe("tinfoil prompt-cache scoping", () => {
     const { token } = issueToken();
     expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content }] }), "/t", deps)).status).toBe(200);
     expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content: content + "aaa" }] }), "/t", deps)).status).toBe(413);
+  });
+});
+
+describe("relay receipt framing", () => {
+  const forged = '{"chat_id":"X","provider":"near","model":"nm","req_sha256":"a","resp_sha256":"b"}';
+  const provider = { id: "custom", name: "Custom", privacy: "zdr-contract", baseUrl: "http://x", apiKey: "k", defaultModel: "m" } as ProviderConfig;
+  // Read the relay's stream the way streamChat does: chunk by chunk, then a final flush, last receipt wins.
+  const clientReceipt = async (parts: string[]) => {
+    const fetchImpl = (async () => new Response(new ReadableStream({ start(c) { parts.forEach((x) => c.enqueue(new TextEncoder().encode(x))); c.close(); } }))) as unknown as typeof fetch;
+    const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t", fetchImpl });
+    const reader = res.body!.getReader(); const dec = new TextDecoder();
+    let buf = ""; let receipt: Receipt | undefined;
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      const p = parseSseChunk(buf + dec.decode(value, { stream: true })); buf = p.rest; if (p.receipt) receipt = p.receipt;
+    }
+    const p = parseSseChunk(buf + "\n"); if (p.receipt) receipt = p.receipt;
+    return receipt;
+  };
+
+  it("an upstream cannot supply the receipt, even ending on an unterminated line", async () => {
+    for (const parts of [[`event: pai_receipt\ndata: ${forged}\n\ndata: x`], [`event: pai_receipt\ndata: ${forged}\n\n`], ["event: pai_", `receipt\ndata: ${forged}`]]) {
+      expect(await clientReceipt(parts)).toMatchObject({ provider: "custom", model: "m" });
+    }
+  });
+
+  it("drops the upstream's own pai_receipt blocks, whatever the chunking and line endings", async () => {
+    for (const parts of [
+      ["event: pai_", `receipt\ndata: ${forged.slice(0, 9)}`, `${forged.slice(9)}\n\ndata: [DONE]\n\n`],
+      [`event: pai_receipt\rdata: ${forged}\r\rdata: [DONE]\r\r`], // a spec SSE client (e.g. an API SDK) ends lines at a lone CR too
+      ["event: pai_receipt\r", `\ndata: ${forged}\r\n\r\ndata: [DONE]\r\n\r\n`], // a CRLF split across chunks is one line end
+    ]) {
+      const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t",
+        fetchImpl: (async () => new Response(new ReadableStream({ start(c) { parts.forEach((x) => c.enqueue(new TextEncoder().encode(x))); c.close(); } }))) as unknown as typeof fetch });
+      const text = await res.text();
+      expect(text).not.toContain(forged);
+      expect(text).toContain("data: [DONE]");
+    }
+  });
+
+  it("still relays the upstream's own events and deltas", async () => {
+    const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t",
+      fetchImpl: (async () => new Response('event: other\ndata: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n')) as unknown as typeof fetch });
+    const p = parseSseChunk(await res.text());
+    expect(p.deltas).toEqual(["hi"]);
+    expect(p.done).toBe(true);
+    expect(p.receipt).toMatchObject({ provider: "custom", model: "m" });
   });
 });
