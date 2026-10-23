@@ -38,7 +38,8 @@ boot_fails() { # expected message, docker run args...
 }
 boot_fails "SESSION_SECRET must be at least 32"
 boot_fails "SESSION_SECRET must be at least 32" -e SESSION_SECRET=short
-boot_fails "ADMIN_KEY_KEK must be 32 bytes" -e SESSION_SECRET="$SECRET" -e ADMIN_KEY_KEK=dGVzdA==
+boot_fails "INVITE_CODES or INVITE_ONLY=1 is required" -e SESSION_SECRET="$SECRET"
+boot_fails "ADMIN_KEY_KEK must be 32 bytes" -e SESSION_SECRET="$SECRET" -e INVITE_ONLY=1 -e ADMIN_KEY_KEK=dGVzdA==
 boot_fails "MOCK_PROVIDER=1 is not allowed" -e SESSION_SECRET="$SECRET" -e MOCK_PROVIDER=1
 
 echo "== two replicas on an empty database: migrations apply once, under the advisory lock"
