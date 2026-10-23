@@ -24,12 +24,15 @@ export const billingStatus = billing(async (req) => {
   });
 });
 
+/** Checkout reuses the account's earlier Stripe customer (its saved details), so that needs step-up like the portal. */
 export const checkout = billing(async (req) => {
-  const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
   const b = (await req.json().catch(() => null)) as { plan?: unknown; interval?: unknown } | null;
   const plan = b?.plan; const interval = b?.interval ?? "month";
   if ((plan !== "pro" && plan !== "max") || (interval !== "month" && interval !== "year")) return fail(400, "plan must be pro|max, interval month|year");
-  return json({ url: await createCheckout(id, plan, interval, appBaseUrl(req)) });
+  if (!(await (await stores()).accounts.listSubscriptionsFor(me.accountId)).length) return json({ url: await createCheckout(me.accountId, plan, interval, appBaseUrl(req)) });
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  try { return json({ url: await createCheckout(me.accountId, plan, interval, appBaseUrl(req)) }); } catch (e) { await restoreStepUp(me); throw e; }
 });
 
 /** The portal shows what the user gave Stripe and can cancel, so it needs step-up like delete. */

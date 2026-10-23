@@ -162,6 +162,10 @@ describe("POST /api/billing/checkout", () => {
     _setStripe(mockStripe()); vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy");
     expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(200);
   });
+  it("without a passkey, reuses the earlier customer with no step-up", async () => {
+    const { token } = await lapsed();
+    expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(200);
+  });
   it("without a previous Stripe customer, needs no step-up", async () => {
     const { token: anon } = await createSession();
     const { token } = await withPasskey(anon);
