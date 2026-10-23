@@ -28,8 +28,8 @@ const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
 type Raw = Record<string, unknown>;
 
 const bool = (v: unknown) => v === true || v === "true";
-/** "tee" as its own token (tee-attested, tdx_tee1), never inside a word (guarantee) or negated (non-tee, not tee). */
-const teeWord = (t: string) => /(^|[^a-z])tee/.test(t) && !/(^|[^a-z])(non|no|not)[\s_-]*tee/.test(t);
+/** `w` as its own token (tee-attested, tdx_tee1), never inside a word (guarantee) or negated (non-tee, not private). */
+const word = (t: string, w: string) => new RegExp(`(^|[^a-z])${w}`).test(t) && !new RegExp(`(^|[^a-z])(non|no|not)[\\s_-]*${w}`).test(t);
 /** A missing or blank price is unknown, never free. */
 const num = (v: unknown) => (typeof v === "number" || (typeof v === "string" && v.trim() !== "") ? Number(v) : NaN);
 
@@ -65,10 +65,10 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
   const tee =
     bool(raw.tee) || bool(raw.is_tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
-    teeWord(privacyText) || privacyText.includes("confidential") ||
+    word(privacyText, "tee") || word(privacyText, "confidential") ||
     (ALL_TEE.has(provider.id) && !privacyText.includes("anonym"));
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
-  const zdr = bool(raw.zdr) || bool(meta.zdr) || privacyText.includes("private") || privacyText.includes("zdr") || provider.privacy === "zdr-contract";
+  const zdr = bool(raw.zdr) || bool(meta.zdr) || word(privacyText, "private") || word(privacyText, "zdr") || provider.privacy === "zdr-contract";
   const privacy: Privacy = tee ? "tee" : zdr ? "private" : "anonymized";
   return {
     id,
