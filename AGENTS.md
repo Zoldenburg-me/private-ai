@@ -98,7 +98,7 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
        (it runs these steps from restic snapshots, once off-site backups exist). If any step fails
        before the rename, `rm -f data/erasures.tsv` and `$P dropdb -U pai --if-exists pai_restore`.
 
-  The Caddy setup (`deploy/caddy`) is for a Hetzner box and is not used here, so there are no
+  The Caddy setup (`deploy/caddy`) is for a public VPS and is not used here, so there are no
   per-IP limits.
 - **Not yet:** off-site Postgres backups (`docs/backup-restore.md` needs a storage target).
 
