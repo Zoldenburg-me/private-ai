@@ -9,6 +9,7 @@ import { DELETE as accountDELETE } from "../app/api/account/route";
 import { GET as sessionGET } from "../app/api/session/route";
 import { POST as webhookPOST } from "../app/api/billing/webhook/route";
 import { POST as portalPOST } from "../app/api/billing/portal/route";
+import { POST as checkoutPOST } from "../app/api/billing/checkout/route";
 import { POST as regOptions } from "../app/api/auth/passkey/register/options/route";
 import { POST as regVerify } from "../app/api/auth/passkey/register/verify/route";
 import { POST as loginOptions } from "../app/api/auth/passkey/login/options/route";
@@ -132,6 +133,43 @@ describe("POST /api/billing/portal", () => {
     expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(503);
     _setStripe(mockStripe());
     expect((await portalPOST(req("/p", "POST", token, {}))).status).toBe(200);
+  });
+});
+
+describe("POST /api/billing/checkout", () => {
+  async function lapsed() {
+    const { id, token } = await createSession();
+    await st.accounts.upsertSubscription({ stripeSubscriptionId: "sub_old", accountId: id, stripeCustomerId: "cus_old", tier: "pro", status: "canceled", currentPeriodEnd: null });
+    return { id, token };
+  }
+  it("with a passkey, needs a step-up before reusing the account's Stripe customer", async () => {
+    const { token: anon } = await lapsed();
+    const { auth, token } = await withPasskey(anon);
+    const body = { plan: "pro", interval: "month" };
+    const denied = await checkoutPOST(req("/c", "POST", token, body)); // a copied cookie alone is not enough
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe("step_up_required");
+    await stepUp(auth, token);
+    expect((await checkoutPOST(req("/c", "POST", token, body))).status).toBe(200);
+    expect((await checkoutPOST(req("/c", "POST", token, body))).status).toBe(403); // one step-up, one checkout
+  });
+  it("gives the step-up back when checkout cannot be opened", async () => {
+    const { token: anon } = await lapsed();
+    const { auth, token } = await withPasskey(anon);
+    await stepUp(auth, token);
+    _setStripe(undefined); vi.stubEnv("STRIPE_SECRET_KEY", "");
+    expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(503);
+    _setStripe(mockStripe()); vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy");
+    expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(200);
+  });
+  it("without a passkey, reuses the earlier customer with no step-up", async () => {
+    const { token } = await lapsed();
+    expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(200);
+  });
+  it("without a previous Stripe customer, needs no step-up", async () => {
+    const { token: anon } = await createSession();
+    const { token } = await withPasskey(anon);
+    expect((await checkoutPOST(req("/c", "POST", token, { plan: "pro" }))).status).toBe(200);
   });
 });
 
