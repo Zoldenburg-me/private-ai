@@ -15,13 +15,15 @@ export const sessionSecret = () => {
 };
 
 /**
- * Refuse to boot a production server with a weak session secret or the mock enclave (which would
- * show a fake "TEE-attested" provider). PAI_ALLOW_MOCK_PROVIDER=1 is for local e2e runs on `next start` only.
+ * Refuse to boot a production server with a weak session secret, the mock enclave (which would
+ * show a fake "TEE-attested" provider) or an open signup gate (free anonymous accounts with no
+ * instance-wide cap on the shared provider keys). PAI_ALLOW_MOCK_PROVIDER=1 is for local e2e runs on `next start` only.
  */
 export function assertProductionConfig(env: Record<string, string | undefined> = process.env): void {
   if (env.NODE_ENV !== "production") return;
   if ((env.SESSION_SECRET ?? "").length < 32) throw new Error("SESSION_SECRET must be at least 32 characters in production");
   if (env.MOCK_PROVIDER === "1" && env.PAI_ALLOW_MOCK_PROVIDER !== "1") throw new Error("MOCK_PROVIDER=1 is not allowed in production");
+  if (!(env.INVITE_CODES ?? "").split(",").some((c) => c.trim()) && env.INVITE_ONLY !== "1") throw new Error("INVITE_CODES or INVITE_ONLY=1 is required in production");
   kek(env); // throws if ADMIN_KEY_KEK is set but not 32 bytes
 }
 

@@ -1,22 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { metaLogger } from "./log";
 import { stores } from "./store";
-
-let warned = false;
-/** Test hook: lets the fail-open warning fire again. */
-export const _resetInviteWarning = () => { warned = false; };
 
 const norm = (s: string) => s.normalize("NFKC").trim();
 
-/** INVITE_CODES, comma-separated. Empty = signup and anonymous chat open (dev); warned once in production. */
-export function inviteCodes(): string[] {
-  const codes = (process.env.INVITE_CODES ?? "").split(",").map(norm).filter(Boolean);
-  if (codes.length === 0 && process.env.INVITE_ONLY !== "1" && process.env.NODE_ENV === "production" && !warned) {
-    warned = true;
-    metaLogger({ event: "invite_gate_off" });
-  }
-  return codes;
-}
+/** INVITE_CODES, comma-separated. Empty = signup and anonymous chat open (dev; production refuses to boot, lib/session.ts). */
+export const inviteCodes = (): string[] => (process.env.INVITE_CODES ?? "").split(",").map(norm).filter(Boolean);
 
 /**
  * Signup is invite-only when INVITE_CODES has codes or INVITE_ONLY=1. Codes created in the admin

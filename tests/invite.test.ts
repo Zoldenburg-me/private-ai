@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { _setStores, stores } from "../lib/store";
 import { createSession, signInDevice } from "../lib/session";
 import { handleChat } from "../lib/handler";
-import { inviteOk, _resetInviteWarning } from "../lib/invite";
+import { inviteOk } from "../lib/invite";
 import { normaliseModel } from "../lib/catalog";
 import { POST as regOptions } from "../app/api/auth/passkey/register/options/route";
 import { POST as regVerify } from "../app/api/auth/passkey/register/verify/route";
@@ -127,14 +127,5 @@ describe("invite gate: codes", () => {
     expect(v.status).toBe(403);
     expect(v.headers.get("set-cookie")).toBeNull();
     expect(await (await stores()).accounts.listCredentials(id)).toHaveLength(0);
-  });
-
-  it("production with no codes logs one metadata warning", async () => {
-    vi.stubEnv("INVITE_CODES", ""); vi.stubEnv("NODE_ENV", "production");
-    _resetInviteWarning();
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    inviteOk("x"); inviteOk("y");
-    expect(log).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(log.mock.calls[0][0]))).toMatchObject({ event: "invite_gate_off" });
   });
 });
