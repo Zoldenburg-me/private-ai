@@ -56,6 +56,14 @@ describe("model catalog + privacy policy", () => {
     // RedPill's /models marks confidential models with is_tee; standard ones stay unselectable.
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "deepseek/v4", is_tee: true })).toMatchObject({ privacy: "tee", selectable: true });
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "openai/o3", is_tee: false }).selectable).toBe(false);
+    // Negated privacy words never upgrade a model (same rule as "tee").
+    for (const privacy of ["non-tee", "not tee", "guarantee", "not confidential", "non-confidential", "non-private", "not private", "non-zdr", "no zdr"])
+      expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "p", privacy }), privacy).toMatchObject({ privacy: "anonymized", tee: false, selectable: false });
+    expect(normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "p", privacy: "non-confidential" })).toMatchObject({ privacy: "private", tee: false });
+    for (const privacy of ["tee-attested", "confidential"])
+      expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "p", privacy }), privacy).toMatchObject({ privacy: "tee", selectable: true });
+    for (const privacy of ["private", "zdr", "zero-retention zdr"])
+      expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "p", privacy }), privacy).toMatchObject({ privacy: "private", selectable: true });
     expect(loadProviders({ REDPILL_API_KEY: "k" }).map((p) => p.baseUrl)).toEqual(["https://api.redpill.ai/v1"]);
   });
   it("fetches /models and applies policy", async () => {
