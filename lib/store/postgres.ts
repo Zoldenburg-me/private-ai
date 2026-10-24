@@ -148,7 +148,9 @@ export class PgAccountStore implements AccountStore {
       await tx`SELECT 1 FROM sessions WHERE id = ${accountId} FOR UPDATE`;
       const [{ n }] = await tx<{ n: number }[]>`SELECT count(*)::int AS n FROM passkey_credentials WHERE account_id = ${accountId}`;
       if (n <= 1) return false;
-      return (await tx`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count > 0;
+      if ((await tx`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count === 0) return false;
+      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      return true;
     });
   }
   async addDevice(d: { id: string; accountId: string; createdAt: number }) {
@@ -172,7 +174,11 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteDevice(accountId: string, id: string) {
     const sql = await this.db();
-    return (await sql`DELETE FROM devices WHERE id = ${id} AND account_id = ${accountId}`).count > 0;
+    return sql.begin(async (tx) => {
+      if ((await tx`DELETE FROM devices WHERE id = ${id} AND account_id = ${accountId}`).count === 0) return false;
+      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      return true;
+    });
   }
   async hasSignIn(accountId: string) {
     const sql = await this.db();

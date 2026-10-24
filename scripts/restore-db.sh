@@ -3,8 +3,8 @@
 #   scripts/restore-db.sh --drill [snapshot]  restore into pai_restore, re-erase, print row counts, drop it (no downtime)
 #   scripts/restore-db.sh [snapshot]          same, then stop the app and swap pai_restore in as pai;
 #                                             the replaced database is kept as pai_old for rollback (max 7 days)
-# snapshot defaults to latest. Before the swap, every account in the erasure ledger (the snapshot's,
-# the live database's and the newest off-site copy) is deleted again. Runbook: docs/backup-restore.md.
+# snapshot defaults to latest. Before the swap, every account, device and passkey in the erasure ledger
+# (the snapshot's, the live database's and the newest off-site copy) is deleted again. Runbook: docs/backup-restore.md.
 set -Eeuo pipefail  # -E: the rollback ERR trap must also fire inside functions
 
 drill=0
@@ -65,7 +65,7 @@ reerase() {
     fi
     missing="${missing:+$missing and }off-site ledger"
   fi
-  if [ -n "$missing" ]; then echo "WARNING: could not read the erasure ledger from the $missing; accounts deleted after the snapshot may come back" >&2; fi
+  if [ -n "$missing" ]; then echo "WARNING: could not read the erasure ledger from the $missing; accounts deleted and devices or passkeys removed after the snapshot may come back" >&2; fi
   pg psql -U pai -d pai_restore -v ON_ERROR_STOP=1 \
     -c "create temp table incoming (id_hash text, deleted_on date)" \
     -c "\copy incoming from pstdin" \

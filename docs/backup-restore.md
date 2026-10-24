@@ -35,8 +35,13 @@ table, in the same transaction. Account ids are 128-bit random, so the hash cann
 The ledger is shipped off-site hourly on its own. Before a restored database goes live,
 `restore-db.sh` merges three ledgers: the snapshot's own, the live database's (if it still answers;
 read again after the app stops), and the newest off-site copy. It then deletes every listed account
-again (`scripts/reerase.sql`). Accounts removed by the inactivity purge are not ledgered: the purge
-deletes them again on its next daily run.
+again (`scripts/reerase.sql`). Signed-out or removed devices (`deleteDevice`) and removed passkeys
+(`deleteCredential`) are ledgered the same way, by the hash of their id, so a revoked device token
+or passkey does not work again after a restore. Passkeys and devices added after the snapshot are
+not in it, so an account whose user replaced all its passkeys since then, and that has no remaining
+device, is restored with no sign-in: its user cannot sign in, and a pre-sign-in account token of it
+works again until a passkey or device is added. Accounts removed by the inactivity purge are not
+ledgered: the purge deletes them again on its next daily run.
 A real restore stops if the off-site ledger can't be read (otherwise accounts deleted after the
 snapshot would come back); set `ALLOW_NO_OFFSITE_LEDGER=1` only if you know that ledger is lost.
 It also refuses a snapshot older than 115 days: ledger entries expire after 120, so accounts deleted

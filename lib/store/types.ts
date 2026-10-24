@@ -51,7 +51,7 @@ export interface AccountStore {
    * Also records erasureHash(id) in the erasure ledger, which a backup restore replays.
    */
   deleteAccount(id: string): Promise<boolean>;
-  /** The erasure ledger (account deletions of the last ERASURE_LEDGER_DAYS). */
+  /** The erasure ledger (deleted accounts, removed devices and passkeys of the last ERASURE_LEDGER_DAYS). */
   listErasures(): Promise<{ idHash: string; deletedOn: string }[]>;
   getEntitlement(id: string): Promise<Entitlement | null>;
   setEntitlement(id: string, e: Entitlement): Promise<void>;
@@ -66,14 +66,14 @@ export interface AccountStore {
   getCredential(credentialId: string): Promise<PasskeyCredential | null>;
   listCredentials(accountId: string): Promise<PasskeyCredential[]>;
   updateCredentialCounter(credentialId: string, counter: number): Promise<void>;
-  /** Delete a passkey only if it belongs to `accountId` and is not its last one (atomic). False otherwise. */
+  /** Delete a passkey only if it belongs to `accountId` and is not its last one (atomic). False otherwise. Ledgered like deleteAccount. */
   deleteCredential(accountId: string, credentialId: string): Promise<boolean>;
   /** Creates the account row if missing. */
   addDevice(d: { id: string; accountId: string; createdAt: number }): Promise<void>;
   /** True if the device exists for that account; bumps its last-seen day. */
   touchDevice(accountId: string, id: string, now?: number): Promise<boolean>;
   listDevices(accountId: string): Promise<Device[]>;
-  /** Delete a device only if it belongs to `accountId`. False if not found for that account. */
+  /** Delete a device only if it belongs to `accountId`. False if not found for that account. Ledgered like deleteAccount. */
   deleteDevice(accountId: string, id: string): Promise<boolean>;
   /** True once the account has a passkey or a signed-in device (account-only tokens stop working). */
   hasSignIn(accountId: string): Promise<boolean>;
