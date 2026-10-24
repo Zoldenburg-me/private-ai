@@ -129,7 +129,7 @@ export function SettingsView(p: {
                 <input type="checkbox" data-testid="setting-web-search" checked={p.tools.available && p.tools.webSearch} disabled={!p.tools.available} onChange={(e) => p.tools!.onWebSearch(e.target.checked)} />
                 <span className="grow">Web search
                   <span className="hs-sub">{p.tools.available
-                    ? "The model searches the web when a question needs it. Only its search query goes to Brave Search, sent by our server without your identity or chat. Each search step counts as a message. Off by default in ghost chat."
+                    ? "The model searches the web when a question needs it. Only its search query goes to Brave Search, without your identity or chat: on NEAR models it is sent from inside the model's enclave, on all others by our server. Each search step counts as a message. Off by default in ghost chat."
                     : "Web search is not available on this server."}</span></span>
               </label>
               <label className="hs-row">

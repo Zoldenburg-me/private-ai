@@ -36,7 +36,10 @@ export default function Datenschutz() {
             Datenaufbewahrung teilnehmen (<Todo>AVV mit Liquid: Datum eintragen; Anbieter auf Liquid: Rolle und Drittlandtransfer prüfen</Todo>).</li>
         </ul>
         <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
-        <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren, die unser Server an die Brave Search API sendet
+        <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren. Wo die Suche läuft, hängt vom Anbieter ab.
+          Bei Modellen auf NEAR AI Cloud führt NEAR die Suche in der Enklave des Modells aus: Nur die Suchanfrage verlässt die Enklave, von dort an die Brave Search API (<Todo>Brave als Unterauftragsverarbeiter von NEAR: in der AVV mit NEAR prüfen</Todo>).
+          Suchanfrage und Treffer kommen wie die Antwort durch unseren Server zu Ihnen; wir speichern und protokollieren sie nicht.
+          Bei allen anderen Modellen sendet unser Server die Suchanfrage an die Brave Search API
           (<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>). Das gilt auf jeder Datenschutzstufe, auch für Modelle in einer Enklave (Max):
           Die Suchanfrage verlässt dann die Enklave. Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
           Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.
@@ -92,7 +95,10 @@ export default function Datenschutz() {
             (<Todo>DPA with Liquid: add its date; providers on Liquid: confirm role and third-country transfer</Todo>).</li>
         </ul>
         <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
-        <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries, which our server sends to the Brave Search API
+        <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries. Where the search runs depends on the provider.
+          For models on NEAR AI Cloud, NEAR runs the search inside the model’s enclave: only the query leaves the enclave, from there to the Brave Search API (<Todo>Brave as NEAR’s sub-processor: confirm in the DPA with NEAR</Todo>).
+          The query and the results reach you through our server like the reply; we neither store nor log them.
+          For all other models, our server sends the query to the Brave Search API
           (<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>). This applies at every privacy level, including enclave models (Max):
           the search query then leaves the enclave. Only the query text is sent, not your chat history,
           account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.
