@@ -85,19 +85,16 @@ export function runAgent(o: AgentOpts): Response {
             steps = step;
             const text = (content: string, id: string) => { shown += content; send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }); };
             let r: Step; let toolless = last || inEnclave; // NEAR's tool calls are NEAR's to run, never ours
-            // NEAR searches only once the model has finished a round. A search is checked as soon as the model starts writing its
-            // call, against this run's budget and the daily messages left, so a call past either cancels the stream before NEAR can
-            // run it. It counts as a message, like our search steps, when the round ends and NEAR starts it (best effort: a stream cut
-            // mid-call costs nothing, one cut right after the round ends still counts).
-            let reserved = 0; // searches checked but not yet counted
-            const near = inEnclave ? { steps: new NearSearchSteps(step), onSearch: () => {
+            // NEAR searches only once the model has finished a round. Each search counts as a message, like our search steps, as
+            // soon as the model starts writing its call, so a call past the run's budget or the user's limits cancels the stream
+            // before NEAR can run it. Fail closed: a stream cut after that still counts, as NEAR may already be searching (and bills it).
+            const near = inEnclave ? { steps: new NearSearchSteps(step), onSearch: async () => {
               // Our limits, not the provider's failure: a Refusal is kept out of the error budget.
               if (searches.left <= 0) throw new Refusal("search limit for this answer reached");
-              if (Number(o.remaining?.() ?? Infinity) - reserved <= 0) throw new Refusal("daily limit reached");
-              searches.left -= 1; reserved += 1;
-            }, onEvent: async (e: ToolEvent) => {
-              if (e.status === "running") { reserved -= 1; const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
-              else o.log({ route: o.route, event: "tool_call", tool: "web_context_search", status: e.status === "done" ? 200 : 502 });
+              searches.left -= 1;
+              const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied);
+            }, onEvent: (e: ToolEvent) => {
+              if (e.status !== "running") o.log({ route: o.route, event: "tool_call", tool: "web_context_search", status: e.status === "done" ? 200 : 502 });
               tool(e);
             } } : undefined;
             try {
@@ -191,8 +188,8 @@ type Chunk = { id?: unknown; choices?: { delta?: { content?: unknown; tool_calls
 type ToolDelta = { index?: unknown; id?: unknown; function?: { name?: unknown; arguments?: unknown } };
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
-/** NEAR's in-enclave search: `onSearch` takes each new call from the run's budget, `onEvent` charges and shows its tool events. */
-interface NearHooks { steps: NearSearchSteps; onSearch: () => void; onEvent: (e: ToolEvent) => Promise<void> }
+/** NEAR's in-enclave search: `onSearch` counts each new call (and may refuse it), `onEvent` shows its tool events. */
+interface NearHooks { steps: NearSearchSteps; onSearch: () => Promise<void>; onEvent: (e: ToolEvent) => void }
 
 /** One streamed upstream call: forwards text deltas, collects tool calls (arguments arrive in pieces, keyed by index). */
 async function callStep(provider: ProviderConfig, body: Record<string, unknown>, step: number, fetchImpl: typeof fetch, abort: AbortController,
@@ -204,12 +201,12 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   if (!res.ok || !res.body) { res.body?.cancel().catch(() => {}); throw new ProviderError(`provider error ${res.status}`, res.status); }
   const hash = createHash("sha256"); const dec = new TextDecoder(); const reader = res.body.getReader();
   const calls: Call[] = []; let buf = ""; let text = ""; let chatId = ""; let finished = false;
-  // NEAR searches begun, then tool events (charged) and text, of the line just read: handled before the next line.
+  // NEAR searches begun (counted), then tool events and text, of the line just read: handled before the next line.
   const events: ToolEvent[] = []; const held: string[] = []; let started = 0;
   const flush = async () => {
     if (!near) return;
-    while (started > 0) { started--; near.onSearch(); }
-    for (const e of events.splice(0)) await near.onEvent(e);
+    while (started > 0) { started--; await near.onSearch(); }
+    for (const e of events.splice(0)) near.onEvent(e);
     for (const t of held.splice(0)) onText(t, chatId);
   };
   const onLine = (line: string) => {

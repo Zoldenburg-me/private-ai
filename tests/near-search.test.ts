@@ -40,6 +40,16 @@ function upstream(reply: (body: Record<string, unknown>) => string) {
   return { fetchImpl, calls };
 }
 
+/** An upstream body that hands out one line per read, so a test sees how far the agent read before it stopped. */
+function pullStream(lines: string[]) {
+  let pulled = 0; let cancelled = false;
+  const fetchImpl = (async () => new Response(new ReadableStream({
+    pull(c) { if (pulled < lines.length) c.enqueue(new TextEncoder().encode(lines[pulled++])); else c.close(); },
+    cancel() { cancelled = true; },
+  }, { highWaterMark: 0 }))) as unknown as typeof fetch;
+  return { fetchImpl, sent: () => lines.slice(0, pulled), cancelled: () => cancelled };
+}
+
 const run = async (token: string, model: string, u: ReturnType<typeof upstream>, log: (m: unknown) => void = () => {}) => {
   const res = await handleAgent(req(token, ask(model)), "/api/agent", { catalog, env, fetchImpl: u.fetchImpl, log });
   const raw = await res.text();
@@ -135,55 +145,61 @@ describe("NEAR in-enclave web search", () => {
     expect((await usage(id, "free")).usedToday).toBe(1);
   });
 
-  it("stops at the searches our loop could run on the tier (free: 2 steps of 2)", async () => {
-    const { token } = issueToken(); // pro would allow 6; free allows (3 - 1) * 2 = 4
-    const out = await run(token, `near:${MODEL}`, upstream(() => nearStream(5)));
+  it("never lets NEAR run more searches than the tier's budget, over any number of rounds (free: 2 steps of 2)", async () => {
+    const { id, token } = issueToken(); // pro would allow 6; free allows (3 - 1) * 2 = 4
+    const p = pullStream(nearStream(5).split(/(?<=\n\n)/));
+    const out = await run(token, `near:${MODEL}`, { fetchImpl: p.fetchImpl, calls: [] });
     expect(out.tools.filter((t) => t.status === "done")).toHaveLength(4);
     expect(out.error).toBe("search limit for this answer reached");
+    expect(p.sent().filter((l) => l.includes('"finish_reason":"tool_calls"'))).toHaveLength(4); // NEAR searches only after one
+    expect((await usage(id, "free")).usedToday).toBe(5); // the request and the 4 searches
   });
 
-  it("a call past the budget cancels NEAR before its iteration ends, so no search runs past it", async () => {
+  it("a call past the budget cancels NEAR before its round ends, so no search runs past it", async () => {
     const { id, token } = issueToken(); // free: 4 searches
-    // One iteration with 5 calls, each in two pieces; NEAR would search only after the finish_reason line.
+    // One round with 5 calls, each in two pieces; NEAR would search only after the finish_reason line.
     const lines = [...Array.from({ length: 5 }, (_, i) => [
       line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: `t${i}`, type: "function", function: { name: "web_context_search", arguments: "" } }] } }] }),
       line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: `{"query": "q${i}"}` } }] } }] }),
     ]).flat(), line({ id: "chat-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }), answer];
-    let pulled = 0; let cancelled = false;
-    const fetchImpl = (async () => new Response(new ReadableStream({
-      pull(c) { if (pulled < lines.length) c.enqueue(new TextEncoder().encode(lines[pulled++])); else c.close(); },
-      cancel() { cancelled = true; },
-    }, { highWaterMark: 0 }))) as unknown as typeof fetch;
-    const res = await handleAgent(req(token, ask(`near:${MODEL}`)), "/api/agent", { catalog, env, fetchImpl, log: () => {} });
+    const p = pullStream(lines);
+    const res = await handleAgent(req(token, ask(`near:${MODEL}`)), "/api/agent", { catalog, env, fetchImpl: p.fetchImpl, log: () => {} });
     const out = parseSseChunk((await res.text()) + "\n");
     expect(out.error).toBe("search limit for this answer reached");
-    expect(cancelled).toBe(true);
-    expect(pulled).toBeLessThan(lines.length - 1); // stopped at the 5th call's first piece, never reaching the finish_reason line
-    expect((await usage(id, "free")).usedToday).toBe(1); // only the request: the round was cancelled before NEAR searched
+    expect(p.cancelled()).toBe(true);
+    expect(p.sent().length).toBeLessThan(lines.length - 1); // stopped at the 5th call's first piece, never reaching the finish_reason line
+    expect((await usage(id, "free")).usedToday).toBe(5); // the request and the 4 calls in budget
   });
 
-  it("a call past the daily messages left is refused before its round ends, and nothing is charged for it", async () => {
+  it("a call past the user's limits is refused at its first piece, before its round ends", async () => {
     const lines = [0, 1].map((i) => line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: `t${i}`, function: { name: "web_context_search", arguments: `{"query": "q${i}"}` } }] } }] }))
       .concat(line({ id: "chat-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }), answer);
-    let pulled = 0;
-    const fetchImpl = (async () => new Response(new ReadableStream({
-      pull(c) { if (pulled < lines.length) c.enqueue(new TextEncoder().encode(lines[pulled++])); else c.close(); },
-    }, { highWaterMark: 0 }))) as unknown as typeof fetch;
-    const beforeStep = vi.fn(async () => null);
+    const p = pullStream(lines);
+    const beforeStep = vi.fn(async () => null as string | null).mockResolvedValueOnce(null).mockResolvedValueOnce("daily limit reached");
     const provider = { id: "near", name: "NEAR", privacy: "tee-attested" as const, baseUrl: "http://near/v1", apiKey: "k", defaultModel: "" };
-    const res = runAgent({ provider, body: ask(`near:${MODEL}`), maxSteps: 3, beforeStep, remaining: () => "1", env: {}, log: () => {}, route: "/api/agent", fetchImpl });
+    const res = runAgent({ provider, body: ask(`near:${MODEL}`), maxSteps: 3, beforeStep, env: {}, log: () => {}, route: "/api/agent", fetchImpl: p.fetchImpl });
     const out = parseSseChunk((await res.text()) + "\n");
     expect(out.error).toBe("daily limit reached");
-    expect(pulled).toBeLessThan(lines.length - 1); // never reached the finish_reason line, so NEAR ran nothing
-    expect(beforeStep).not.toHaveBeenCalled();
+    expect(beforeStep).toHaveBeenCalledTimes(2);
+    expect(p.sent().length).toBeLessThan(lines.length - 1); // never reached the finish_reason line, so NEAR ran nothing
   });
 
-  it("a stream cut while the model writes a call costs no message for that search", async () => {
+  it("a search past the minute's requests is refused before its round ends", async () => {
+    const { token } = issueToken(); // free: 5 requests per minute
+    const deps = { catalog, env, fetchImpl: upstream(() => answer).fetchImpl, log: () => {} };
+    for (let i = 0; i < 4; i++) await (await handleAgent(req(token, ask(`near:${MODEL}`)), "/api/agent", deps)).text(); // 4 of 5 used
+    const p = pullStream(nearStream(1).split(/(?<=\n\n)/));
+    const out = parseSseChunk((await (await handleAgent(req(token, ask(`near:${MODEL}`)), "/api/agent", { ...deps, fetchImpl: p.fetchImpl })).text()) + "\n"); // uses the 5th
+    expect(out.error).toBe("rate limit, slow down");
+    expect(p.sent().length).toBeLessThan(3); // stopped at the call's first piece, before its finish_reason line
+  });
+
+  it("a stream cut after a call started still counts that search: NEAR may already be running it", async () => {
     const { id, token } = issueToken();
     const cut = searchIteration(1, OUTPUT).split("\n\n")[0] + "\n\n"; // the call's first piece, then the stream ends
     const out = await run(token, `near:${MODEL}`, upstream(() => cut));
     expect(out.error).toBe("empty provider response");
-    expect((await usage(id, "free")).usedToday).toBe(1);
+    expect((await usage(id, "free")).usedToday).toBe(2); // fail closed on quota
   });
 
   it("a stream cut after a search iteration is an error, not a finished answer", async () => {
