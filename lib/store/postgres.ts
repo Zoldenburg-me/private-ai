@@ -235,7 +235,6 @@ export class PgAccountStore implements AccountStore {
       const [k] = await tx<{ provider: string; status: string }[]>`SELECT provider, status FROM provider_keys WHERE id = ${id} FOR UPDATE`;
       if (!k) return false;
       if (status === "disabled") await ledger(tx, id);
-      else await tx`DELETE FROM erasures WHERE id_hash = ${erasureHash(id)}`;
       if (k.status === status) return true;
       if (status === "active") await tx`UPDATE provider_keys SET status = 'disabled', disabled_at = now() WHERE provider = ${k.provider} AND status = 'active'`;
       await tx`UPDATE provider_keys SET status = ${status}, disabled_at = ${status === "active" ? null : new Date()} WHERE id = ${id}`;

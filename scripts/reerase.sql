@@ -10,8 +10,15 @@ DELETE FROM sessions WHERE encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SEL
 DELETE FROM devices WHERE encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
 DELETE FROM passkey_credentials WHERE encode(sha256(convert_to(credential_id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
 -- Provider keys disabled or deleted, and invites revoked, after the snapshot. The ledger does not tell a delete
--- from a disable, so a deleted key comes back disabled (delete it again).
-UPDATE provider_keys SET status = 'disabled', disabled_at = COALESCE(disabled_at, now())
-  WHERE status = 'active' AND encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
-UPDATE invite_codes SET revoked_at = COALESCE(revoked_at, now())
-  WHERE revoked_at IS NULL AND encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
+-- from a disable, so a deleted key comes back disabled (delete it again), and a key re-enabled since its
+-- disable comes back disabled too (enable it again). Snapshots from before migration 004 lack both tables.
+DO $$ BEGIN
+  IF to_regclass('provider_keys') IS NOT NULL THEN
+    UPDATE provider_keys SET status = 'disabled', disabled_at = COALESCE(disabled_at, now())
+      WHERE status = 'active' AND encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
+  END IF;
+  IF to_regclass('invite_codes') IS NOT NULL THEN
+    UPDATE invite_codes SET revoked_at = COALESCE(revoked_at, now())
+      WHERE revoked_at IS NULL AND encode(sha256(convert_to(id, 'UTF8')), 'hex') IN (SELECT id_hash FROM erasures);
+  END IF;
+END $$;

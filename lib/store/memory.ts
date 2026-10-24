@@ -141,7 +141,7 @@ export class MemoryAccountStore implements AccountStore {
   }
   async setProviderKeyStatus(id: string, status: ProviderKeyStatus) {
     const k = this.providerKeys.get(id); if (!k) return false;
-    if (status === "disabled") this.ledger(id); else this.erasures.delete(erasureHash(id));
+    if (status === "disabled") this.ledger(id);
     if (k.status === status) return true;
     if (status === "active") this.disableActive(k.provider, Date.now());
     this.providerKeys.set(id, { ...k, status, disabledAt: status === "active" ? null : Date.now() });

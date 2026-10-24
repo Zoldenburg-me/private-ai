@@ -180,8 +180,8 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.deleteProviderKey("pk_rv_nope")).toBe(false);
     expect(await s.revokeInvite("inv_rv_nope")).toBe(false);
     expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("pk_rv_1"), hash("pk_rv_2"), hash("inv_rv_1")].sort());
-    expect(await s.setProviderKeyStatus("pk_rv_2", "active")).toBe(true); // re-enabled: a restore keeps the snapshot's status
-    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("pk_rv_1"), hash("inv_rv_1")].sort());
+    expect(await s.setProviderKeyStatus("pk_rv_2", "active")).toBe(true); // re-enabled: the entry stays, the ledger only grows
+    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("pk_rv_1"), hash("pk_rv_2"), hash("inv_rv_1")].sort());
   });
   it("purgeInactive does not add to the erasure ledger (the purge itself re-deletes after a restore)", async () => {
     await s.touchSession("acct_purged_1", Date.UTC(2020, 0, 1));
@@ -399,5 +399,17 @@ describe.skipIf(!pg)("restore: scripts/reerase.sql", () => {
     expect((await s.activeProviderKeys()).map((k) => k.id)).toEqual(["pk_rs_keep"]);
     expect(await s.inviteUsable("h_rs_keep")).toBe(true);
     expect(await s.inviteUsable("h_rs_gone")).toBe(false);
+  });
+  it("replays a snapshot from before the admin tables existed (migration 004) without failing", async () => {
+    const s = await backends[1][1]();
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    await s.touchSession("acct_rs_old_schema");
+    await pg!.sql.unsafe("DROP TABLE provider_keys, invite_codes");
+    await pg!.sql.begin(async (tx) => {
+      await tx`CREATE TEMP TABLE incoming (id_hash text, deleted_on date) ON COMMIT DROP`;
+      await tx`INSERT INTO incoming VALUES (${hash("acct_rs_old_schema")}, '2027-02-01')`;
+      await tx.unsafe(readFileSync(join(__dirname, "../scripts/reerase.sql"), "utf8"));
+    });
+    expect(await s.sessionExists("acct_rs_old_schema")).toBe(false);
   });
 });

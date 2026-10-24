@@ -92,7 +92,7 @@ export interface AccountStore {
   listProviderKeys(): Promise<ProviderKeyInfo[]>;
   /** Active keys with their ciphertext, for building provider requests only. */
   activeProviderKeys(): Promise<{ id: string; provider: string; ciphertext: Uint8Array }[]>;
-  /** Activating a key disables the provider's other active key (atomic). False if the key does not exist. Disabling is ledgered like deleteAccount; re-enabling removes that entry. */
+  /** Activating a key disables the provider's other active key (atomic). False if the key does not exist. Disabling is ledgered like deleteAccount (re-enabling keeps the entry). */
   setProviderKeyStatus(id: string, status: ProviderKeyStatus): Promise<boolean>;
   /** Ledgered like deleteAccount. */
   deleteProviderKey(id: string): Promise<boolean>;

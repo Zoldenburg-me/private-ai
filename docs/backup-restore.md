@@ -41,8 +41,8 @@ or passkey does not work again after a restore; such a passkey's credential id c
 again while it is in the ledger. Provider keys an admin disabled or deleted come back disabled, and
 revoked invites stay revoked; if that was a provider's only active key, add or enable one after the
 restore. A key disabled by adding or activating another key is not ledgered: disable it explicitly
-(or delete it) if it leaked, so it stays off after a restore. Re-enabling a key removes its entry
-(an off-site copy from the last hour may still hold it). Passkeys and
+(or delete it) if it leaked, so it stays off after a restore. The ledger only grows: a key re-enabled
+after an explicit disable also comes back disabled, so enable it again. Passkeys and
 devices added after the snapshot are not in it, so an account whose user replaced all its passkeys
 since then, and that has no remaining device, is restored with no sign-in: its user cannot sign in,
 and a pre-sign-in account token of it works again until a passkey or device is added. Accounts removed by the inactivity purge are not
