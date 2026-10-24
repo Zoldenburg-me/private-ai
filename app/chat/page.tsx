@@ -19,7 +19,7 @@ import { ENABLED_PROVIDERS, autoEntryOf, autoModels, imagesFor, nearDefault } fr
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
-import { ModelPicker } from "@/components/app/ModelPicker";
+import { ModelPicker, needsSignIn } from "@/components/app/ModelPicker";
 import { PersonaGallery } from "@/components/app/PersonaGallery";
 import { SettingsView, type AccountInfo, type Billing, type DeviceInfo } from "@/components/app/SettingsView";
 import type { Usage } from "@/components/app/UsageMeter";
@@ -59,7 +59,10 @@ export default function Home() {
   const updateMode = (patch: Partial<ModePrefs>) => { setMode((m) => ({ ...m, ...patch })); modeTouched.current = true; };
   // Routes whose chat failed at the provider, mirrored from routeFailedAt so Medium/Anon Auto re-picks on the next render.
   const [failedAt, setFailedAt] = useState<Record<string, number>>({});
-  const modelRef = resolveRef(models, mode.level, mode.picks[mode.level], mode.pickProvider, failedAt);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
+  // Signed-out visitors on the free plan: Auto routes only to models the server lets them use (free TEE models).
+  const usable = models.filter((m) => !needsSignIn(m, account ? account.signedIn : undefined, tier ? tier.id !== "free" : undefined));
+  const modelRef = resolveRef(usable, mode.level, mode.picks[mode.level], mode.pickProvider, failedAt);
   const autoOn = modelRef !== mode.picks[mode.level]; // Auto also covers a remembered pick the picker no longer offers
   const pick = (r: string) => updateMode({ picks: { ...mode.picks, [mode.level]: r } });
   const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.tee === false;
@@ -86,7 +89,6 @@ export default function Home() {
   const [invite, setInvite] = useState(""); // from an invite link; memory only, never stored
   const [passkeys, setPasskeys] = useState<{ id: string; label: string; createdAt: number }[] | null>([]); // null: the list could not be loaded
   const [modelsFailed, setModelsFailed] = useState(false);
-  const [account, setAccount] = useState<AccountInfo | null>(null);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [ghost, setGhost] = useState(false);
   const [ghostSearch, setGhostSearch] = useState(false); // ghost chat only, memory only
@@ -404,7 +406,8 @@ export default function Home() {
   const proof = proofs[modelRef] ?? null;
   // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
   const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
-  const routeNote = autoRouteNote({ models, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt, level: mode.level });
+  const routeNote = autoRouteNote({ models: usable, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt, level: mode.level })
+    ?? (autoOn && !modelRef && account?.signedIn === false ? "Sign in to use the models on this level." : undefined);
   // Web search: on by default (Settings can turn it off); in ghost chat off until switched on in the "+" menu, never saved.
   const searchPref = ghost ? ghostSearch : mode.webSearch;
   const webSearch = searchAvailable && searchPref;
@@ -553,7 +556,7 @@ export default function Home() {
                 webSearch={webSearch}
                 images={imagesFor(models, modelRef, sendRef)}
                 toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))} />}
-                modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
+                modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} signedIn={account ? account.signedIn : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
                   privacy={{ level: mode.level, onLevel: (l) => updateMode({ level: l }), auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
             : vaultError ? <div className="loading bad">{vaultError}</div> : <div className="loading muted">Unlocking encrypted history…</div>
         )}

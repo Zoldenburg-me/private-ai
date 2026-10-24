@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleAgent, handleChat } from "../lib/handler";
 import { issueToken, setTier } from "../lib/session";
+import { signedIn } from "./helpers/signed-in";
 import { _reset, usage } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { parseSseChunk } from "../lib/sse";
@@ -355,7 +356,7 @@ describe("agent limits, receipts and timeouts", () => {
 
 describe("agent mode on an incognito model", () => {
   it("every step counts against the incognito quota, not the TEE one", async () => {
-    const { id, token } = issueToken();
+    const { id, token } = await signedIn();
     const kimi = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "kimi-k3", model_spec: { privacy: "private" } });
     const u = upstream((n) => (n === 1 ? toolCallStream("c1") : answerStream("c2")));
     const res = await handleAgent(req(token, { ...ask, model: "venice:kimi-k3" }), "/api/agent",
@@ -365,4 +366,16 @@ describe("agent mode on an incognito model", () => {
     expect(parseSseChunk((await res.text()) + "\n").remaining).toBe("48");
     expect((await usage(id, "free")).usedToday).toBe(0);
   });
+});
+
+it("agent mode refuses an incognito model for an anonymous session before any upstream call", async () => {
+  const { token } = issueToken();
+  const kimi = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "kimi-k3" });
+  const u = upstream(() => answerStream("c1"));
+  const res = await handleAgent(req(token, { ...ask, model: "venice:kimi-k3" }), "/api/agent",
+    { catalog: async () => [kimi], env: { ...env, VENICE_API_KEY: "k", VENICE_BASE_URL: "http://upstream/v1" }, fetchImpl: u.fetchImpl, log: () => {} });
+  expect(res.status).toBe(401);
+  expect((await res.json()).error.code).toBe("signin_required");
+  expect(u.model).toHaveLength(0);
+  expect(u.searches).toHaveLength(0);
 });

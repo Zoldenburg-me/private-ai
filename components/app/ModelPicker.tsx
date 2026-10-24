@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { CaretDown, Check, Detective, EyeSlash, ImageSquare, LockSimple, MagicWand, MaskHappy, Prohibit, Question, ShieldCheck, TextT, Waveform } from "@phosphor-icons/react";
 import type { ProofLevel } from "@/lib/client/proof";
 import type { Modalities, ModelEntry } from "@/lib/catalog";
+import { anonAllowed } from "@/lib/tiers";
 import { ANONYMIZED_NOTE, PROVIDER_LABEL, pickerGroup } from "@/lib/client/providers";
 import { LEVELS, type Level } from "@/lib/client/levels";
 
@@ -12,6 +13,8 @@ export interface PrivacyControl { level: Level; onLevel: (l: Level) => void; aut
 const ref = (m: ModelEntry) => `${m.provider}:${m.id}`;
 /** Paid-only models are locked once the plan is known to be free; `paidPlan` is undefined while the tier loads. */
 export const isLocked = (m: ModelEntry, paidPlan: boolean | undefined) => !!m.paid && paidPlan === false;
+/** Signed-out visitors on the free plan get free TEE models only (the server says the same); undefined while the session loads. */
+export const needsSignIn = (m: ModelEntry, signedIn: boolean | undefined, paidPlan: boolean | undefined) => signedIn === false && paidPlan === false && !anonAllowed(m);
 
 /** Menu badges, as in the design. */
 const BADGE: Record<string, string> = { tee: "TEE", private: "PRIVATE", anonymized: "ANON" };
@@ -53,7 +56,7 @@ export function PrivacyIcon({ m, level }: { m?: ModelEntry; level?: ProofLevel }
 }
 
 /** Model picker: TEE models by provider, all non-TEE models in one Incognito group. Blocked models are shown but not selectable. */
-export function ModelPicker({ models, value, onChange, paidPlan, onExplain, level, loadFailed, privacy }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void; paidPlan?: boolean; onExplain?: () => void; level?: ProofLevel; loadFailed?: boolean; privacy?: PrivacyControl }) {
+export function ModelPicker({ models, value, onChange, paidPlan, signedIn, onExplain, level, loadFailed, privacy }: { models: ModelEntry[]; value: string; onChange: (ref: string) => void; paidPlan?: boolean; signedIn?: boolean; onExplain?: () => void; level?: ProofLevel; loadFailed?: boolean; privacy?: PrivacyControl }) {
   const [open, setOpen] = useState(false);
   const uid = useId(); // ids stay unique if two pickers render
   const reasonId = (m: ModelEntry) => `${uid}why-${ref(m).replace(/[^\w-]/g, "_")}`;
@@ -67,7 +70,7 @@ export function ModelPicker({ models, value, onChange, paidPlan, onExplain, leve
   // The design's two groups: where the model runs.
   const groupOf = (m: ModelEntry) => (pickerGroup(m) === "incognito" ? "incognito" : "enclave");
   const groups = [...new Set(models.map(groupOf))];
-  const locked = (m: ModelEntry) => isLocked(m, paidPlan);
+  const locked = (m: ModelEntry) => isLocked(m, paidPlan) || needsSignIn(m, signedIn, paidPlan);
 
   // Close on outside click; focus the selected (or first enabled) option when the menu opens.
   useEffect(() => {
@@ -146,7 +149,7 @@ export function ModelPicker({ models, value, onChange, paidPlan, onExplain, leve
                     {m.e2ee && <span className="pi-badge"><LockSimple aria-hidden />E2EE</span>}
                   </span>
                   {!m.selectable && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />{blockedReason(m)}</span>}
-                  {m.selectable && locked(m) && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />paid plans only</span>}
+                  {m.selectable && locked(m) && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />{needsSignIn(m, signedIn, paidPlan) ? "sign in to use this model" : "paid plans only"}</span>}
                 </button>
               ))}
             </div>
