@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { normaliseModel } from "@/lib/catalog";
 import { routesByPrice } from "@/lib/routing";
-import { autoEntryOf, autoModels, defaultModelRef, visibleModels } from "@/lib/client/providers";
+import { autoEntryOf, autoModels, defaultModelRef, imagesFor, visibleModels } from "@/lib/client/providers";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, serverCheckedProof, isServerChecked, sdkProof, LEVEL_LABEL, ROUTE_COOLDOWN_MS, type Proof } from "@/lib/client/proof";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ModelPicker } from "@/components/app/ModelPicker";
@@ -30,6 +30,21 @@ describe("auto model in the app", () => {
     // The picker's modality icons come from the cheapest route.
     const vision = { in: ["text", "image"], out: ["text"] };
     expect(autoModels([{ ...near, modalities: vision }])[0].modalities).toEqual(vision);
+  });
+
+  it("takes images on Auto only when every route reads them, and otherwise follows the model the turn is sent to", () => {
+    const vision = { in: ["text", "image"], out: ["text"] };
+    const both = autoModels([{ ...near, modalities: vision }, { ...tinfoil, modalities: vision }]);
+    const one = autoModels([{ ...near, modalities: vision }, tinfoil]);
+    expect(both[0].modalities).toEqual(vision);
+    expect(one[0].modalities).toEqual({ in: ["text"], out: ["text"] }); // the picker's badge says what the composer allows
+    expect(imagesFor(both, "auto:kimi-k3", "tinfoil:kimi-k3")).toBe(true); // a route the picker does not list: Auto's own answer
+    expect(imagesFor(one, "auto:kimi-k3", "")).toBe(false);
+    const nearVision = { ...near, modalities: vision };
+    expect(imagesFor([...one, nearVision], "auto:kimi-k3", "near:moonshotai/kimi-k3")).toBe(false); // this route reads images, but a failover may not
+    expect(imagesFor([...both, near], "auto:kimi-k3", "near:moonshotai/kimi-k3")).toBe(false); // the turn went to a text-only fallback
+    expect(imagesFor([nearVision], "near:moonshotai/kimi-k3", "near:moonshotai/kimi-k3")).toBe(true);
+    expect(imagesFor([near], "near:moonshotai/kimi-k3", "near:moonshotai/kimi-k3")).toBe(false);
   });
 
   it("Auto is the default when it is offered; manual picks stay NEAR-only", () => {

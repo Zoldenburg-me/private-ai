@@ -45,6 +45,11 @@ export default function Datenschutz() {
           Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.
           Sie schalten die Websuche unter Einstellungen → Account → „Privacy &amp; tools“ oder im „+“-Menü der Chatleiste aus; im Ghost-Chat ist sie aus, bis Sie sie dort einschalten.
           Diese Einstellung speichern wir nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
+        <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien, die Sie an eine Nachricht anhängen, werden in Ihrem Browser gelesen (Bilder verkleinert, PDFs in Text umgewandelt)
+          und als Teil der Nachricht an den gewählten Anbieter gesendet, genau wie getippter Text, bei Dokumenten mit dem Dateinamen. Beim Verkleinern entfallen die Metadaten der Bilder
+          (z. B. EXIF-Standortangaben). Ist die Websuche an, kann das Modell auch Inhalte angehängter Dateien in Suchanfragen übernehmen. Wir speichern und protokollieren Anhänge nicht.
+          In Ihrem Chatverlauf im Browser (und in Ihren verschlüsselten Backups) bleiben der Text angehängter Dokumente und die Dateinamen, von Bildern nur der Dateiname.
+          <Todo>Rechtsgrundlage für Anhänge prüfen, auch für besondere Kategorien (Art. 9 DSGVO) und Daten Dritter in Bildern und Dokumenten</Todo></p>
         <h3>5. Passkeys (optional)</h3>
         <p>Wenn Sie einen Passkey hinzufügen, speichern wir dessen ID, den öffentlichen Schlüssel, einen Signaturzähler und die Verbindungsart. Biometrische Daten verlassen Ihr Gerät nicht. Für jeden Browser, in dem Sie sich anmelden, speichern wir eine zufällige Geräte-ID mit Erstellungszeitpunkt und dem Tag der letzten Nutzung (kein Gerätename, Modell oder User-Agent); Abmelden oder Entfernen des Geräts unter Einstellungen → Account löscht sie.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.</p>
@@ -104,6 +109,11 @@ export default function Datenschutz() {
           account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.
           Switch web search off under Settings → Account → “Privacy &amp; tools” or in the chat bar’s “+” menu; in ghost chat it is off until you turn it on there.
           We keep this setting only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
+        <p>Attaching files (optional): images, PDFs and text files you attach to a message are read in your browser (images scaled down, PDFs turned into text) and sent to the
+          selected provider as part of the message, just like typed text; documents go with their file name. Scaling images down drops their metadata (such as EXIF location).
+          With web search on, the model may also put content from attached files into search queries. We neither store nor log attachments. Your chat history in the browser
+          (and your encrypted backups) keeps the text and file names of attached documents, and only the file name of images.
+          <Todo>Confirm the legal basis for attachments, including special categories (Art. 9 GDPR) and third parties&apos; data in images and documents</Todo></p>
         <h3>5. Passkeys (optional)</h3>
         <p>If you add a passkey we store its id, public key, signature counter and transport type. Biometric data never leaves your device. Each browser you sign in to gets a random device id with its creation time and the day it was last used (no device name, model or user agent); signing out or removing the device under Settings → Account deletes it. Legal basis: Art. 6(1)(b) GDPR.</p>
         <h3>6. Payments via Stripe</h3>

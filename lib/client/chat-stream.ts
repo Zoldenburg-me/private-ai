@@ -11,37 +11,83 @@ const providerText = (m: string) => /^(provider |empty provider response$|model 
 /** `quota`: which daily quota the reply counted against ("standard" or "incognito"), from the server's headers. */
 export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: string | null; limit?: string | null; quota?: string | null; tools: ToolEvent[] }
 
+type UiPart = { type: string; text?: string; image?: string };
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
-export interface UiMessage { role: string; content: readonly { type: string; text?: string }[]; metadata?: { custom?: Record<string, unknown> } }
+export interface UiMessage { role: string; content: readonly UiPart[]; attachments?: readonly { name: string; content?: readonly UiPart[] }[]; metadata?: { custom?: Record<string, unknown> } }
 
 /** The incognito route an assistant reply came from (zero-retention or anonymized gateway); enclave replies have none. */
 export type Incognito = "private" | "anonymized";
 export const normalizeIncognito = (v: unknown): Incognito | undefined => (v === "private" || v === "anonymized" ? v : undefined);
 
 export type StoredMsg = ChatMessage & { signed?: Signed; incognito?: Incognito };
+/** What /api/chat receives: a user message with images carries OpenAI content parts. */
+export type OutgoingMsg = Omit<ChatMessage, "content"> & { content: string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] };
 
-export function toChatMessages(msgs: readonly UiMessage[]): ChatMessage[] {
-  return msgs
-    .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "system")
-    .map((m) => ({ role: m.role as ChatMessage["role"], content: m.content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("") }));
+const isChatRole = (m: UiMessage) => m.role === "user" || m.role === "assistant" || m.role === "system";
+const textOfParts = (parts: readonly UiPart[]) => parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
+
+/** Attached documents (already wrapped as text) come before what the user typed; images are listed separately. */
+function split(m: UiMessage) {
+  const files = m.attachments ?? [];
+  const docs = files.map((a) => textOfParts(a.content ?? [])).filter(Boolean);
+  const images = files.flatMap((a) => (a.content ?? []).filter((p) => p.type === "image" && p.image).map((p) => ({ name: a.name, url: p.image! })));
+  return { text: [...docs, textOfParts(m.content)].filter(Boolean).join("\n\n"), images };
 }
 
-/** Like toChatMessages, but keeps each assistant reply's signature status and incognito route for local history. */
+const withNames = (text: string, images: { name: string }[]) => [...images.map((i) => `[image: ${i.name}]`), text].filter(Boolean).join("\n\n");
+
+/**
+ * Images go only with the newest user message, and only when the model reads them; earlier ones become their
+ * names, as in stored history. So a chat survives a switch to a text-only model, and old photos do not fill the body cap.
+ */
+export function toChatMessages(msgs: readonly UiMessage[], { images: send = true } = {}): OutgoingMsg[] {
+  const chat = msgs.filter(isChatRole);
+  const newest = chat.findLastIndex((m) => m.role === "user");
+  return chat.map((m, i) => {
+    const { text, images } = split(m);
+    const role = m.role as ChatMessage["role"];
+    if (!images.length) return { role, content: text };
+    if (i !== newest || !send) return { role, content: withNames(text, images) };
+    return { role, content: [...(text ? [{ type: "text" as const, text }] : []), ...images.map((i) => ({ type: "image_url" as const, image_url: { url: i.url } }))] };
+  });
+}
+
+/** The newest user message carries an image (to refuse it up front for a model that does not read images). */
+export const newestHasImage = (msgs: readonly UiMessage[]) =>
+  split(msgs.filter((m) => m.role === "user").at(-1) ?? { role: "user", content: [] }).images.length > 0;
+
+const unescapeName = (n: string) => n.replaceAll("&quot;", "\"").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+const STORED_FILE = /^(?:\[image: ([^\]\n]*)\]|<document name="([^"]*)">\n[\s\S]*?\n<\/document>)(?:\n\n|$)/;
+
+/** A stored user message split back into its files' names and the typed text, so a reloaded chat shows chips, not raw documents. */
+export function storedView(content: string): { files: { name: string; type: "image" | "document" }[]; text: string } {
+  const files: { name: string; type: "image" | "document" }[] = [];
+  let rest = content;
+  for (let m = STORED_FILE.exec(rest); m; m = STORED_FILE.exec(rest)) {
+    files.push(m[1] !== undefined ? { name: m[1], type: "image" } : { name: unescapeName(m[2]), type: "document" });
+    rest = rest.slice(m[0].length);
+  }
+  return { files, text: rest };
+}
+
+/**
+ * Like toChatMessages, but for local history: keeps each assistant reply's signature status and incognito route, and
+ * replaces images with their names.
+ * shortcut: images are not in history (localStorage holds ~5 MB), so a reloaded chat no longer shows them to the model; move history to IndexedDB if that matters.
+ */
 export function toStoredMessages(msgs: readonly UiMessage[]): StoredMsg[] {
-  const out: StoredMsg[] = [];
-  for (const m of msgs) {
-    const [chat] = toChatMessages([m]);
-    if (!chat) continue;
+  return msgs.filter(isChatRole).map((m) => {
+    const { text, images } = split(m);
+    const content = withNames(text, images);
     const signed = m.role === "assistant" ? normalizeSigned(m.metadata?.custom?.signed) : undefined;
     const incognito = m.role === "assistant" ? normalizeIncognito(m.metadata?.custom?.incognito) : undefined;
-    out.push({ ...chat, ...(signed ? { signed } : {}), ...(incognito ? { incognito } : {}) });
-  }
-  return out;
+    return { role: m.role as ChatMessage["role"], content, ...(signed ? { signed } : {}), ...(incognito ? { incognito } : {}) };
+  });
 }
 
 export interface StreamOpts {
   model: string;
-  messages: ChatMessage[];
+  messages: OutgoingMsg[];
   persona?: { name: string; system_prompt: string };
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;

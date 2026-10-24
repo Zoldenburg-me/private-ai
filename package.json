@@ -22,6 +22,7 @@
     "ioredis": "^6.0.0",
     "next": "^15.5.28",
     "openai": "^6.49.0",
+    "pdfjs-dist": "^6.4.299",
     "postgres": "^3.4.9",
     "privatemode-ai": "^1.59.0",
     "react": "^19.1.0",

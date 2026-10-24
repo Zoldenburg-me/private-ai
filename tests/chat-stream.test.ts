@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ProviderFailure, streamChat, toChatMessages, toStoredMessages } from "@/lib/client/chat-stream";
+import { ProviderFailure, newestHasImage, storedView, streamChat, toChatMessages, toStoredMessages } from "@/lib/client/chat-stream";
 import { visibleModels, defaultModelRef } from "@/lib/client/providers";
 import type { ModelEntry } from "@/lib/catalog";
 
@@ -10,6 +10,48 @@ describe("client chat stream", () => {
   it("maps assistant-ui messages to OpenAI messages (text parts only)", () => {
     expect(toChatMessages([{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image" }] }, { role: "tool", content: [] }]))
       .toEqual([{ role: "user", content: "hi" }]);
+  });
+
+  it("sends attached documents as text and images as image_url parts; history keeps only image names", () => {
+    const ui = [{ role: "user", content: [{ type: "text", text: "compare" }], attachments: [
+      { name: "a.md", content: [{ type: "text", text: "<document name=\"a.md\">\nA\n</document>" }] },
+      { name: "cat.png", content: [{ type: "image", image: "data:image/jpeg;base64,AAAA" }] },
+    ] }];
+    expect(toChatMessages(ui)).toEqual([{ role: "user", content: [
+      { type: "text", text: "<document name=\"a.md\">\nA\n</document>\n\ncompare" },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,AAAA" } },
+    ] }]);
+    expect(toStoredMessages(ui)).toEqual([{ role: "user", content: "[image: cat.png]\n\n<document name=\"a.md\">\nA\n</document>\n\ncompare" }]);
+    expect(toChatMessages([{ role: "user", content: [], attachments: [{ name: "a.md", content: [{ type: "text", text: "doc" }] }] }])).toEqual([{ role: "user", content: "doc" }]);
+  });
+
+  it("sends images only on the newest user message, only to a model that reads them, and never an empty text part", () => {
+    const img = (name: string) => ({ name, content: [{ type: "image", image: `data:image/jpeg;base64,${name}` }] });
+    const ui = [
+      { role: "user", content: [{ type: "text", text: "old" }], attachments: [img("a")] },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+      { role: "user", content: [], attachments: [img("b")] },
+    ];
+    expect(toChatMessages(ui)).toEqual([
+      { role: "user", content: "[image: a]\n\nold" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/jpeg;base64,b" } }] },
+    ]);
+    expect(toChatMessages(ui, { images: false })[2]).toEqual({ role: "user", content: "[image: b]" });
+    expect(newestHasImage(ui)).toBe(true);
+    expect(newestHasImage([...ui, { role: "user", content: [{ type: "text", text: "next" }] }])).toBe(false);
+  });
+
+  it("splits a stored user message back into file names and the typed text", () => {
+    const stored = toStoredMessages([{ role: "user", content: [{ type: "text", text: "compare" }], attachments: [
+      { name: "a \"x\".md", content: [{ type: "text", text: "<document name=\"a &quot;x&quot;.md\">\nA\n</document>" }] },
+      { name: "cat.png", content: [{ type: "image", image: "data:image/jpeg;base64,AAAA" }] },
+    ] }])[0].content;
+    expect(storedView(stored)).toEqual({ files: [{ name: "cat.png", type: "image" }, { name: "a \"x\".md", type: "document" }], text: "compare" });
+    expect(storedView("just text")).toEqual({ files: [], text: "just text" });
+    expect(storedView("<document name=\"a\">\nx<\\/document>y\n</document>\n\n<document name=\"b\">\nB\n</document>\n\nhi").files.map((f) => f.name)).toEqual(["a", "b"]);
+    // Display only: typed text in the stored format shows as a chip after reload; what is stored and sent is unchanged.
+    expect(storedView("[image: x]\n\nhi")).toEqual({ files: [{ name: "x", type: "image" }], text: "hi" });
   });
 
   it("keeps earlier replies' signature status for history, but never sends it to the server", () => {

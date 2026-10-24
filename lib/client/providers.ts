@@ -40,6 +40,14 @@ function oneRowPerModel(models: ModelEntry[]): ModelEntry[] {
 /** An "auto:<curated model>" picker entry; routes are its TEE providers' refs, cheapest first. */
 export type AutoEntry = ModelEntry & { routes: string[] };
 
+const readsImages = (m?: ModelEntry) => !!m?.modalities?.in.includes("image");
+
+/** The cheapest route's modalities, but "image" only if every route reads images: a turn can fail over to any of them. */
+function autoModalities(routes: ModelEntry[]) {
+  const m = routes[0].modalities;
+  return m && (routes.every(readsImages) ? m : { ...m, in: m.in.filter((x) => x !== "image") });
+}
+
 /**
  * Auto entries for the picker, built from the full catalog (Phala and Tinfoil included, though they are not
  * offered for manual picks). The chat page sends to the cheapest route whose proof holds, never to "auto:" itself.
@@ -47,13 +55,25 @@ export type AutoEntry = ModelEntry & { routes: string[] };
 export function autoModels(all: ModelEntry[]): AutoEntry[] {
   return Object.keys(CURATED).flatMap((id) => {
     const routes = routesByPrice(all, id);
-    return routes.length ? [{ id, provider: "auto", name: `Auto · ${routes[0].name.replace(/^[^:]+:\s*/, "")}`, privacy: "tee" as const, tee: true, e2ee: false, selectable: true, ...(routes[0].modalities && { modalities: routes[0].modalities }), routes: routes.map((m) => `${m.provider}:${m.id}`) }] : [];
+    return routes.length ? [{ id, provider: "auto", name: `Auto · ${routes[0].name.replace(/^[^:]+:\s*/, "")}`, privacy: "tee" as const, tee: true, e2ee: false, selectable: true, ...(routes[0].modalities && { modalities: autoModalities(routes) }), routes: routes.map((m) => `${m.provider}:${m.id}`) }] : [];
   });
 }
 
 /** The Auto entry `ref` selects, if any (checked, not cast: it must carry its routes). */
 export const autoEntryOf = (models: ModelEntry[], ref: string): AutoEntry | undefined =>
   models.find((m): m is AutoEntry => m.provider === "auto" && `auto:${m.id}` === ref && Array.isArray((m as Partial<AutoEntry>).routes));
+
+/**
+ * Whether the turn's model reads images. Auto: only if every route does (a turn can fail over to any of them) and the
+ * model it is sent to does too, when the picker lists it (the NEAR fallback can be another model). Unknown modalities: no images.
+ */
+export function imagesFor(models: ModelEntry[], modelRef: string, sendRef: string): boolean {
+  const find = (ref: string) => models.find((m) => `${m.provider}:${m.id}` === ref);
+  const auto = autoEntryOf(models, modelRef);
+  if (!auto) return readsImages(find(modelRef));
+  const sent = find(sendRef);
+  return readsImages(auto) && (!sent || readsImages(sent));
+}
 
 /** Auto's universal fallback: NEAR's default model, if NEAR offers one. */
 export const nearDefault = (models: ModelEntry[]) => defaultModelRef(models.filter((m) => m.provider === "near")) || undefined;

@@ -24,3 +24,16 @@ export const DEFAULT_OUTPUT_TOKENS = 4_096;
 
 /** Conservative: UTF-8 bytes / 3, so CJK and other non-Latin text is not undercounted. */
 export const estimateTokens = (s: string) => Math.ceil(new TextEncoder().encode(s).length / 3);
+
+/** Flat cost per inline image: its base64 bytes say nothing about the tokens a vision model spends on it. */
+export const IMAGE_TOKENS = 1_500;
+/** estimateTokens of a request body, with each image_url counted as IMAGE_TOKENS instead of its bytes. */
+export function estimateBodyTokens(body: unknown): number {
+  let images = 0;
+  const json = JSON.stringify(body, (k, v) => {
+    if (k !== "image_url") return v;
+    images++;
+    return undefined;
+  });
+  return estimateTokens(json) + images * IMAGE_TOKENS;
+}

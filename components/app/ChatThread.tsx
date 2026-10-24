@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ActionBarPrimitive, AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useLocalRuntime,
+  ActionBarPrimitive, AssistantRuntimeProvider, AttachmentPrimitive, ComposerPrimitive, ThreadPrimitive, useLocalRuntime, type ThreadRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
 } from "@assistant-ui/react";
-import { ArrowCounterClockwise, ArrowUp, CheckCircle, Copy, EyeSlash, Lightbulb, MagnifyingGlass, MinusCircle, Paperclip, Stop, XCircle } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, ArrowUp, CheckCircle, Copy, EyeSlash, FileText, ImageSquare, Lightbulb, MagnifyingGlass, MinusCircle, Paperclip, Stop, X, XCircle } from "@phosphor-icons/react";
 import { SafeMarkdown } from "@/components/markdown";
-import { ProviderFailure, normalizeIncognito, streamChat, toChatMessages, toStoredMessages, type Incognito, type StoredMsg } from "@/lib/client/chat-stream";
+import { acceptFor, readAttachment } from "@/lib/client/attachments";
+import { ProviderFailure, newestHasImage, normalizeIncognito, storedView, streamChat, toChatMessages, toStoredMessages, type Incognito, type StoredMsg } from "@/lib/client/chat-stream";
 import { normalizeSigned, type Signed } from "@/lib/client/proof";
 import type { Receipt, ToolEvent } from "@/lib/sse";
 import { publicHttpUrl } from "@/lib/web-search";
@@ -53,6 +54,8 @@ export interface ThreadProps {
   incognito?: Incognito;
   /** Send through /api/agent: the model may search the web. A standing line under the composer says so. */
   webSearch?: boolean;
+  /** The selected model reads images (its input modalities include image); otherwise only documents can be attached. */
+  images?: boolean;
   /** The composer's "+" tools menu; without one the design's "coming soon" icons show. */
   toolsSlot?: ReactNode;
 }
@@ -115,18 +118,50 @@ export function turnToStore(stored: StoredMsg[], text: string, signed?: Signed, 
 export const incognitoLine = (incognito: Incognito | undefined) =>
   incognito === "private" ? "Incognito · zero-retention" : incognito === "anonymized" ? "Incognito · anonymized" : undefined;
 
-function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognito }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognito?: Incognito }) {
+/** Attached file names above a user's message (the files themselves are not shown again). */
+function Files({ files }: { files: readonly { name: string; type: string }[] }) {
+  return (
+    <ul className="files" aria-label="Attached files">
+      {files.map((f, i) => <li key={`${i}:${f.name}`} className="file-chip">{f.type === "image" ? <ImageSquare aria-hidden /> : <FileText aria-hidden />}{f.name}</li>)}
+    </ul>
+  );
+}
+
+/** Paperclip: reads the picked files in the browser (lib/client/attachments.ts) and adds them to the composer. */
+function AttachButton({ thread, images, onError }: { thread: ThreadRuntime; images: boolean; onError: (message: string | null) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const add = async (files: FileList | null) => {
+    onError(null);
+    for (const file of Array.from(files ?? [])) {
+      try { await thread.composer.addAttachment(await readAttachment(file, { images })); } catch (e) { onError((e as Error).message); }
+    }
+    if (input.current) input.current.value = ""; // picking the same file again still fires onChange
+  };
+  const what = images ? "images, PDFs or text files" : "PDFs or text files";
+  return (
+    <>
+      <button type="button" className="tool-toggle" data-testid="attach" aria-label={`Attach ${what}`} title={`Attach ${what}. They are read in this browser and sent to the model with your message.`}
+        onClick={() => input.current?.click()}><Paperclip weight="duotone" aria-hidden /></button>
+      <input ref={input} type="file" multiple accept={acceptFor(images)} hidden data-testid="attach-input" onChange={(e) => void add(e.target.files)} />
+    </>
+  );
+}
+
+function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognito, files }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognito?: Incognito; files?: readonly { name: string; type: string }[] }) {
   const sig = signed ? SIG[signed] : undefined;
   const line = incognitoLine(incognito);
   const view = replyView(content, running, isLast);
+  // A reloaded chat has no attachments, only their names and text inside the stored message.
+  const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
+        {shown.files.length > 0 && <Files files={shown.files} />}
         {tools && tools.length > 0 && <ToolSteps tools={tools} />}
         {role === "assistant"
           ? view.body === "text" ? <div className="md"><SafeMarkdown text={content} /></div> : view.body === "writing" ? <p className="writing">Writing…</p> : <p className="writing" data-testid="no-reply">No reply received</p>
-          : <span className="pre">{content}</span>}
+          : <span className="pre">{shown.text}</span>}
         {role === "assistant" && (view.copy || view.retry) && (
           <div className="msg-actions">
             {view.copy && <ActionBarPrimitive.Copy className="icon-btn" title="Copy" aria-label="Copy"><Copy weight="duotone" aria-hidden /></ActionBarPrimitive.Copy>}
@@ -155,6 +190,7 @@ function Soon({ icon, label }: { icon: ReactNode; label: string }) {
 /** One conversation, rendered with assistant-ui primitives on a LocalRuntime backed by /api/chat. */
 export function ChatThread(props: ThreadProps) {
   const ref = useRef(props); ref.current = props;
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   const adapter = useMemo<ChatModelAdapter>(() => ({
     async *run({ messages, abortSignal }) {
@@ -162,7 +198,7 @@ export function ChatThread(props: ThreadProps) {
       const ghost = p.ghost; // fixed for this turn
       const turn = p.scope.begin(p.chat.id); // a chat switch aborts this stream and drops later UI updates
       const signal = AbortSignal.any([abortSignal, turn.signal]);
-      const history = toChatMessages(messages as never);
+      const history = toChatMessages(messages as never, { images: !!p.images });
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       const agent = !!p.webSearch; // the model decides per message whether to search
@@ -173,10 +209,16 @@ export function ChatThread(props: ThreadProps) {
       const save = (signed?: Signed) => {
         if (turn.discarded()) return; // the chat was deleted or wiped meanwhile
         const msgs = turnToStore(stored, text, signed, incognito);
-        const first = history.find((m) => m.role === "user")?.content ?? "New chat";
+        const firstUser = messages.find((m) => m.role === "user");
+        const first = (firstUser && textOf(firstUser.content as never)) || firstUser?.attachments?.[0]?.name || "New chat";
         p.onSaved({ ...p.chat, title: p.chat.messages.length ? p.chat.title : first.slice(0, 48), messages: msgs, updatedAt: Date.now() }, ghost, turn.current());
       };
       const reply = async function* (): AsyncGenerator<ChatModelRunResult, void> {
+        if (!p.images && newestHasImage(messages as never)) { // the model was switched after the image was attached
+          text = "⚠️ This model does not read images. Pick one that does, or send a new message without the image."; save();
+          yield { content: [{ type: "text", text }], status: { type: "incomplete", reason: "error", error: text } };
+          return;
+        }
         try {
           for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent })) {
             text = u.text; tools = u.tools; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining, u.limit, u.quota);
@@ -220,11 +262,22 @@ export function ChatThread(props: ThreadProps) {
   const [hi, em] = greeting(new Date().getHours(), props.ghost);
   const composer = (big: boolean) => (
     <ComposerPrimitive.Root className={`composer ${big ? "big" : ""}`}>
+      <div className="composer-files">
+        <ComposerPrimitive.Attachments>
+          {({ attachment }) => (
+            <AttachmentPrimitive.Root className="file-chip">
+              {attachment.type === "image" ? <ImageSquare aria-hidden /> : <FileText aria-hidden />}
+              <AttachmentPrimitive.Name />
+              <AttachmentPrimitive.Remove className="file-remove" aria-label={`Remove ${attachment.name}`}><X aria-hidden /></AttachmentPrimitive.Remove>
+            </AttachmentPrimitive.Root>
+          )}
+        </ComposerPrimitive.Attachments>
+      </div>
       <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" rows={big ? 3 : 1} autoFocus
         placeholder={big ? (props.ghost ? "Ask anything. This chat won't be saved." : "Ask anything, privately…") : (props.ghost ? "Reply — not saved" : "Reply…")} />
       <div className="composer-bar">
+        <AttachButton thread={runtime.thread} images={!!props.images} onError={setAttachError} />
         {props.toolsSlot ?? <>
-          <Soon icon={<Paperclip weight="duotone" aria-hidden />} label="Attach a file" />
           <Soon icon={<Lightbulb weight="duotone" aria-hidden />} label="Think longer" />
         </>}
         {props.ghostToggle}
@@ -239,7 +292,10 @@ export function ChatThread(props: ThreadProps) {
       </div>
     </ComposerPrimitive.Root>
   );
-  const hints = props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>;
+  const hints = <>
+    {attachError && <p className="composer-hint attach-error" role="alert" data-testid="attach-error">{attachError}</p>}
+    {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
+  </>;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -266,7 +322,8 @@ export function ChatThread(props: ThreadProps) {
                 <Message role={message.role} content={textOf(message.content as never)} running={message.status?.type === "running"} isLast={message.isLast}
                   signed={normalizeSigned((message.metadata?.custom as { signed?: unknown } | undefined)?.signed)}
                   tools={(message.metadata?.custom as { tools?: ToolEvent[] } | undefined)?.tools} onOpenProof={props.onOpenProof}
-                  incognito={normalizeIncognito((message.metadata?.custom as { incognito?: unknown } | undefined)?.incognito)} />
+                  incognito={normalizeIncognito((message.metadata?.custom as { incognito?: unknown } | undefined)?.incognito)}
+                  files={message.role === "user" ? message.attachments : undefined} />
               )}
             </ThreadPrimitive.Messages>
           </ThreadPrimitive.Viewport>
