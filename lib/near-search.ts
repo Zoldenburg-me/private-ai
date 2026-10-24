@@ -26,15 +26,20 @@ export class NearSearchSteps {
   private n = 0;
   constructor(private readonly step: number) {}
 
-  /** One `delta.tool_calls` entry: arguments arrive in pieces, keyed by index. */
-  toolDelta(t: unknown): void {
-    if (!isObj(t)) return;
+  /**
+   * One `delta.tool_calls` entry: arguments arrive in pieces, keyed by index. True when it starts a new search:
+   * NEAR runs an iteration's searches only after its stream ends, so counting here comes before any of them runs.
+   */
+  toolDelta(t: unknown): boolean {
+    if (!isObj(t)) return false;
     const i = typeof t.index === "number" ? t.index : 0;
-    if (!Number.isInteger(i) || i < 0 || i >= 8) return; // NEAR runs at most 8 calls per iteration
+    if (!Number.isInteger(i) || i < 0 || i >= 8) return false; // NEAR runs at most 8 calls per iteration
+    const fresh = !this.calls[i];
     const c = (this.calls[i] ??= { upstream: "", args: "" });
     if (typeof t.id === "string" && !c.upstream) c.upstream = t.id.slice(0, 128);
     const f = isObj(t.function) ? t.function : {};
     if (typeof f.arguments === "string" && c.args.length < MAX_ARGS_CHARS) c.args += f.arguments;
+    return fresh;
   }
 
   /** `finish_reason: "tool_calls"`: the queries are complete and NEAR is searching now. */

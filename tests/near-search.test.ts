@@ -141,6 +141,26 @@ describe("NEAR in-enclave web search", () => {
     expect(out.error).toBe("search limit for this answer reached");
   });
 
+  it("a call past the budget cancels NEAR before its iteration ends, so no search runs past it", async () => {
+    const { id, token } = issueToken(); // free: 4 searches
+    // One iteration with 5 calls, each in two pieces; NEAR would search only after the finish_reason line.
+    const lines = [...Array.from({ length: 5 }, (_, i) => [
+      line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: `t${i}`, type: "function", function: { name: "web_context_search", arguments: "" } }] } }] }),
+      line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: `{"query": "q${i}"}` } }] } }] }),
+    ]).flat(), line({ id: "chat-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }), answer];
+    let pulled = 0; let cancelled = false;
+    const fetchImpl = (async () => new Response(new ReadableStream({
+      pull(c) { if (pulled < lines.length) c.enqueue(new TextEncoder().encode(lines[pulled++])); else c.close(); },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }))) as unknown as typeof fetch;
+    const res = await handleAgent(req(token, ask(`near:${MODEL}`)), "/api/agent", { catalog, env, fetchImpl, log: () => {} });
+    const out = parseSseChunk((await res.text()) + "\n");
+    expect(out.error).toBe("search limit for this answer reached");
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThan(lines.length - 1); // stopped at the 5th call's first piece, never reaching the finish_reason line
+    expect((await usage(id, "free")).usedToday).toBe(5); // the request and the 4 searches in budget
+  });
+
   it("a stream cut after a search iteration is an error, not a finished answer", async () => {
     const { token } = issueToken();
     const out = await run(token, `near:${MODEL}`, upstream(() => nearStream(1, line({ id: "chat-1", choices: [{ index: 0, delta: { content: "Part" } }] }))));
