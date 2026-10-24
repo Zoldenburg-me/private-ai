@@ -15,6 +15,11 @@ describe("encrypted backup", () => {
     await expect(decryptBackup(f, "wrong horse!")).rejects.toThrow(/wrong passphrase/);
     await expect(encryptBackup({}, "short")).rejects.toThrow();
   });
+  it("round-trips an export larger than 100 KB", async () => {
+    const data = { chats: [{ id: "1", title: "long", messages: [{ role: "user", content: "x".repeat(300_000) }] }] };
+    const f = await encryptBackup(data, "correct horse", 1000);
+    expect(await decryptBackup(f, "correct horse")).toEqual(data);
+  });
 });
 
 describe("personas (local only)", () => {
