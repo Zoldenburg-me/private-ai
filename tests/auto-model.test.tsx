@@ -27,6 +27,9 @@ describe("auto model in the app", () => {
     expect(autoModels([])).toEqual([]);
     // Names come from whichever provider is cheapest; the vendor prefix some providers add is dropped.
     expect(autoModels([{ ...near, name: "MoonshotAI: Kimi K3" }])[0].name).toBe("Auto · Kimi K3");
+    // The picker's modality icons come from the cheapest route.
+    const vision = { in: ["text", "image"], out: ["text"] };
+    expect(autoModels([{ ...near, modalities: vision }])[0].modalities).toEqual(vision);
   });
 
   it("Auto is the default when it is offered; manual picks stay NEAR-only", () => {
