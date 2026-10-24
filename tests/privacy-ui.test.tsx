@@ -26,9 +26,13 @@ describe("privacy level pill", () => {
 
 describe("tools menu", () => {
   it("says whether web search is on, and is off-limits when the server has no search", () => {
-    expect(renderToStaticMarkup(<ToolsMenu available webSearch onWebSearch={noop} />)).toContain("Tools: web search on");
+    expect(renderToStaticMarkup(<ToolsMenu available webSearch onWebSearch={noop} />)).toContain("Tools: web search enabled");
     expect(renderToStaticMarkup(<ToolsMenu available webSearch={false} onWebSearch={noop} />)).toContain("Tools: web search off");
     expect(renderToStaticMarkup(<ToolsMenu available={false} webSearch onWebSearch={noop} />)).toContain("Tools: web search off");
+  });
+  it("hints \"Web search enabled\" on hover and focus only while search is on", () => {
+    expect(renderToStaticMarkup(<ToolsMenu available webSearch onWebSearch={noop} />)).toContain('data-tip="Web search enabled"');
+    expect(renderToStaticMarkup(<ToolsMenu available webSearch={false} onWebSearch={noop} />)).not.toContain("data-tip");
   });
   it("uses plain buttons, not menu roles that promise arrow-key navigation it does not have", () => {
     const src = readFileSync("components/app/ToolsMenu.tsx", "utf8");

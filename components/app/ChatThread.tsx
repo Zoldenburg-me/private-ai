@@ -57,9 +57,6 @@ export interface ThreadProps {
   toolsSlot?: ReactNode;
 }
 
-/** Shown under the composer while web search is on: what leaves, to whom, and what it costs. */
-export const SEARCH_NOTE = "Searches the web when needed: only the search query goes to Brave, without your identity. Each search step counts as a message.";
-
 /** The design's greeting: by time of day, or the ghost-chat warning. */
 export function greeting(hour: number, ghost: boolean): [string, string] {
   if (ghost) return ["Nothing here", "will be saved."];
@@ -242,10 +239,7 @@ export function ChatThread(props: ThreadProps) {
       </div>
     </ComposerPrimitive.Root>
   );
-  const hints = <>
-    {props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>}
-    {props.webSearch && <p className="composer-hint" data-testid="search-note">{SEARCH_NOTE}</p>}
-  </>;
+  const hints = props.hint && <p className="composer-hint" data-testid="composer-hint">{props.hint}</p>;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
