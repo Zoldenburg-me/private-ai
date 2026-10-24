@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ModelEntry } from "@/lib/catalog";
-import { ModelPicker } from "@/components/app/ModelPicker";
+import { ModalityIcons, ModelPicker, blockedReason } from "@/components/app/ModelPicker";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { SettingsView } from "@/components/app/SettingsView";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
@@ -59,5 +59,29 @@ describe("proof sheet", () => {
     const html = renderToStaticMarkup(<ProofDrawer proof={proof} open onClose={noop} onRecheck={noop} autoNote="Auto uses NEAR AI Cloud: the cheapest enclave." />);
     expect(html).toContain("data-testid=\"auto-note\"");
     expect(html).toContain("Auto uses NEAR AI Cloud");
+  });
+});
+
+describe("model modality icons", () => {
+  const base: ModelEntry = { id: "x", provider: "near", name: "X", privacy: "tee", tee: true, e2ee: false, selectable: true };
+  const icons = (modalities?: ModelEntry["modalities"]) => renderToStaticMarkup(<ModalityIcons m={{ ...base, modalities }} />);
+  it("shows what the model reads and makes", () => {
+    const vision = icons({ in: ["text", "image"], out: ["text"] });
+    expect(vision).toContain("Text");
+    expect(vision).toContain("Reads images");
+    expect(vision).not.toContain("Makes images");
+    expect(icons({ in: ["text"], out: ["image"] })).toContain("Makes images");
+    expect(icons({ in: ["audio"], out: ["text"] })).toContain("Audio");
+  });
+  it("says why a model cannot be picked", () => {
+    const off = { ...base, selectable: false };
+    expect(blockedReason({ ...off, modalities: { in: ["text"], out: ["image"] } })).toBe("makes images, not a chat model");
+    expect(blockedReason({ ...off, modalities: { in: ["audio"], out: ["text"] } })).toBe("speech to text, not a chat model");
+    expect(blockedReason({ ...off, modalities: { in: ["text"], out: ["embedding"] } })).toBe("embeddings, not a chat model");
+    expect(blockedReason({ ...off, modalities: { in: ["text"], out: ["text"] } })).toBe("not a chat model");
+    expect(blockedReason({ ...off, privacy: "anonymized", tee: false })).toBe("blocked by privacy policy");
+  });
+  it("shows nothing when the provider does not say", () => {
+    expect(icons()).toBe("");
   });
 });

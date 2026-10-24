@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { normaliseModel, type ModelEntry } from "../lib/catalog";
+import { findSelectable, normaliseModel, type ModelEntry } from "../lib/catalog";
 import { cheapestRoute } from "../lib/routing";
 import { handleChat } from "../lib/handler";
 import { issueToken } from "../lib/session";
@@ -70,5 +70,51 @@ describe("auto: refs in the chat handler", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].url).toBe("https://inference.phala.com/v1/chat/completions");
     expect(sent[0].body.model).toBe("z-ai/glm-5.3");
+  });
+});
+
+describe("modalities decide what can chat", () => {
+  // Real NEAR /models entries (2026-10-24); every one of them is attested.
+  const nearM = (id: string, i: string[], o: string[], params: string[] = ["temperature", "max_tokens"]) =>
+    normaliseModel({ id: "near", privacy: "tee-attested" }, { id, input_modalities: i, output_modalities: o, supported_sampling_parameters: params }, true);
+  const klein = nearM("black-forest-labs/FLUX.2-klein-4B", ["text"], ["image"], ["n"]);
+  const whisper = nearM("openai/whisper-large-v3", ["audio"], ["text"], ["temperature"]);
+  const embed = nearM("Qwen/Qwen3-Embedding-0.6B", ["text"], ["embedding"], []);
+  const rerank = nearM("Qwen/Qwen3-Reranker-0.6B", ["text"], ["text"], []);
+  const filter = nearM("openai/privacy-filter", ["text"], ["text"], []);
+  const vision = nearM("Qwen/Qwen3-VL-30B-A3B-Instruct", ["text", "image"], ["text"]);
+  const catalog = [klein, whisper, embed, rerank, filter, vision];
+
+  it("only text-in, text-out generative models are selectable", () => {
+    for (const m of [klein, whisper, embed, rerank, filter]) {
+      expect(m.selectable).toBe(false);
+      expect(findSelectable(catalog, "near", m.id)).toBeUndefined();
+    }
+    expect(findSelectable(catalog, "near", vision.id)).toBe(vision);
+    expect(vision.modalities).toEqual({ in: ["text", "image"], out: ["text"] });
+    expect(klein.modalities).toEqual({ in: ["text"], out: ["image"] });
+  });
+
+  it("reads NEAR's architecture block and Tinfoil's type", () => {
+    expect(normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "k", architecture: { inputModalities: ["text", "image"], outputModalities: ["text"] } }, true))
+      .toMatchObject({ selectable: true, modalities: { in: ["text", "image"], out: ["text"] } });
+    expect(tee("tinfoil", { id: "kimi-k3", type: "chat", multimodal: true }).modalities).toEqual({ in: ["text", "image"], out: ["text"] });
+    expect(tee("tinfoil", { id: "glm-5-3", type: "chat", multimodal: false }).modalities).toEqual({ in: ["text"], out: ["text"] });
+    expect(tee("tinfoil", { id: "qwen3-tts", type: "tts" })).toMatchObject({ selectable: false, modalities: { in: ["text"], out: ["audio"] } });
+  });
+
+  it("applies behind the anonymizing gateway too", () => {
+    const venice = { id: "venice", privacy: "anon-gateway" } as const;
+    expect(normaliseModel(venice, { id: "img", input_modalities: ["text"], output_modalities: ["image"] }).selectable).toBe(false);
+    expect(normaliseModel(venice, { id: "chat" }).selectable).toBe(true);
+  });
+
+  it("a model with no modality data keeps its old verdict", () => {
+    expect(near.modalities).toBeUndefined();
+    expect(near.selectable).toBe(true);
+    expect(tee("near", { id: "x", input_modalities: "text", output_modalities: ["text"] }).modalities).toBeUndefined(); // not an array: ignored
+    const empty = tee("phala", { id: "x", input_modalities: [], output_modalities: [] }); // empty: unknown
+    expect(empty.modalities).toBeUndefined();
+    expect(empty.selectable).toBe(true);
   });
 });

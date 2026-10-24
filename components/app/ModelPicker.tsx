@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { CaretDown, Check, Detective, EyeSlash, LockSimple, MaskHappy, Prohibit, Question, ShieldCheck } from "@phosphor-icons/react";
+import { CaretDown, Check, Detective, EyeSlash, ImageSquare, LockSimple, MagicWand, MaskHappy, Prohibit, Question, ShieldCheck, TextT, Waveform } from "@phosphor-icons/react";
 import type { ProofLevel } from "@/lib/client/proof";
-import type { ModelEntry } from "@/lib/catalog";
+import type { Modalities, ModelEntry } from "@/lib/catalog";
 import { ANONYMIZED_NOTE, PROVIDER_LABEL, pickerGroup } from "@/lib/client/providers";
 import { LEVELS, type Level } from "@/lib/client/levels";
 
@@ -15,6 +15,31 @@ export const isLocked = (m: ModelEntry, paidPlan: boolean | undefined) => !!m.pa
 
 /** Menu badges, as in the design. */
 const BADGE: Record<string, string> = { tee: "TEE", private: "PRIVATE", anonymized: "ANON" };
+
+const MODALITY_ICONS = [
+  { label: "Text", Icon: TextT, on: (x: Modalities) => x.out.includes("text") },
+  { label: "Reads images", Icon: ImageSquare, on: (x: Modalities) => x.in.includes("image") },
+  { label: "Makes images", Icon: MagicWand, on: (x: Modalities) => x.out.includes("image") },
+  { label: "Audio", Icon: Waveform, on: (x: Modalities) => x.in.includes("audio") || x.out.includes("audio") },
+];
+
+/** Why a model cannot be picked: privacy, or it is not a chat model (and then what it is). */
+export function blockedReason(m: ModelEntry): string {
+  if (m.privacy !== "tee" && m.privacy !== "private") return "blocked by privacy policy";
+  const kind = m.modalities?.out.includes("image") ? "makes images" : m.modalities?.out.includes("embedding") ? "embeddings" : m.modalities?.in.includes("audio") ? "speech to text" : "";
+  return kind ? `${kind}, not a chat model` : "not a chat model";
+}
+
+/** What the model reads and makes, as small icons; nothing when the provider does not say. */
+export function ModalityIcons({ m }: { m: ModelEntry }) {
+  const shown = MODALITY_ICONS.filter((x) => m.modalities && x.on(m.modalities));
+  return shown.length ? (
+    <span className="pi-badge" data-testid="modalities" style={{ color: "var(--muted)" }}>
+      {shown.map(({ label, Icon }) => <span key={label} title={label}><Icon aria-hidden /></span>)}
+      <span className="sr-only">{`, ${shown.map((x) => x.label).join(", ")}`}</span>
+    </span>
+  ) : null;
+}
 
 /** The model's privacy at a glance: a shield (green once the enclave is verified, orange until then),
  *  a detective for anonymized incognito models, a mask for zero-retention private ones. */
@@ -112,11 +137,12 @@ export function ModelPicker({ models, value, onChange, paidPlan, onExplain, leve
                   <span className="pi-text"><span className="pi-name">{nameOf(m)}</span>
                     <span className="pi-desc">{[PROVIDER_LABEL[m.provider] ?? m.provider, m.contextLength && `${Math.round(m.contextLength / 1000)}k context`, m.paid && "Pro"].filter(Boolean).join(" · ")}</span></span>
                   <span className="tags">
-                    <span className="pi-badge">{BADGE[m.privacy] ?? m.privacy.toUpperCase()}</span>
+                    <span className="pi-badge" style={m.privacy === "tee" ? { color: "var(--ok)" } : undefined}>{BADGE[m.privacy] ?? m.privacy.toUpperCase()}</span>
+                    <ModalityIcons m={m} />
                     <Check weight="bold" aria-hidden className="pi-check" style={{ visibility: isOn(m) ? "visible" : "hidden" }} />
                     {m.e2ee && <span className="pi-badge"><LockSimple aria-hidden />E2EE</span>}
                   </span>
-                  {!m.selectable && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />blocked by privacy policy</span>}
+                  {!m.selectable && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />{blockedReason(m)}</span>}
                   {m.selectable && locked(m) && <span className="pi-blocked" id={reasonId(m)}><Prohibit aria-hidden />paid plans only</span>}
                 </button>
               ))}

@@ -47,7 +47,7 @@ export type AutoEntry = ModelEntry & { routes: string[] };
 export function autoModels(all: ModelEntry[]): AutoEntry[] {
   return Object.keys(CURATED).flatMap((id) => {
     const routes = routesByPrice(all, id);
-    return routes.length ? [{ id, provider: "auto", name: `Auto · ${routes[0].name.replace(/^[^:]+:\s*/, "")}`, privacy: "tee" as const, tee: true, e2ee: false, selectable: true, routes: routes.map((m) => `${m.provider}:${m.id}`) }] : [];
+    return routes.length ? [{ id, provider: "auto", name: `Auto · ${routes[0].name.replace(/^[^:]+:\s*/, "")}`, privacy: "tee" as const, tee: true, e2ee: false, selectable: true, ...(routes[0].modalities && { modalities: routes[0].modalities }), routes: routes.map((m) => `${m.provider}:${m.id}`) }] : [];
   });
 }
 

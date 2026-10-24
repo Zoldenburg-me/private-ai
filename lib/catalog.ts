@@ -20,7 +20,11 @@ export interface ModelEntry {
   paid?: boolean;
   /** Behind an anonymizing gateway (Venice, Liquid): its own quota and picker group. A zero-retention contract provider is not incognito. */
   incognito?: true;
+  /** What the model reads and writes ("text", "image", "audio", "embedding"), as the provider reports it; absent when unknown. */
+  modalities?: Modalities;
 }
+
+export interface Modalities { in: string[]; out: string[] }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
 const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
@@ -49,6 +53,8 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const id = String(raw.id ?? raw.model_id ?? raw.modelId ?? "");
   // Paid plans only, whichever provider serves it (a Venice alias counts as its canonical id).
   const paid = PAID_ONLY_MODELS.has(canonicalModelId(id)) ? { paid: true } : {};
+  const m = modalitiesOf(provider.id, raw);
+  const mods = m ? { modalities: m } : {};
   const spec = (raw.model_spec && typeof raw.model_spec === "object" && !Array.isArray(raw.model_spec) ? raw.model_spec : {}) as Raw;
   // Liquid's /models has no display names.
   const name = [raw.name, raw.display_name, spec.name].find((n): n is string => typeof n === "string" && n !== "")
@@ -56,10 +62,10 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   // Nothing behind a gateway can be attested: never TEE or E2EE. PRIVATE only for Venice's pinned self-run models, and only while Venice still says so.
   if (provider.privacy === "anon-gateway") {
     const privacy = provider.id === "venice" && VENICE_PRIVATE.has(id) && spec.privacy === "private" ? "private" : "anonymized";
-    return { id, provider: provider.id, name, privacy, tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: true, incognito: true, ...paid };
+    return { id, provider: provider.id, name, privacy, tee: false, e2ee: false, contextLength: ctxOf(raw), selectable: chatCapable(provider.id, raw, mods.modalities), incognito: true, ...paid, ...mods };
   }
   if (provider.id === "near")
-    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested, price: priceOf(raw), ...paid };
+    return { id, provider: provider.id, name, privacy: nearAttested ? "tee" : "anonymized", tee: nearAttested, e2ee: false, contextLength: ctxOf(raw), selectable: nearAttested && chatCapable(provider.id, raw, mods.modalities), price: priceOf(raw), ...paid, ...mods };
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
@@ -78,17 +84,41 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
     tee,
     e2ee,
     contextLength: ctxOf(raw),
-    selectable: isSelectable(privacy) && chatCapable(provider.id, raw),
+    selectable: isSelectable(privacy) && chatCapable(provider.id, raw, mods.modalities),
     price: priceOf(raw),
     ...paid,
+    ...mods,
   };
 }
 
+/** A non-empty list of strings; anything else (including []) means the provider did not say. */
+const strings = (v: unknown) => (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? (v as string[]) : undefined);
+/** Tinfoil's non-chat types; "chat" is read with its `multimodal` flag (image input). */
+const TINFOIL_TYPES: Record<string, Modalities> = {
+  audio: { in: ["audio"], out: ["text"] },
+  tts: { in: ["text"], out: ["audio"] },
+  embedding: { in: ["text"], out: ["embedding"] },
+};
+
+/** NEAR (and OpenRouter-style lists) report input/output modalities; Tinfoil reports a type. */
+function modalitiesOf(provider: string, raw: Raw): Modalities | undefined {
+  const arch = (raw.architecture && typeof raw.architecture === "object" ? raw.architecture : {}) as Raw;
+  const i = strings(raw.input_modalities ?? arch.inputModalities);
+  const o = strings(raw.output_modalities ?? arch.outputModalities);
+  if (i && o) return { in: i, out: o };
+  if (provider !== "tinfoil") return undefined;
+  if (raw.type === "chat") return { in: raw.multimodal === true ? ["text", "image"] : ["text"], out: ["text"] };
+  return typeof raw.type === "string" && Object.hasOwn(TINFOIL_TYPES, raw.type) ? TINFOIL_TYPES[raw.type] : undefined;
+}
+
 /**
- * Tinfoil and Privatemode also list embedding, speech, safety and tool models. Only Tinfoil's type "chat" and
- * Privatemode's task "generate" can answer a chat; an entry without the field is left to the other checks.
+ * Providers also list image, speech, embedding, safety and tool models. A chat model reads and writes text;
+ * Tinfoil's type "chat" and Privatemode's task "generate" say so too. An entry without the fields is left to the other checks.
  */
-function chatCapable(provider: string, raw: Raw): boolean {
+function chatCapable(provider: string, raw: Raw, modalities?: Modalities): boolean {
+  if (modalities && !(modalities.in.includes("text") && modalities.out.includes("text"))) return false;
+  // NEAR's reranker and PII filter report text in and out; only their empty sampling-parameter list gives them away.
+  if (provider === "near") return !(Array.isArray(raw.supported_sampling_parameters) && raw.supported_sampling_parameters.length === 0);
   if (provider === "tinfoil") return raw.type === undefined || raw.type === "chat";
   if (provider === "privatemode") return !Array.isArray(raw.tasks) || raw.tasks.includes("generate");
   return true;
