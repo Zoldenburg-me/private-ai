@@ -107,6 +107,7 @@ describe("modalities decide what can chat", () => {
     const venice = { id: "venice", privacy: "anon-gateway" } as const;
     expect(normaliseModel(venice, { id: "img", input_modalities: ["text"], output_modalities: ["image"] }).selectable).toBe(false);
     expect(normaliseModel(venice, { id: "chat" }).selectable).toBe(true);
+    expect(normaliseModel(venice, { id: "c", input_modalities: ["Text"], output_modalities: ["TEXT"] })).toMatchObject({ selectable: true, modalities: { in: ["text"], out: ["text"] } });
   });
 
   it("a model with no modality data keeps its old verdict", () => {

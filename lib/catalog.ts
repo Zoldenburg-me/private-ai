@@ -92,7 +92,7 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
 }
 
 /** A non-empty list of strings; anything else (including []) means the provider did not say. */
-const strings = (v: unknown) => (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? (v as string[]) : undefined);
+const strings = (v: unknown) => (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string") ? v.map((x: string) => x.toLowerCase()) : undefined);
 /** Tinfoil's non-chat types; "chat" is read with its `multimodal` flag (image input). */
 const TINFOIL_TYPES: Record<string, Modalities> = {
   audio: { in: ["audio"], out: ["text"] },

@@ -25,9 +25,12 @@ const MODALITY_ICONS = [
 
 /** Why a model cannot be picked: privacy, or it is not a chat model (and then what it is). */
 export function blockedReason(m: ModelEntry): string {
-  if (m.privacy !== "tee" && m.privacy !== "private") return "blocked by privacy policy";
-  const kind = m.modalities?.out.includes("image") ? "makes images" : m.modalities?.out.includes("embedding") ? "embeddings" : m.modalities?.in.includes("audio") ? "speech to text" : "";
-  return kind ? `${kind}, not a chat model` : "not a chat model";
+  // Incognito models are anonymized yet selectable: theirs is never a privacy block.
+  if (!m.incognito && m.privacy !== "tee" && m.privacy !== "private") return "blocked by privacy policy";
+  if (m.modalities?.out.includes("image")) return "makes images, not a chat model";
+  if (m.modalities?.out.includes("embedding")) return "embeddings, not a chat model";
+  if (m.modalities?.in.includes("audio")) return "speech to text, not a chat model";
+  return "not a chat model";
 }
 
 /** What the model reads and makes, as small icons; nothing when the provider does not say. */

@@ -80,6 +80,7 @@ describe("model modality icons", () => {
     expect(blockedReason({ ...off, modalities: { in: ["text"], out: ["embedding"] } })).toBe("embeddings, not a chat model");
     expect(blockedReason({ ...off, modalities: { in: ["text"], out: ["text"] } })).toBe("not a chat model");
     expect(blockedReason({ ...off, privacy: "anonymized", tee: false })).toBe("blocked by privacy policy");
+    expect(blockedReason({ ...off, privacy: "anonymized", tee: false, incognito: true, modalities: { in: ["text"], out: ["image"] } })).toBe("makes images, not a chat model");
   });
   it("shows nothing when the provider does not say", () => {
     expect(icons()).toBe("");
