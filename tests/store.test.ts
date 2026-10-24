@@ -167,6 +167,22 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.deleteCredential("acct_rv_1", "cred_rv_2")).toBe(true);
     expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("dev_rv_1"), hash("cred_rv_2")].sort());
   });
+  it("disabling or deleting a provider key and revoking an invite are recorded in the erasure ledger", async () => {
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    const key = (id: string) => ({ id, provider: "near", ciphertext: new Uint8Array([1]), suffix: "abcd", createdAt: Date.now() });
+    await s.addProviderKey(key("pk_rv_1")); await s.addProviderKey(key("pk_rv_2")); // rotation disables pk_rv_1: not ledgered
+    await s.addInvite({ id: "inv_rv_1", codeHash: "h_rv_1", maxUses: 1, createdAt: Date.now() });
+    expect(await s.listErasures()).toEqual([]);
+    expect(await s.setProviderKeyStatus("pk_rv_2", "disabled")).toBe(true);
+    expect(await s.setProviderKeyStatus("pk_rv_1", "disabled")).toBe(true); // already off by rotation: an explicit disable still counts
+    expect(await s.deleteProviderKey("pk_rv_1")).toBe(true);
+    expect(await s.revokeInvite("inv_rv_1")).toBe(true);
+    expect(await s.deleteProviderKey("pk_rv_nope")).toBe(false);
+    expect(await s.revokeInvite("inv_rv_nope")).toBe(false);
+    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("pk_rv_1"), hash("pk_rv_2"), hash("inv_rv_1")].sort());
+    expect(await s.setProviderKeyStatus("pk_rv_2", "active")).toBe(true); // re-enabled: a restore keeps the snapshot's status
+    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("pk_rv_1"), hash("inv_rv_1")].sort());
+  });
   it("purgeInactive does not add to the erasure ledger (the purge itself re-deletes after a restore)", async () => {
     await s.touchSession("acct_purged_1", Date.UTC(2020, 0, 1));
     expect(await s.purgeInactive(Date.UTC(2021, 0, 1))).toBe(1);
@@ -367,5 +383,21 @@ describe.skipIf(!pg)("restore: scripts/reerase.sql", () => {
     expect((await s.listDevices("acct_rs_rv")).map((d) => d.id)).toEqual(["dev_rs_keep"]);
     expect(await s.getCredential("cred_rs_gone")).toBeNull();
     expect(await s.getCredential("cred_rs_keep")).not.toBeNull();
+  });
+  it("disables restored provider keys and revokes invites that were disabled, deleted or revoked after the snapshot", async () => {
+    const s = await backends[1][1]();
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    const key = (id: string, provider: string) => ({ id, provider, ciphertext: new Uint8Array([1]), suffix: "abcd", createdAt: Date.now() });
+    await s.addProviderKey(key("pk_rs_keep", "near")); await s.addProviderKey(key("pk_rs_gone", "phala"));
+    await s.addInvite({ id: "inv_rs_keep", codeHash: "h_rs_keep", maxUses: 1, createdAt: Date.now() });
+    await s.addInvite({ id: "inv_rs_gone", codeHash: "h_rs_gone", maxUses: 1, createdAt: Date.now() });
+    await pg!.sql.begin(async (tx) => {
+      await tx`CREATE TEMP TABLE incoming (id_hash text, deleted_on date) ON COMMIT DROP`;
+      await tx`INSERT INTO incoming VALUES (${hash("pk_rs_gone")}, '2027-02-01'), (${hash("inv_rs_gone")}, '2027-02-01')`;
+      await tx.unsafe(readFileSync(join(__dirname, "../scripts/reerase.sql"), "utf8"));
+    });
+    expect((await s.activeProviderKeys()).map((k) => k.id)).toEqual(["pk_rs_keep"]);
+    expect(await s.inviteUsable("h_rs_keep")).toBe(true);
+    expect(await s.inviteUsable("h_rs_gone")).toBe(false);
   });
 });

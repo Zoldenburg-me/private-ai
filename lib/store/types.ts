@@ -51,7 +51,7 @@ export interface AccountStore {
    * Also records erasureHash(id) in the erasure ledger, which a backup restore replays.
    */
   deleteAccount(id: string): Promise<boolean>;
-  /** The erasure ledger (deleted accounts, removed devices and passkeys of the last ERASURE_LEDGER_DAYS). */
+  /** The erasure ledger of the last ERASURE_LEDGER_DAYS: deleted accounts, removed devices and passkeys, disabled or deleted provider keys, revoked invites. */
   listErasures(): Promise<{ idHash: string; deletedOn: string }[]>;
   getEntitlement(id: string): Promise<Entitlement | null>;
   setEntitlement(id: string, e: Entitlement): Promise<void>;
@@ -92,8 +92,9 @@ export interface AccountStore {
   listProviderKeys(): Promise<ProviderKeyInfo[]>;
   /** Active keys with their ciphertext, for building provider requests only. */
   activeProviderKeys(): Promise<{ id: string; provider: string; ciphertext: Uint8Array }[]>;
-  /** Activating a key disables the provider's other active key (atomic). False if the key does not exist. */
+  /** Activating a key disables the provider's other active key (atomic). False if the key does not exist. Disabling is ledgered like deleteAccount; re-enabling removes that entry. */
   setProviderKeyStatus(id: string, status: ProviderKeyStatus): Promise<boolean>;
+  /** Ledgered like deleteAccount. */
   deleteProviderKey(id: string): Promise<boolean>;
   markProviderKeyUsed(id: string, now: number): Promise<void>;
   addAudit(e: NewAuditEntry): Promise<void>;
@@ -106,6 +107,7 @@ export interface AccountStore {
   redeemInvite(codeHash: string): Promise<boolean>;
   /** Give back one use counted by redeemInvite (the signup it was for failed). */
   releaseInvite(codeHash: string): Promise<void>;
+  /** Ledgered like deleteAccount. */
   revokeInvite(id: string): Promise<boolean>;
   ping(): Promise<void>;
 }

@@ -1,4 +1,4 @@
-import postgres, { type Sql } from "postgres";
+import postgres, { type Sql, type TransactionSql } from "postgres";
 import type { TierId } from "../tiers";
 import type { AccountStore, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
 import { dayKey, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
@@ -6,6 +6,8 @@ import { migrate } from "./migrate";
 
 const ms = (d: Date | null) => (d ? d.getTime() : null);
 const date = (n: number | null) => (n == null ? null : new Date(n));
+/** Erasure-ledger entry for `id`, replayed by scripts/reerase.sql after a restore. */
+const ledger = (tx: TransactionSql, id: string) => tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
 
 interface SubRow { stripe_subscription_id: string; account_id: string; stripe_customer_id: string; tier: TierId; status: string; current_period_end: Date | null }
 interface CredRow { credential_id: string; account_id: string; public_key: Uint8Array; counter: string | number; transports: string[]; created_at: Date }
@@ -67,7 +69,7 @@ export class PgAccountStore implements AccountStore {
     return sql.begin(async (tx) => {
       // ON DELETE CASCADE removes entitlements, subscriptions, passkeys and devices.
       if ((await tx`DELETE FROM sessions WHERE id = ${id}`).count === 0) return false;
-      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      await ledger(tx, id);
       return true;
     });
   }
@@ -149,7 +151,7 @@ export class PgAccountStore implements AccountStore {
       const [{ n }] = await tx<{ n: number }[]>`SELECT count(*)::int AS n FROM passkey_credentials WHERE account_id = ${accountId}`;
       if (n <= 1) return false;
       if ((await tx`DELETE FROM passkey_credentials WHERE credential_id = ${id} AND account_id = ${accountId}`).count === 0) return false;
-      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      await ledger(tx, id);
       return true;
     });
   }
@@ -176,7 +178,7 @@ export class PgAccountStore implements AccountStore {
     const sql = await this.db();
     return sql.begin(async (tx) => {
       if ((await tx`DELETE FROM devices WHERE id = ${id} AND account_id = ${accountId}`).count === 0) return false;
-      await tx`INSERT INTO erasures (id_hash, deleted_on) VALUES (${erasureHash(id)}, ${dayKey(Date.now())}) ON CONFLICT (id_hash) DO NOTHING`;
+      await ledger(tx, id);
       return true;
     });
   }
@@ -232,6 +234,8 @@ export class PgAccountStore implements AccountStore {
       await tx`SELECT pg_advisory_xact_lock(hashtext(${`provider_key:${p.provider}`}))`;
       const [k] = await tx<{ provider: string; status: string }[]>`SELECT provider, status FROM provider_keys WHERE id = ${id} FOR UPDATE`;
       if (!k) return false;
+      if (status === "disabled") await ledger(tx, id);
+      else await tx`DELETE FROM erasures WHERE id_hash = ${erasureHash(id)}`;
       if (k.status === status) return true;
       if (status === "active") await tx`UPDATE provider_keys SET status = 'disabled', disabled_at = now() WHERE provider = ${k.provider} AND status = 'active'`;
       await tx`UPDATE provider_keys SET status = ${status}, disabled_at = ${status === "active" ? null : new Date()} WHERE id = ${id}`;
@@ -240,7 +244,11 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteProviderKey(id: string) {
     const sql = await this.db();
-    return (await sql`DELETE FROM provider_keys WHERE id = ${id}`).count > 0;
+    return sql.begin(async (tx) => {
+      if ((await tx`DELETE FROM provider_keys WHERE id = ${id}`).count === 0) return false;
+      await ledger(tx, id);
+      return true;
+    });
   }
   async markProviderKeyUsed(id: string, now: number) {
     const sql = await this.db();
@@ -278,7 +286,11 @@ export class PgAccountStore implements AccountStore {
   }
   async revokeInvite(id: string) {
     const sql = await this.db();
-    return (await sql`UPDATE invite_codes SET revoked_at = COALESCE(revoked_at, now()) WHERE id = ${id}`).count > 0;
+    return sql.begin(async (tx) => {
+      if ((await tx`UPDATE invite_codes SET revoked_at = COALESCE(revoked_at, now()) WHERE id = ${id}`).count === 0) return false;
+      await ledger(tx, id);
+      return true;
+    });
   }
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
   async close() { await this.sql.end({ timeout: 2 }); }

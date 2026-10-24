@@ -167,6 +167,22 @@ describe("passkey hardening", () => {
     expect((await login(auth)).status).toBe(401); // removed passkey no longer logs in
   });
 
+  it("a removed passkey's credential id cannot be registered again (a restore would delete it)", async () => {
+    const auth = new SoftAuthenticator();
+    const two = new SoftAuthenticator();
+    const token = await save(auth, (await createSession()).token);
+    const [{ id }] = await list(token);
+    expect((await stepUp(auth, token)).status).toBe(200);
+    expect((await register(two, token)).status).toBe(200);
+    expect((await stepUp(auth, token)).status).toBe(200);
+    expect((await deletePasskey(del({ id }, token))).status).toBe(200);
+    expect((await stepUp(two, token)).status).toBe(200);
+    const opts = await (await regOptions(post("/api/auth/passkey/register/options", {}, token))).json();
+    const r = await regVerify(post("/api/auth/passkey/register/verify", auth.create(opts, ORIGIN, Buffer.from(id, "base64url")), token));
+    expect(r.status).toBe(409);
+    expect(await list(token)).toHaveLength(1);
+  });
+
   it("the last passkey cannot be removed, so an old anonymous token never gets the account back", async () => {
     const auth = new SoftAuthenticator();
     const { token: anon } = await createSession();
