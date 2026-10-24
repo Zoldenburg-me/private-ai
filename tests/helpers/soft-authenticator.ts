@@ -31,12 +31,11 @@ export class SoftAuthenticator {
   private flags(base: number) { return this.opts.uv === false ? base & ~0x04 : base; }
 
   /** navigator.credentials.create() equivalent; returns RegistrationResponseJSON. */
-  create(opts: { challenge: string; rp: { id?: string }; user: { id: string } }, origin: string) {
+  create(opts: { challenge: string; rp: { id?: string }; user: { id: string } }, origin: string, credId = randomBytes(16)) {
     const rpId = opts.rp.id ?? new URL(origin).hostname;
     const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
     const jwk = publicKey.export({ format: "jwk" });
     const cose = cbor(new Map<Cbor, Cbor>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(jwk.x!, "base64url")], [-3, Buffer.from(jwk.y!, "base64url")]]));
-    const credId = randomBytes(16);
     const authData = Buffer.concat([sha256(rpId), Buffer.from([this.flags(0x45)]), u32(0), Buffer.alloc(16), Buffer.from([0, credId.length]), credId, Buffer.from(cose)]);
     const clientDataJSON = Buffer.from(JSON.stringify({ type: "webauthn.create", challenge: opts.challenge, origin, crossOrigin: false }));
     this.creds.set(b64u(credId), { key: privateKey, userHandle: opts.user.id, rpId, counter: 0 });

@@ -24,9 +24,10 @@ export class MemoryAccountStore implements AccountStore {
   async getSession(id: string) { const s = this.sessions.get(id); return s ? { ...s } : null; }
   async deleteAccount(id: string) {
     if (!this.drop(id)) return false;
-    if (!this.erasures.has(erasureHash(id))) this.erasures.set(erasureHash(id), dayKey(Date.now()));
+    this.ledger(id);
     return true;
   }
+  private ledger(id: string) { if (!this.erasures.has(erasureHash(id))) this.erasures.set(erasureHash(id), dayKey(Date.now())); }
   async listErasures() {
     return [...this.erasures].map(([idHash, deletedOn]) => ({ idHash, deletedOn })).sort((a, b) => a.deletedOn.localeCompare(b.deletedOn) || a.idHash.localeCompare(b.idHash));
   }
@@ -76,7 +77,9 @@ export class MemoryAccountStore implements AccountStore {
     if (this.credentials.get(id)?.accountId !== accountId) return false;
     // No await between the count and the delete, so concurrent removals cannot both pass.
     if ([...this.credentials.values()].filter((c) => c.accountId === accountId).length <= 1) return false;
-    return this.credentials.delete(id);
+    this.credentials.delete(id);
+    this.ledger(id);
+    return true;
   }
   async addDevice(d: { id: string; accountId: string; createdAt: number }) {
     if (this.devices.has(d.id)) throw new Error("device exists");
@@ -92,7 +95,9 @@ export class MemoryAccountStore implements AccountStore {
   async listDevices(accountId: string) { return [...this.devices.values()].filter((d) => d.accountId === accountId).map((d) => ({ ...d })); }
   async deleteDevice(accountId: string, id: string) {
     if (this.devices.get(id)?.accountId !== accountId) return false;
-    return this.devices.delete(id);
+    this.devices.delete(id);
+    this.ledger(id);
+    return true;
   }
   async hasSignIn(accountId: string) {
     return [...this.credentials.values(), ...this.devices.values()].some((x) => x.accountId === accountId);
@@ -136,12 +141,17 @@ export class MemoryAccountStore implements AccountStore {
   }
   async setProviderKeyStatus(id: string, status: ProviderKeyStatus) {
     const k = this.providerKeys.get(id); if (!k) return false;
+    if (status === "disabled") this.ledger(id);
     if (k.status === status) return true;
     if (status === "active") this.disableActive(k.provider, Date.now());
     this.providerKeys.set(id, { ...k, status, disabledAt: status === "active" ? null : Date.now() });
     return true;
   }
-  async deleteProviderKey(id: string) { return this.providerKeys.delete(id); }
+  async deleteProviderKey(id: string) {
+    if (!this.providerKeys.delete(id)) return false;
+    this.ledger(id);
+    return true;
+  }
   async markProviderKeyUsed(id: string, now: number) { const k = this.providerKeys.get(id); if (k) this.providerKeys.set(id, { ...k, lastUsedAt: now }); }
   async addAudit(e: NewAuditEntry) {
     // Like Postgres: an account that no longer exists is recorded as null.
@@ -173,6 +183,7 @@ export class MemoryAccountStore implements AccountStore {
   async revokeInvite(id: string) {
     const i = this.invites.get(id); if (!i) return false;
     if (i.revokedAt === null) this.invites.set(id, { ...i, revokedAt: Date.now() });
+    this.ledger(id);
     return true;
   }
   async ping() {}
