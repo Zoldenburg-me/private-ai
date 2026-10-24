@@ -155,6 +155,18 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     await s.purgeInactive(0, Date.now() + (ERASURE_LEDGER_DAYS + 1) * day);
     expect(await s.listErasures()).toEqual([]);
   });
+  it("deleteDevice and deleteCredential record the sha256 of the removed id in the erasure ledger", async () => {
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    const cred = (credentialId: string) => ({ credentialId, accountId: "acct_rv_1", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    await s.addCredential(cred("cred_rv_1")); await s.addCredential(cred("cred_rv_2"));
+    await s.addDevice({ id: "dev_rv_1", accountId: "acct_rv_1", createdAt: Date.now() });
+    expect(await s.deleteDevice("acct_other", "dev_rv_1")).toBe(false);
+    expect(await s.deleteCredential("acct_rv_1", "cred_rv_missing")).toBe(false);
+    expect(await s.listErasures()).toEqual([]);
+    expect(await s.deleteDevice("acct_rv_1", "dev_rv_1")).toBe(true);
+    expect(await s.deleteCredential("acct_rv_1", "cred_rv_2")).toBe(true);
+    expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("dev_rv_1"), hash("cred_rv_2")].sort());
+  });
   it("purgeInactive does not add to the erasure ledger (the purge itself re-deletes after a restore)", async () => {
     await s.touchSession("acct_purged_1", Date.UTC(2020, 0, 1));
     expect(await s.purgeInactive(Date.UTC(2021, 0, 1))).toBe(1);
@@ -338,5 +350,22 @@ describe.skipIf(!pg)("restore: scripts/reerase.sql", () => {
     expect(await s.sessionExists("acct_rs_new")).toBe(false);
     expect(await s.getCredential("cred_rs_new")).toBeNull();
     expect((await s.listErasures()).map((e) => e.idHash).sort()).toEqual([hash("acct_rs_new"), hash("acct_rs_old")].sort());
+  });
+  it("deletes restored devices and passkeys that were removed after the snapshot, keeps the rest", async () => {
+    const s = await backends[1][1]();
+    const hash = (id: string) => createHash("sha256").update(id).digest("hex");
+    const cred = (credentialId: string) => ({ credentialId, accountId: "acct_rs_rv", publicKey: new Uint8Array([1]), counter: 0, transports: [], createdAt: Date.now() });
+    await s.addCredential(cred("cred_rs_keep")); await s.addCredential(cred("cred_rs_gone"));
+    await s.addDevice({ id: "dev_rs_keep", accountId: "acct_rs_rv", createdAt: Date.now() });
+    await s.addDevice({ id: "dev_rs_gone", accountId: "acct_rs_rv", createdAt: Date.now() });
+    await pg!.sql.begin(async (tx) => {
+      await tx`CREATE TEMP TABLE incoming (id_hash text, deleted_on date) ON COMMIT DROP`;
+      await tx`INSERT INTO incoming VALUES (${hash("dev_rs_gone")}, '2027-02-01'), (${hash("cred_rs_gone")}, '2027-02-01')`;
+      await tx.unsafe(readFileSync(join(__dirname, "../scripts/reerase.sql"), "utf8"));
+    });
+    expect(await s.sessionExists("acct_rs_rv")).toBe(true);
+    expect((await s.listDevices("acct_rs_rv")).map((d) => d.id)).toEqual(["dev_rs_keep"]);
+    expect(await s.getCredential("cred_rs_gone")).toBeNull();
+    expect(await s.getCredential("cred_rs_keep")).not.toBeNull();
   });
 });
