@@ -5,6 +5,7 @@ import { issueToken } from "../lib/session";
 import { _reset, usage } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { parseSseChunk } from "../lib/sse";
+import { runAgent } from "../lib/agent";
 
 const PROMPT = "SECRET-QUESTION-7c2a";
 const QUERY = "SECRET-QUERY-3e91";
@@ -158,7 +159,31 @@ describe("NEAR in-enclave web search", () => {
     expect(out.error).toBe("search limit for this answer reached");
     expect(cancelled).toBe(true);
     expect(pulled).toBeLessThan(lines.length - 1); // stopped at the 5th call's first piece, never reaching the finish_reason line
-    expect((await usage(id, "free")).usedToday).toBe(5); // the request and the 4 searches in budget
+    expect((await usage(id, "free")).usedToday).toBe(1); // only the request: the round was cancelled before NEAR searched
+  });
+
+  it("a call past the daily messages left is refused before its round ends, and nothing is charged for it", async () => {
+    const lines = [0, 1].map((i) => line({ id: "chat-1", choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: `t${i}`, function: { name: "web_context_search", arguments: `{"query": "q${i}"}` } }] } }] }))
+      .concat(line({ id: "chat-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }), answer);
+    let pulled = 0;
+    const fetchImpl = (async () => new Response(new ReadableStream({
+      pull(c) { if (pulled < lines.length) c.enqueue(new TextEncoder().encode(lines[pulled++])); else c.close(); },
+    }, { highWaterMark: 0 }))) as unknown as typeof fetch;
+    const beforeStep = vi.fn(async () => null);
+    const provider = { id: "near", name: "NEAR", privacy: "tee-attested" as const, baseUrl: "http://near/v1", apiKey: "k", defaultModel: "" };
+    const res = runAgent({ provider, body: ask(`near:${MODEL}`), maxSteps: 3, beforeStep, remaining: () => "1", env: {}, log: () => {}, route: "/api/agent", fetchImpl });
+    const out = parseSseChunk((await res.text()) + "\n");
+    expect(out.error).toBe("daily limit reached");
+    expect(pulled).toBeLessThan(lines.length - 1); // never reached the finish_reason line, so NEAR ran nothing
+    expect(beforeStep).not.toHaveBeenCalled();
+  });
+
+  it("a stream cut while the model writes a call costs no message for that search", async () => {
+    const { id, token } = issueToken();
+    const cut = searchIteration(1, OUTPUT).split("\n\n")[0] + "\n\n"; // the call's first piece, then the stream ends
+    const out = await run(token, `near:${MODEL}`, upstream(() => cut));
+    expect(out.error).toBe("empty provider response");
+    expect((await usage(id, "free")).usedToday).toBe(1);
   });
 
   it("a stream cut after a search iteration is an error, not a finished answer", async () => {
