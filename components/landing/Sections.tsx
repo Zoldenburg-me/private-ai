@@ -75,7 +75,7 @@ export function Statement() {
   return (
     <section className="l-statement">
       <p>Most AI apps ask you to trust them. <em>{BRAND} proves your data is private.</em></p>
-      <a href="#faq" className="link-arrow">See how <ArrowRight aria-hidden /></a>
+      <a href="#how" className="link-arrow">See how <ArrowRight aria-hidden /></a>
     </section>
   );
 }
@@ -114,11 +114,11 @@ export function Video() {
   return (
     <section id="video" className="l-section" aria-labelledby="vid-h">
       <div className="vid-head">
-        <SectionHead id="vid-h" eyebrow="Watch" title={<>How it works, <em>in two minutes</em></>} />
+        <SectionHead id="vid-h" title={<>How it works, <em>in two minutes</em></>} />
         <p>From your browser, through our relay, into the enclave and back, with what each step can and can&rsquo;t see.</p>
       </div>
       <div className="vid-frame">
-        <video src="/media/hiddensee-how-it-works.mp4" controls playsInline preload="metadata" aria-label="How Hiddensee works" />
+        <video src="/media/hiddensee-how-it-works.mp4" poster="/media/hiddensee-how-it-works-poster.jpg" controls playsInline preload="metadata" aria-label="How Hiddensee works" />
       </div>
     </section>
   );
@@ -143,7 +143,7 @@ const MARK_ICON = { yes: Check, part: Minus, no: X };
 export function Compare({ frontier: frontierLive = frontier() }: { frontier?: boolean } = {}) {
   return (
     <section id="compare" className="l-section" aria-labelledby="cmp-h">
-      <SectionHead id="cmp-h" eyebrow="Compare" title={<>How it <em>stacks up</em></>} />
+      <SectionHead id="cmp-h" title={<>How it <em>stacks up</em></>} />
       {/* Focusable so keyboard users can scroll the table on narrow screens. */}
       <div className="cmp-wrap" tabIndex={0} role="region" aria-labelledby="cmp-h">
         <table className="cmp">
@@ -172,14 +172,14 @@ const HOPS = [
   { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs replies where the provider supports it.", note: "attested · Privatemode runs in Bochum, Germany" },
 ];
 
-function SectionHead({ id, eyebrow, title }: { id: string; eyebrow: string; title: ReactNode }) {
-  return <div className="s-head"><p className="eyebrow">{eyebrow}</p><h2 id={id}>{title}</h2></div>;
+function SectionHead({ id, eyebrow, title }: { id: string; eyebrow?: string; title: ReactNode }) {
+  return <div className="s-head">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 id={id}>{title}</h2></div>;
 }
 
 export function HowItWorks() {
   return (
     <section id="how" className="l-section" aria-labelledby="how-h">
-      <SectionHead id="how-h" eyebrow="How it works" title={<>Where your words <em>go</em></>} />
+      <SectionHead id="how-h" title={<>Where your words <em>go</em></>} />
       <ol className="hops">
         {HOPS.map(({ icon: Icon, title, body, note }, i) => (
           <li key={title}>
@@ -226,7 +226,7 @@ const NEVER = ["Chat content (encrypted in your browser)", "Your email (passkeys
 export function ServerSees() {
   return (
     <section className="l-section" aria-labelledby="sees-h">
-      <SectionHead id="sees-h" eyebrow="Transparency" title={<>What the server <em>sees</em></>} />
+      <SectionHead id="sees-h" title={<>What the server <em>sees</em></>} />
       <div className="ledger">
         <div><h3><Eye weight="duotone" aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
         <div><h3><EyeSlash weight="duotone" aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
@@ -272,7 +272,7 @@ const FAQ = [
 export function Faq() {
   return (
     <section id="faq" className="l-section l-faq" aria-labelledby="faq-h">
-      <SectionHead id="faq-h" eyebrow="FAQ" title={<>Questions, <em>answered</em></>} />
+      <SectionHead id="faq-h" title={<>Questions, <em>answered</em></>} />
       {FAQ.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}
     </section>
   );
