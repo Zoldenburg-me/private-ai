@@ -1,7 +1,12 @@
 /** Encrypted local backup: PBKDF2-SHA256 -> AES-256-GCM via WebCrypto. Runs in browser and Node >= 20. */
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+// Chunked: spreading a whole large array into fromCharCode overflows the call stack (RangeError).
+const b64 = (u: Uint8Array) => {
+  let s = "";
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+  return btoa(s);
+};
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 export interface BackupFile { v: 1; kdf: "PBKDF2-SHA256"; iter: number; salt: string; iv: string; ct: string }
