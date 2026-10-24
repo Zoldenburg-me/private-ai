@@ -154,7 +154,7 @@ Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Event
 passkey (account creation) asks for a code; logins and extra passkeys do not. Codes are shared and reusable; remove one
 from INVITE_CODES and restart to revoke it (a signup already started with it can still finish within 5 minutes). While the gate is on, signed-out visitors can still
 chat in the web app (ghost chat, nothing saved) under one instance-wide cap (`PAI_LIMIT_ANON_CHATS_PER_MIN`, default 60, never per IP); the API (`/api/v1`) needs a signed-in
-passkey account. Panel codes count a use only when the passkey is created, so a cancelled prompt spends nothing. Failed codes are capped instance-wide (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
+passkey account. Panel codes count a use only when the passkey is created, so a cancelled prompt spends nothing. Code attempts are capped instance-wide before the code is checked, so a correct guess past the cap is refused too (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
 
 **Admin panel (`/admin`):** operators only, not linked from the site and `noindex`. Set `ADMIN_ACCOUNT_IDS` to the
 account ids (Settings → Account) allowed in; they sign in with that account's passkey and get a separate 2-hour

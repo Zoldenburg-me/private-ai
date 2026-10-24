@@ -112,6 +112,13 @@ describe("invite gate: codes", () => {
     expect((await regOptions(post((await createSession()).token, { invite: "x" }))).status).toBe(429);
   });
 
+  it("once the cap is hit, a correct code is refused too (no guess is evaluated)", async () => {
+    vi.stubEnv("PAI_LIMIT_INVITE_FAILS_PER_MIN", "2");
+    for (let i = 0; i < 2; i++) expect((await regOptions(post((await createSession()).token, { invite: "x" }))).status).toBe(403);
+    const r = await regOptions(post((await createSession()).token, { invite: "alpha-123" }));
+    expect(r.status).toBe(429);
+  });
+
   it("a request without a code (the UI's first try) is not a failed guess", async () => {
     vi.stubEnv("PAI_LIMIT_INVITE_FAILS_PER_MIN", "2");
     for (let i = 0; i < 3; i++) expect((await regOptions(post((await createSession()).token, {}))).status).toBe(403);
