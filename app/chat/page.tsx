@@ -12,7 +12,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
-import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef } from "@/lib/client/levels";
+import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef, signInUnlocks } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, isServerChecked, sdkProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, autoEntryOf, autoModels, imagesFor, nearDefault } from "@/lib/client/providers";
@@ -407,7 +407,7 @@ export default function Home() {
   // Auto sends to the route whose proof passed; until one has, there is nothing to send to.
   const sendRef = !modelRef.startsWith("auto:") ? modelRef : proof && proof.modelRef !== modelRef ? proof.modelRef : "";
   const routeNote = autoRouteNote({ models: usable, ref: modelRef, auto: autoOn, proof: proofs[modelRef], failedAt, level: mode.level })
-    ?? (autoOn && !modelRef && account?.signedIn === false ? "Sign in to use the models on this level." : undefined);
+    ?? (autoOn && !modelRef && signInUnlocks(models, usable, mode.level) ? "Sign in to use the models on this level." : undefined);
   // Web search: on by default (Settings can turn it off); in ghost chat off until switched on in the "+" menu, never saved.
   const searchPref = ghost ? ghostSearch : mode.webSearch;
   const webSearch = searchAvailable && searchPref;

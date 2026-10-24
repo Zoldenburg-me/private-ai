@@ -27,6 +27,10 @@ const label = (provider: string) => PROVIDER_LABEL[provider] ?? provider.charAt(
 
 export const levelOf = (m: ModelEntry): Level => (m.privacy === "tee" ? "max" : m.privacy === "private" ? "medium" : "anon");
 
+/** Signing in would give Auto something to send to on `level`: a selectable free-plan model there is left out of `usable` (locked for a signed-out visitor). False on a level with no models at all. */
+export const signInUnlocks = (models: ModelEntry[], usable: ModelEntry[], level: Level) =>
+  models.some((m) => levelOf(m) === level && m.selectable && !m.paid && !usable.includes(m));
+
 /**
  * The rows the picker offers on a level when Auto is off. Without provider choice each model shows once and its
  * provider is chosen for the user (on Max through its Auto entry, which routes to the cheapest passing enclave).

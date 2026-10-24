@@ -5,6 +5,7 @@ import { handleChat } from "../lib/handler";
 import { LIMITS } from "../lib/limits";
 import { normaliseModel } from "../lib/catalog";
 import { isLocked, needsSignIn } from "../components/app/ModelPicker";
+import { signInUnlocks } from "../lib/client/levels";
 
 const tee = normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "m" });
 const opus = normaliseModel({ id: "liquid", privacy: "anon-gateway" }, { id: "claude-opus-5-5" });
@@ -74,5 +75,27 @@ describe("picker", () => {
     expect(needsSignIn(opus, false, true)).toBe(false); // paid anonymous account
     expect(needsSignIn(opus, undefined, undefined)).toBe(false); // session still loading
     expect(isLocked(opus, false)).toBe(false); // the paid-plan lock is unchanged
+  });
+});
+
+describe("Auto's sign-in note", () => {
+  const zdr = normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "z" });
+  const all = [tee, opus, fable, zdr];
+  const usable = all.filter((m) => !needsSignIn(m, false, false));
+
+  it("shows only where signing in unlocks a model", () => {
+    expect(signInUnlocks(all, usable, "anon")).toBe(true); // Opus is locked for the visitor
+    expect(signInUnlocks(all, usable, "medium")).toBe(true);
+    expect(signInUnlocks(all, usable, "max")).toBe(false); // the TEE model is usable already
+  });
+
+  it("not on a level the server has no models for, nor when only paid-only models are locked", () => {
+    const teeOnly = [tee];
+    expect(signInUnlocks(teeOnly, teeOnly, "medium")).toBe(false);
+    expect(signInUnlocks([tee, fable], [tee], "anon")).toBe(false); // signing in on the free plan would not unlock Fable
+  });
+
+  it("never for a signed-in visitor", () => {
+    expect(signInUnlocks(all, all.filter((m) => !needsSignIn(m, true, false)), "anon")).toBe(false);
   });
 });
