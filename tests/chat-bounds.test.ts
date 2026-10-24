@@ -2,14 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleChat, MAX_BODY_BYTES, BODY_READ_TIMEOUT_MS } from "../lib/handler";
 import { issueToken, setTier } from "../lib/session";
 import { _reset } from "../lib/ratelimit";
-import { applyExtensions, MAX_MESSAGES, MAX_STOP } from "../lib/extensions";
+import { applyExtensions, MAX_IMAGE_URL, MAX_MESSAGES, MAX_STOP } from "../lib/extensions";
 import { normaliseModel } from "../lib/catalog";
 import { getCatalog, _clearCatalog, STALE_MAX_MS } from "../lib/catalog-cache";
 import { relay, FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, TOTAL_TIMEOUT_MS } from "../lib/relay";
-import { TIERS, DEFAULT_OUTPUT_TOKENS, estimateTokens } from "../lib/tiers";
+import { TIERS, DEFAULT_OUTPUT_TOKENS, estimateTokens, estimateBodyTokens, IMAGE_TOKENS } from "../lib/tiers";
 
 const env = { MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://upstream/v1" };
-const catalog = async () => [normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "m" })];
+const catalog = async () => [
+  normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "m" }),
+  normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "vl", input_modalities: ["text", "image"], output_modalities: ["text"] }),
+];
 let sent: Record<string, unknown>[] = [];
 const upstream = vi.fn(async (_url: string, init: RequestInit) => {
   sent.push(JSON.parse(String(init.body)));
@@ -80,16 +83,39 @@ describe("H1: forwarded body is bounded", () => {
     expect(estimateTokens("abcdef")).toBe(2);
   });
 
-  it("rejects malformed messages and non-text parts with 400 instead of a 500", async () => {
+  it("rejects malformed messages and disallowed parts with 400 instead of a 500", async () => {
     const { token } = issueToken();
     const bad = [
       [null], [user(), null], [{ role: "evil", content: "x" }], [{ role: "user" }], [user(42)], [user(null)],
       [user([null])], [user([{ text: "no type" }])], [user([{ type: "text", text: 1 }])],
-      [user([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }])], "nope",
+      [user([{ type: "image_url", image_url: { url: "https://example.com/a.png" } }])],
+      [user([{ type: "image_url", image_url: { url: "data:text/html;base64,AAAA" } }])],
+      [user([{ type: "image_url", image_url: { url: "data:image/svg+xml;base64,AAAA" } }])],
+      [user([{ type: "image_url", image_url: { url: `data:image/png;base64,${"A".repeat(MAX_IMAGE_URL)}` } }])],
+      [{ role: "system", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }],
+      [{ role: "assistant", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }], "nope",
     ];
     for (const messages of bad) expect((await handleChat(req(token, { model: "mock:m", messages }), "/t", deps)).status).toBe(400);
     expect((await handleChat(req(token, "null"), "/t", deps)).status).toBe(400);
     expect((await handleChat(req(token, "[]"), "/t", deps)).status).toBe(400);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("forwards inline images on user messages and counts each at a flat rate, not by its bytes", async () => {
+    const { token } = issueToken();
+    const url = `data:image/jpeg;base64,${"A".repeat(1_000_000)}`; // ~333k tokens if counted by bytes
+    const messages = [user([{ type: "text", text: "what is this?" }, { type: "image_url", image_url: { url, detail: "high" } }])];
+    expect((await handleChat(req(token, { model: "mock:vl", messages }), "/t", deps)).status).toBe(200);
+    expect((sent[0].messages as { content: unknown }[])[0].content).toEqual([{ type: "text", text: "what is this?" }, { type: "image_url", image_url: { url } }]);
+    expect(estimateBodyTokens({ messages })).toBe(estimateTokens(JSON.stringify({ messages: [user([{ type: "text", text: "what is this?" }, { type: "image_url" }])] })) + IMAGE_TOKENS);
+  });
+
+  it("rejects images for a model whose input modalities do not include image", async () => {
+    const { token } = issueToken();
+    const messages = [user([{ type: "text", text: "what is this?" }, { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }])];
+    const r = await handleChat(req(token, { model: "mock:m", messages }), "/t", deps);
+    expect(r.status).toBe(400);
+    expect(await errorOf(r)).toMatch(/does not read images/);
     expect(sent).toHaveLength(0);
   });
 

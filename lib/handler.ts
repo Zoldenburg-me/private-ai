@@ -8,7 +8,7 @@ import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
-import { DEFAULT_OUTPUT_TOKENS, estimateTokens, TIERS, type TierId } from "./tiers";
+import { DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
@@ -45,7 +45,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
       // Like the first check: the cache secret uses no model context (JSON.stringify drops undefined).
-      const g = await gate(p.id, p.tier, estimateTokens(JSON.stringify({ ...body, user_cache_secret: undefined })), Date.now(), p.incognito);
+      const g = await gate(p.id, p.tier, estimateBodyTokens({ ...body, user_cache_secret: undefined }), Date.now(), p.incognito);
       remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
@@ -96,6 +96,8 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   if (!entry) { await recordFailure(id); return err(403, ref.provider === "auto" ? "no TEE provider currently serves this model" : "model not available under the privacy policy (TEE, zero-retention or anonymized gateway only)"); }
   const provider = (await liveProviders(deps.env ?? process.env)).find((p) => p.id === entry.provider);
   if (!provider) return err(503, "provider not configured");
+  const hasImage = parsed.messages.some((m) => Array.isArray(m.content) && m.content.some((c) => c.type === "image_url"));
+  if (hasImage && !entry.modalities?.in.includes("image")) { await recordFailure(id); return err(400, "this model does not read images; pick one that does"); }
 
   const tier = await tierOf(id);
   if (entry.paid && tier === "free")
@@ -111,7 +113,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
-  const g = await gate(id, tier, estimateTokens(JSON.stringify(sent(prompt, tier))), Date.now(), incognito); // the cache secret uses no model context
+  const g = await gate(id, tier, estimateBodyTokens(sent(prompt, tier)), Date.now(), incognito); // the cache secret uses no model context
   const body = { ...prompt, ...cacheScope, ...exchange };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget

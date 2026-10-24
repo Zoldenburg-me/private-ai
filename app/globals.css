@@ -277,6 +277,14 @@ details summary { cursor: pointer; color: var(--text); }
   background: transparent; color: var(--muted); font-size: 15px; cursor: pointer; }
 .tool-toggle:hover { background: var(--hover); }
 .tool-toggle.on { background: var(--chip-bg); color: var(--accent); }
+.files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; padding: 0; list-style: none; }
+.composer-files { display: flex; flex-wrap: wrap; flex-basis: 100%; gap: 6px; } /* chips get their own row above the input */
+.composer-files:empty { display: none; }
+.file-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--chip-bg); color: var(--text); font-size: 12.5px; overflow-wrap: anywhere; }
+.file-remove { display: inline-flex; padding: 2px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.file-remove:focus-visible { outline: 2px solid var(--accent); }
+.attach-error { color: var(--bad); }
 .tool-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Hover/focus hint on the tools button while search is on; a native title would not show on keyboard focus. */
 .tools-btn[data-tip] { position: relative; }

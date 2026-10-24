@@ -5,7 +5,7 @@
  */
 export interface PaiOptions { persona?: { name?: string; system_prompt: string }; web_search?: boolean }
 
-type Part = { type: "text"; text: string };
+type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export interface ForwardedMessage { role: string; content: string | Part[]; tool_calls?: ToolCall[]; tool_call_id?: string }
 export interface ParsedRequest { body: Record<string, unknown>; messages: ForwardedMessage[]; error?: string }
@@ -18,8 +18,13 @@ export const MAX_STOP = 4;
 const MAX_STOP_CHARS = 100;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-// Text parts only: the app never sends images, and an image would slip past the token estimate.
-const isTextPart = (p: unknown): p is Part => isObject(p) && p.type === "text" && typeof p.text === "string";
+const isTextPart = (p: unknown): p is { type: "text"; text: string } => isObject(p) && p.type === "text" && typeof p.text === "string";
+// Inline images only: a remote URL would make the provider fetch an address the user chose. Images count at a flat rate (lib/tiers.ts).
+/** Longest inline image accepted; the app's own downscaled JPEGs stay far below it, and images are counted at a flat rate. */
+export const MAX_IMAGE_URL = 1_500_000;
+export const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+const isImagePart = (p: unknown): p is { type: "image_url"; image_url: { url: string } } =>
+  isObject(p) && p.type === "image_url" && isObject(p.image_url) && typeof p.image_url.url === "string" && p.image_url.url.length <= MAX_IMAGE_URL && IMAGE_DATA_URL.test(p.image_url.url);
 const isStop = (s: unknown) => typeof s === "string" && s.length <= MAX_STOP_CHARS;
 const validStop = (s: unknown) => s === undefined || s === null || isStop(s) || (Array.isArray(s) && s.length <= MAX_STOP && s.every(isStop));
 
@@ -30,6 +35,8 @@ const toToolCall = (c: unknown): ToolCall | null =>
 function toContent(c: unknown, role: string): string | Part[] | null {
   if (typeof c === "string") return c;
   if (Array.isArray(c) && c.every(isTextPart)) return c.map((p) => ({ type: "text", text: p.text }));
+  if (role === "user" && Array.isArray(c) && c.every((p) => isTextPart(p) || isImagePart(p)))
+    return c.map((p) => (isTextPart(p) ? { type: "text", text: p.text } : { type: "image_url", image_url: { url: (p as { image_url: { url: string } }).image_url.url } }));
   if (c === null && role === "assistant") return ""; // SDK history: tool-call turn with no text
   return null;
 }
@@ -61,7 +68,7 @@ export function applyExtensions(input: Record<string, unknown>, allow: { webSear
   if (input.messages.length > MAX_MESSAGES) return fail(`too many messages (max ${MAX_MESSAGES})`);
   const callIds = new Set<string>();
   const messages = input.messages.map((m) => toMessage(m, callIds));
-  if (messages.includes(null)) return fail("each message needs a role (system|developer|user|assistant|tool) and string or text-part content; a tool result must name an earlier tool call");
+  if (messages.includes(null)) return fail("each message needs a role (system|developer|user|assistant|tool) and string or text-part content (user messages may add inline data:image parts); a tool result must name an earlier tool call");
   const forwarded = messages as ForwardedMessage[];
   if (opts.persona?.system_prompt) {
     forwarded.unshift({ role: "system", content: String(opts.persona.system_prompt).slice(0, 8000) });

@@ -15,7 +15,7 @@ import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, write
 import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, isServerChecked, sdkProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
-import { ENABLED_PROVIDERS, autoEntryOf, autoModels, nearDefault } from "@/lib/client/providers";
+import { ENABLED_PROVIDERS, autoEntryOf, autoModels, imagesFor, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
@@ -551,6 +551,7 @@ export default function Home() {
                 ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
                   <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
                 webSearch={webSearch}
+                images={imagesFor(models, modelRef, sendRef)}
                 toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))} />}
                 modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
                   privacy={{ level: mode.level, onLevel: (l) => updateMode({ level: l }), auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
