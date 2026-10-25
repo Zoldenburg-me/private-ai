@@ -57,6 +57,8 @@ export function modelGroup(m: Pick<ModelEntry, "tee" | "price">): ModelGroup {
 
 /** Top frontier models, by canonical (Liquid) id: paid plans only. Venice aliases map via canonicalModelId. */
 export const PAID_ONLY_MODELS = new Set(["gemini-4-argon", "claude-fable-5-1", "gpt-6-astra"]);
+/** Frontier models the landing page names: the paid-only ones plus Grok, which stays open to every plan on credits. */
+export const FRONTIER_MODELS = new Set([...PAID_ONLY_MODELS, "grok-4-7"]);
 
 /**
  * What a signed-out (anonymous) session on the free plan may use: the curated Auto line-up (an `auto:` entry or one

@@ -7,7 +7,7 @@ import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
-import { PAID_ONLY_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
+import { FRONTIER_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
 import { DotNarwhal } from "./DotNarwhal";
 import { HeroComposer } from "./HeroComposer";
 import { SoundToggle } from "./SoundToggle";
@@ -253,11 +253,11 @@ export function Compare({ frontier: frontierLive = frontier() }: { frontier?: bo
 const n = (v: number) => v.toLocaleString("en");
 const ctx = (tokens: number) => (tokens >= 1_000_000 ? `${tokens / 1_000_000}M` : `${Math.round(tokens / 1000)}k`);
 const times = (a: number, b: number) => (b > 0 && a > b ? `${n(Math.round(a / b))} times Free. ` : "");
-/** The top frontier models' logos, from their PAID_ONLY_MODELS ids. */
+/** The top frontier models' logos, from their FRONTIER_MODELS ids. */
 const FRONTIER_LOGO: readonly { prefix: string; name: string }[] = [
   { prefix: "claude", name: "Claude" }, { prefix: "gemini", name: "Gemini" }, { prefix: "gpt", name: "ChatGPT" }, { prefix: "grok", name: "Grok" },
 ];
-const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...PAID_ONLY_MODELS].some((id) => id.startsWith(l.prefix)));
+const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...FRONTIER_MODELS].some((id) => id.startsWith(l.prefix)));
 
 function bigFeatures(t: Tier, frontierLive: boolean) {
   const free = TIERS.free;
