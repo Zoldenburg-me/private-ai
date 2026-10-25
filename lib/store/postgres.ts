@@ -80,18 +80,20 @@ export class PgAccountStore implements AccountStore {
   }
   async getCredits(id: string): Promise<CreditBalance | null> {
     const sql = await this.db();
-    const [r] = await sql<CreditRow[]>`SELECT purchased_micros, included_micros, included_month FROM credits WHERE account_id = ${id}`;
+    const [r] = await sql<CreditRow[]>`SELECT purchased_micros, included_spent_micros, included_month FROM credits WHERE account_id = ${id}`;
     return r ? credit(r) : null;
   }
   async spendCredits(id: string, micros: number, month: string, allowance: number) {
     const sql = await this.db();
     return sql.begin(async (tx) => {
-      await tx`INSERT INTO credits (account_id, included_micros, included_month) VALUES (${id}, ${allowance}, ${month})
-        ON CONFLICT (account_id) DO UPDATE SET included_micros = ${allowance}, included_month = ${month} WHERE credits.included_month < ${month}`; // forward only: a late charge for the old month never resets it again
-      // SET sees the old row on the right-hand side: included first, the rest from purchased.
-      const [r] = await tx<CreditRow[]>`UPDATE credits SET included_micros = GREATEST(included_micros - ${micros}, 0),
-        purchased_micros = purchased_micros - GREATEST(${micros} - included_micros, 0), updated_at = now()
-        WHERE account_id = ${id} RETURNING purchased_micros, included_micros, included_month`;
+      await tx`INSERT INTO credits (account_id, included_month) VALUES (${id}, ${month})
+        ON CONFLICT (account_id) DO UPDATE SET included_spent_micros = 0, included_month = ${month} WHERE credits.included_month < ${month}`; // forward only: a late charge for the old month never resets it again
+      // SET sees the old row on the right-hand side: what is left of the allowance first, the rest from purchased.
+      const [r] = await tx<CreditRow[]>`UPDATE credits SET
+        included_spent_micros = included_spent_micros + LEAST(GREATEST(${allowance}::bigint - included_spent_micros, 0), ${micros}::bigint),
+        purchased_micros = purchased_micros - (${micros}::bigint - LEAST(GREATEST(${allowance}::bigint - included_spent_micros, 0), ${micros}::bigint)),
+        updated_at = now()
+        WHERE account_id = ${id} RETURNING purchased_micros, included_spent_micros, included_month`;
       return credit(r);
     });
   }
@@ -104,6 +106,12 @@ export class PgAccountStore implements AccountStore {
         ON CONFLICT (account_id) DO UPDATE SET purchased_micros = credits.purchased_micros + ${micros}, updated_at = now()`;
       return true;
     });
+  }
+  async listTopups(id: string) {
+    const sql = await this.db();
+    const rows = await sql<{ stripe_session_id: string; micros: string | number; created_at: Date }[]>`
+      SELECT stripe_session_id, micros, created_at FROM credit_topups WHERE account_id = ${id} ORDER BY created_at DESC`;
+    return rows.map((r) => ({ stripeSessionId: r.stripe_session_id, micros: Number(r.micros), createdAt: r.created_at.getTime() }));
   }
   async getEntitlement(id: string): Promise<Entitlement | null> {
     const sql = await this.db();
@@ -323,6 +331,6 @@ export class PgAccountStore implements AccountStore {
   async close() { await this.sql.end({ timeout: 2 }); }
 }
 
-interface CreditRow { purchased_micros: string | number; included_micros: string | number; included_month: string }
+interface CreditRow { purchased_micros: string | number; included_spent_micros: string | number; included_month: string }
 /** bigint arrives as a string; balances stay far below 2^53. */
-const credit = (r: CreditRow): CreditBalance => ({ purchased: Number(r.purchased_micros), included: Number(r.included_micros), includedMonth: r.included_month });
+const credit = (r: CreditRow): CreditBalance => ({ purchased: Number(r.purchased_micros), includedSpent: Number(r.included_spent_micros), includedMonth: r.included_month });

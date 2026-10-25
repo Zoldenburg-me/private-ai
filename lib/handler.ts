@@ -76,6 +76,8 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
 interface Prepared {
   id: string; scope?: QuotaScope; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger;
   price?: { in: number; out: number }; tokens: number; outCap: number;
+  /** When the balance was checked: the charge goes to that month's allowance, even if the reply ends after midnight. */
+  now: number;
 }
 
 /** Charge one call, however it ended. Without a usage report: the input estimate plus the reply tokens already streamed. */
@@ -83,7 +85,7 @@ async function charge(p: Prepared, u: { prompt: number; completion: number } | n
   if (!u && streamed === 0) return; // nothing reached the user (provider error or stop before the first word): no charge
   const tokens = u ? u.prompt : body ? estimateBodyTokens({ ...body, user_cache_secret: undefined }) : p.tokens;
   if (!u) p.log({ event: "usage_missing", provider: p.provider.id });
-  await chargeCredits(p.id, p.tier, costMicros(p.price!, tokens, u?.completion ?? streamed))
+  await chargeCredits(p.id, p.tier, costMicros(p.price!, tokens, u?.completion ?? streamed), p.now)
     .catch(() => p.log({ event: "credit_charge_failed", provider: p.provider.id, status: 500 }));
 }
 
@@ -172,7 +174,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  return { id, scope, tier, provider, body, headers: g.headers, log, price: metered, tokens, outCap };
+  return { id, scope, tier, provider, body, headers: g.headers, log, price: metered, tokens, outCap, now };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */

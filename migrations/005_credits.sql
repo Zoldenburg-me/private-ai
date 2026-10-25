@@ -5,11 +5,12 @@ ALTER TABLE entitlements ADD CONSTRAINT entitlements_tier_check CHECK (tier IN (
 ALTER TABLE subscriptions DROP CONSTRAINT subscriptions_tier_check;
 ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_tier_check CHECK (tier IN ('free', 'plus', 'pro', 'max'));
 
--- Bought credits never expire; the plan's included credits reset each calendar month (UTC).
+-- Bought credits never expire. Included credit is stored as the amount spent this calendar month (UTC), so the
+-- allowance always follows the current plan: an upgrade raises it at once, a downgrade lowers it.
 CREATE TABLE credits (
   account_id        text PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
   purchased_micros  bigint NOT NULL DEFAULT 0,
-  included_micros   bigint NOT NULL DEFAULT 0,
+  included_spent_micros bigint NOT NULL DEFAULT 0,
   included_month    text   NOT NULL,
   updated_at        timestamptz NOT NULL DEFAULT now()
 );

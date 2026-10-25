@@ -29,10 +29,10 @@ export const costMicros = (p: { in: number; out: number }, inTokens: number, out
 
 const allowanceOf = (tier: TierId) => TIERS[tier].includedCreditsEur * MICROS_PER_EUR;
 
-/** Spendable micro-euros: this month's included credit (the full allowance if the stored month is over) plus bought credit. */
+/** Spendable micro-euros: what the current plan's allowance has left this month, plus bought credit. */
 export async function creditsAvailable(accountId: string, tier: TierId, now = Date.now()) {
   const c = await (await stores()).accounts.getCredits(accountId);
-  const included = c && c.includedMonth === monthKey(now) ? c.included : allowanceOf(tier);
+  const included = Math.max(allowanceOf(tier) - (c && c.includedMonth === monthKey(now) ? c.includedSpent : 0), 0);
   const purchased = c?.purchased ?? 0;
   return { included, purchased, total: included + purchased };
 }

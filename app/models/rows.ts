@@ -2,12 +2,12 @@ import type { ModelEntry, Privacy } from "@/lib/catalog";
 import { DEFS } from "@/lib/providers";
 import { ENABLED_PROVIDERS, PROVIDER_LABEL } from "@/lib/client/providers";
 import { LEVELS, levelModels } from "@/lib/client/levels";
-import { TIERS, type TierId } from "@/lib/tiers";
+import { modelGroup, TIERS, type TierId } from "@/lib/tiers";
 
 /** One row of the public /models page: only what the live catalog says, nothing invented. */
 export interface ModelRow {
   key: string; name: string; maker?: string; provider: string; providerName: string;
-  privacy: Privacy; incognito: boolean; ctx?: number; plan: "free" | "pro";
+  privacy: Privacy; incognito: boolean; ctx?: number; plan: "free" | "plus";
 }
 
 export const PRIVACY_ORDER: Privacy[] = ["tee", "private", "anonymized"];
@@ -22,7 +22,9 @@ export function toRows(catalog: ModelEntry[]): ModelRow[] {
     return {
       key: `${m.provider}:${m.id}`, name: i > 0 ? m.name.slice(i + 2) : m.name, ...(i > 0 ? { maker: m.name.slice(0, i) } : {}),
       provider: m.provider, providerName: shortName(m.provider), privacy: m.privacy, incognito: !!m.incognito,
-      ...(m.contextLength ? { ctx: m.contextLength } : {}), plan: m.paid ? "pro" : "free",
+      ...(m.contextLength ? { ctx: m.contextLength } : {}),
+      // The cheapest plan the chat lets in: paid-only and top Max Privacy models start at Plus (lib/handler.ts).
+      plan: m.paid || modelGroup(m) === "top" ? "plus" : "free",
     };
   });
 }

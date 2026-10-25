@@ -85,14 +85,23 @@ describe("credits in the chat handler", () => {
     await r.text().catch(() => {});
     expect((await creditsAvailable(id, "pro")).included).toBe(TIERS.pro.includedCreditsEur * 1e6);
   });
+  it("follows the current plan's allowance: an upgrade mid-month adds the difference at once", async () => {
+    const { id } = issueToken();
+    await setTier(id, "plus");
+    const { accounts } = await stores();
+    const month = new Date().toISOString().slice(0, 7);
+    await accounts.spendCredits(id, 1_000_000, month, TIERS.plus.includedCreditsEur * 1e6); // Plus's €1 used up
+    expect((await creditsAvailable(id, "plus")).included).toBe(0);
+    expect((await creditsAvailable(id, "max")).included).toBe((TIERS.max.includedCreditsEur - 1) * 1e6);
+  });
   it("resets the included credit each month and keeps bought credit", async () => {
     const { accounts } = await stores();
     await accounts.touchSession("acct-month-test");
     await accounts.addCredits("acct-month-test", 5_000_000, "cs_x");
     await accounts.spendCredits("acct-month-test", 3_000_000, "2026-10", 2_000_000);
-    expect(await accounts.getCredits("acct-month-test")).toEqual({ purchased: 4_000_000, included: 0, includedMonth: "2026-10" });
+    expect(await accounts.getCredits("acct-month-test")).toEqual({ purchased: 4_000_000, includedSpent: 2_000_000, includedMonth: "2026-10" });
     await accounts.spendCredits("acct-month-test", 500_000, "2026-11", 2_000_000);
-    expect(await accounts.getCredits("acct-month-test")).toEqual({ purchased: 4_000_000, included: 1_500_000, includedMonth: "2026-11" });
+    expect(await accounts.getCredits("acct-month-test")).toEqual({ purchased: 4_000_000, includedSpent: 500_000, includedMonth: "2026-11" });
     await accounts.spendCredits("acct-month-test", 100, "2026-10", 2_000_000); // a late charge from last month
     expect((await accounts.getCredits("acct-month-test"))?.includedMonth).toBe("2026-11");
     await accounts.deleteAccount("acct-month-test");

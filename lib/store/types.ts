@@ -37,8 +37,8 @@ export interface AuditEntry { id: number; at: number; adminId: string; action: s
 export type NewAuditEntry = { adminId: string; action: string; accountId?: string | null; target?: string | null; detail?: string | null };
 
 /** Invite code row: only the SHA-256 of the code is stored. */
-/** Credit balance in micro-euros. `includedMonth` is the UTC month ("2026-10") the included part belongs to. */
-export interface CreditBalance { purchased: number; included: number; includedMonth: string }
+/** Credit in micro-euros: bought credit left, and included credit spent in `includedMonth` (UTC, "2026-10"). */
+export interface CreditBalance { purchased: number; includedSpent: number; includedMonth: string }
 
 export interface InviteInfo { id: string; maxUses: number; uses: number; createdAt: number; revokedAt: number | null }
 
@@ -115,13 +115,16 @@ export interface AccountStore {
   /** Null if the account never had credits. */
   getCredits(accountId: string): Promise<CreditBalance | null>;
   /**
-   * Atomically spend `micros`: first reset the included part to `allowance` if its month is not `month`, then take from
-   * included, then from purchased (which may go below zero by one message; callers check the balance first).
+   * Atomically spend `micros`: start a new month's included spending if `month` is later than the stored one, take
+   * what is left of `allowance` this month, then the rest from purchased (which may go below zero by one message;
+   * callers check the balance first).
    * Never creates the account: a deleted account makes it throw, so a late charge cannot bring it back.
    */
   spendCredits(accountId: string, micros: number, month: string, allowance: number): Promise<CreditBalance>;
   /** Add bought credits once per Stripe session (atomic). False if that session was already credited. */
   addCredits(accountId: string, micros: number, stripeSessionId: string): Promise<boolean>;
+  /** The account's credited top-ups, newest first (for the data export). */
+  listTopups(accountId: string): Promise<{ stripeSessionId: string; micros: number; createdAt: number }[]>;
   ping(): Promise<void>;
 }
 

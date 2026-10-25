@@ -416,6 +416,7 @@ export default function Home() {
   const onUsage = useCallback((rem: string | null, limit?: string | null, quota?: string | null) => {
     const remaining = Number(rem); const max = Number(limit);
     if (rem == null || rem.trim() === "" || !Number.isFinite(remaining)) return;
+    if (quota === "top") return; // top Max Privacy has its own small quota, not shown in the sidebar meter
     const incognito = quota === "incognito";
     (incognito ? setIncognitoUsage : setUsage)((u) => ({ remaining, limit: max > 0 ? max : u?.limit, ...(incognito ? { incognito } : {}) }));
   }, []);
