@@ -1,20 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { normaliseModel, fetchCatalog, findSelectable } from "../lib/catalog";
 import { loadProviders } from "../lib/providers";
-import { CURATED } from "../lib/routing";
 
 describe("model catalog + privacy policy", () => {
   it("TEE provider models are tee + selectable", () => {
     const m = normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "kimi-k3" });
     expect(m).toMatchObject({ privacy: "tee", tee: true, selectable: true });
   });
-  it("Phala: TEE only for the models on our attested allowlist, whatever its /models claims", () => {
+  it("Phala: TEE only where its own /models routes the model to Phala alone, whatever else it claims", () => {
     const phala = { id: "phala", privacy: "tee-attested" } as const;
-    for (const route of Object.values(CURATED).flatMap((r) => (r.phala ? [r.phala] : [])))
-      expect(normaliseModel(phala, { id: route })).toMatchObject({ privacy: "tee", tee: true, selectable: true });
-    // Served through Chutes, whose attestation we cannot check: never TEE, so never offered.
-    for (const raw of [{ id: "moonshotai/kimi-k3" }, { id: "moonshotai/kimi-k3", tee: true, privacy: "tee" }, { id: "moonshotai/kimi-k3", zdr: true }, { id: "moonshotai/kimi-k3", privacy: "private" }])
-      expect(normaliseModel(phala, raw)).toMatchObject({ tee: false, selectable: false });
+    // Shapes from Phala's live /models (2026-10-25): it marks every model is_tee and routes many to other backends.
+    expect(normaliseModel(phala, { id: "phala/qwen3.8-27b-uncensored", is_tee: true, providers: ["phala"] })).toMatchObject({ privacy: "tee", tee: true, selectable: true });
+    for (const raw of [
+      { id: "moonshotai/kimi-k3", is_tee: true, providers: ["chutes"] }, // Chutes' attestation cannot be checked here
+      { id: "qwen/qwen3.8-27b", is_tee: true, providers: ["chutes", "phala"] }, // any one request may go to Chutes
+      { id: "z-ai/glm-5.3", is_tee: true, providers: ["0g-private-computer", "privatemode", "tinfoil"] },
+      { id: "x", is_tee: true, providers: [] },
+      { id: "x", tee: true, privacy: "tee" }, // no routing data (e.g. the allowlist fallback while /models is down)
+      { id: "x", zdr: true, providers: ["chutes"] },
+      { id: "x", privacy: "private", providers: ["chutes"] },
+    ]) expect(normaliseModel(phala, raw)).toMatchObject({ tee: false, selectable: false });
   });
   it("anonymized models are selectable only through the anonymizing gateway", () => {
     const m = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "x", privacy: "anonymized" });

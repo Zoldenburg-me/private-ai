@@ -228,6 +228,10 @@ export class MemoryCounterStore implements CounterStore {
     const count = this.incr(`rl:${bucket}:${start}`, windowMs, now);
     return { allowed: count <= limit, count, resetAt: start + windowMs };
   }
+  async unhit(bucket: string, windowMs: number, now: number) {
+    const key = `rl:${bucket}:${Math.floor(now / windowMs) * windowMs}`; const c = this.counters.get(key);
+    if (c && c.expiresAt > now && c.value > 0) c.value--;
+  }
   async putOnce(key: string, value: string, ttlMs: number) { this.once.set(key, { value, expiresAt: Date.now() + ttlMs }); }
   async takeOnce(key: string) {
     const v = this.once.get(key); this.once.delete(key);

@@ -5,7 +5,7 @@ import { gate, recordFailure, usage } from "./ratelimit";
 import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
-import { LIMITS, overLimit } from "./limits";
+import { LIMITS, overLimit, refundLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
 import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
@@ -118,17 +118,22 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
   const tokens = estimateBodyTokens(sent(prompt, tier, provider)); // the cache secret uses no model context
-  const now = Date.now(); // one clock for both checks: across UTC midnight they would read different days
-  // The whole-instance cap goes before the daily quota, so a message it refuses costs the session nothing. A request
-  // too long for the tier, or from a session out of daily messages, is left to gate() below, so it cannot use up everyone's budget.
-  // shortcut: a session over its per-minute or error budget still counts here; fresh sessions are free to mint, so the cap needs its own Cloudflare rule either way.
-  if (anonGated && tokens <= TIERS[tier].maxContextTokens && (await usage(id, tier, now, incognito)).remainingToday > 0) {
-    const limited = await overLimit(LIMITS.anonChat, "anon-chat");
+  const now = Date.now(); // one clock: the refund must hit the cap's window, and usage() and gate() the same day
+  // The whole-instance cap goes before the daily quota, so a message it refuses costs the session nothing. Rejected
+  // requests must not use up everyone's budget: one too long for the tier or from a session out of daily messages skips
+  // the cap (gate() refuses it), and one gate() refuses for any other reason, or a store error ends, gives its slot back.
+  const capped = anonGated && tokens <= TIERS[tier].maxContextTokens && (await usage(id, tier, now, incognito)).remainingToday > 0;
+  if (capped) {
+    const limited = await overLimit(LIMITS.anonChat, "anon-chat", now);
     if (limited) return limited;
   }
-  const g = await gate(id, tier, tokens, now, incognito);
+  const refund = () => (capped ? refundLimit(LIMITS.anonChat, "anon-chat", now) : Promise.resolve());
+  const g = await gate(id, tier, tokens, now, incognito).catch(async (e) => { await refund().catch(() => {}); throw e; });
   const body = { ...prompt, ...cacheScope, ...exchange };
-  if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
+  if (!g.allowed) {
+    await refund().catch(() => {}); // a failed refund leaves the slot spent (the safe side) and the real refusal stands
+    log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers);
+  }
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));

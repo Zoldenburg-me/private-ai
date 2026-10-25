@@ -34,6 +34,11 @@ function limitOf(spec: LimitSpec, env: Record<string, string | undefined>): numb
   return Number.isInteger(n) && n > 0 ? n : spec.fallback;
 }
 
+/** Give back the slot overLimit counted at `now`, for a request refused right after it. */
+export async function refundLimit(spec: LimitSpec, bucket: string, now: number): Promise<void> {
+  await (await stores()).counters.unhit(bucket, spec.windowMs, now);
+}
+
 /** Count one request against `bucket`; returns a 429 response when over the limit, else null. */
 export async function overLimit(spec: LimitSpec, bucket: string, now = Date.now(), env: Record<string, string | undefined> = process.env): Promise<Response | null> {
   const r = await (await stores()).counters.hit(bucket, limitOf(spec, env), spec.windowMs, now);

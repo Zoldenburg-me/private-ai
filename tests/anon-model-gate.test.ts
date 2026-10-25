@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { _setStores } from "../lib/store";
+import { _setStores, StoreUnavailableError } from "../lib/store";
+import { MemoryCounterStore } from "../lib/store/memory";
 import { createSession, setTier, signInDevice } from "../lib/session";
 import { handleChat } from "../lib/handler";
 import { LIMITS } from "../lib/limits";
@@ -101,6 +102,36 @@ describe("anonymous web chat cap", () => {
         vi.setSystemTime(Date.now() + 61_000);
       }
       for (let i = 0; i < 3; i++) expect((await chat(token, "mock:m")).status).toBe(429);
+      expect((await chat((await createSession()).token, "mock:m")).status).toBe(200);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a request that ends in a store outage gives its shared-cap slot back (and still fails closed)", async () => {
+    vi.stubEnv("INVITE_CODES", "alpha-123"); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "1");
+    const counters = new MemoryCounterStore(); _setStores({ counters });
+    const { token } = await createSession();
+    const consume = counters.consume.bind(counters);
+    counters.consume = async () => { throw new StoreUnavailableError("redis"); };
+    expect((await chat(token, "mock:m")).status).toBe(503);
+    counters.consume = consume;
+    expect((await chat(token, "mock:m")).status).toBe(200);
+  });
+
+  it("requests the session's own limits refuse give their shared-cap slot back", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-25T12:00:00Z"));
+    try {
+      vi.stubEnv("INVITE_CODES", "alpha-123"); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "2");
+      const { token } = await createSession();
+      for (let i = 0; i < TIERS.free.dailyMessages - 1; i++) { expect((await chat(token, "mock:m")).status).toBe(200); vi.setSystemTime(Date.now() + 61_000); }
+      // One daily message left, two at once: one is answered, the other refused by the daily quota.
+      expect((await Promise.all([chat(token, "mock:m"), chat(token, "mock:m")])).map((r) => r.status).sort()).toEqual([200, 429]);
+      expect((await chat((await createSession()).token, "mock:m")).status).toBe(200); // the refused one's slot is free again
+      // Over the per-minute limit: refused by the session's own window, the shared cap is untouched.
+      vi.setSystemTime(Date.now() + 61_000);
+      const busy = (await createSession()).token;
+      vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", String(TIERS.free.requestsPerMinute + 1));
+      for (let i = 0; i < TIERS.free.requestsPerMinute; i++) expect((await chat(busy, "mock:m")).status).toBe(200);
+      for (let i = 0; i < 3; i++) expect((await chat(busy, "mock:m")).status).toBe(429);
       expect((await chat((await createSession()).token, "mock:m")).status).toBe(200);
     } finally { vi.useRealTimers(); }
   });
