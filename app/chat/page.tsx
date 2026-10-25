@@ -572,6 +572,7 @@ export default function Home() {
             account={account} devices={devices} onSignOut={signOut} onRemoveDevice={removeDevice}
             onCheckout={(plan, interval) => goBilling("/api/billing/checkout", { plan, interval })}
             onPortal={() => goBilling("/api/billing/portal")}
+            onTopUp={(eur) => goBilling("/api/billing/credits", { eur })}
             onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}
             onExportAccount={downloadAccountData} onDeleteAccount={deleteAccount}
             onExport={exportBackup} onImport={importBackup} onWipe={wipe}

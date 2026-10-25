@@ -15,11 +15,12 @@ export const CURATED: Record<string, Record<string, string>> = {
 };
 
 /** `m` is one of the provider routes above. */
+/** Blended USD per 1M tokens at 3 input : 1 output, the ratio Artificial Analysis prices by. Unpriced is Infinity. */
+export const blendedPrice = (p?: { in: number; out: number }) => (p ? (3 * p.in + p.out) / 4 : Infinity);
+
 export const isCuratedRoute = (m: Pick<ModelEntry, "provider" | "id">) =>
   Object.values(CURATED).some((routes) => Object.hasOwn(routes, m.provider) && routes[m.provider] === m.id);
 
-/** Blended USD per 1M tokens at 3 input : 1 output, the ratio Artificial Analysis prices by. Unpriced sorts last. */
-const blended = (m: ModelEntry) => (m.price ? (3 * m.price.in + m.price.out) / 4 : Infinity);
 
 /** Every TEE-attested catalog entry serving a curated model, cheapest first; empty if none serves it now. */
 export function routesByPrice(catalog: ModelEntry[], model: string): ModelEntry[] {
@@ -28,7 +29,7 @@ export function routesByPrice(catalog: ModelEntry[], model: string): ModelEntry[
   return Object.entries(CURATED[model])
     .map(([provider, id]) => catalog.find((m) => m.provider === provider && m.id === id && m.selectable))
     .filter((m): m is ModelEntry => !!m?.tee)
-    .sort((a, b) => blended(a) - blended(b));
+    .sort((a, b) => blendedPrice(a.price) - blendedPrice(b.price)); // unpriced sorts last
 }
 
 /** The cheapest TEE-attested catalog entry for a curated model, or undefined if no TEE provider serves it now. */

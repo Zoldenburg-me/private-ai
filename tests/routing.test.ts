@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { findSelectable, normaliseModel, type ModelEntry } from "../lib/catalog";
 import { cheapestRoute } from "../lib/routing";
 import { handleChat } from "../lib/handler";
-import { issueToken } from "../lib/session";
+import { issueToken, setTier } from "../lib/session";
 import { _reset } from "../lib/ratelimit";
 
 const tee = (provider: string, raw: Record<string, unknown>) => normaliseModel({ id: provider, privacy: "tee-attested" }, raw);
@@ -63,7 +63,8 @@ describe("auto: refs in the chat handler", () => {
     }) as unknown as typeof fetch;
     const env = { PHALA_API_KEY: "k", TINFOIL_API_KEY: "k" };
     const deps = { catalog: async () => [tinfoilGlm, phalaGlm], env, fetchImpl, log: () => {} };
-    const { token } = issueToken();
+    const { id, token } = issueToken();
+    await setTier(id, "plus"); // GLM-5.3 is a top Max Privacy model (above the price cutoff): not on the free plan
     const req = new Request("http://app/api/chat", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ model: "auto:glm-5.3", messages: [{ role: "user", content: "hi" }] }) });
     const res = await handleChat(req, "/t", deps);
     expect(res.status).toBe(200);

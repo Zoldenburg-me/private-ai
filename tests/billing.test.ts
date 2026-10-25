@@ -197,3 +197,27 @@ describe("customer portal", () => {
     expect((await checkoutPOST(authed("/api/billing/checkout", token, { plan: "max" }))).status).toBe(409);
   });
 });
+
+describe("credit top-ups", () => {
+  const paid = (id: string, over: object = {}) => ({ id: "cs_credit_1", object: "checkout.session", mode: "payment", payment_status: "paid", amount_total: 1000,
+    client_reference_id: id, metadata: { pai_account: id, pai_credits_eur: "10" }, ...over });
+  it("creates a one-time checkout for an allowed amount only", async () => {
+    vi.stubEnv("STRIPE_PRICE_CREDIT_EUR", "price_credit");
+    const { id } = await createSession();
+    const { createCreditCheckout } = await import("../lib/billing");
+    await createCreditCheckout(id, 25, "http://app");
+    expect(checkoutCalls[0]).toMatchObject({ mode: "payment", line_items: [{ price: "price_credit", quantity: 25 }], metadata: { pai_account: id, pai_credits_eur: "25" } });
+    await expect(createCreditCheckout(id, 7, "http://app")).rejects.toThrow(/amount/);
+  });
+  it("credits a paid session once, and never more than Stripe says was paid", async () => {
+    const { id } = await createSession();
+    await st.accounts.touchSession(id); // top-ups are for signed-in accounts, which always have a row
+    expect(await (await webhookPOST(signed(evt("checkout.session.completed", paid(id))))).json()).toEqual({ received: true, handled: true });
+    expect(await (await webhookPOST(signed(evt("checkout.session.completed", paid(id))))).json()).toEqual({ received: true, handled: false }); // replay
+    expect((await st.accounts.getCredits(id))?.purchased).toBe(10_000_000);
+    await webhookPOST(signed(evt("checkout.session.completed", paid(id, { id: "cs_credit_2", amount_total: 500, metadata: { pai_account: id, pai_credits_eur: "50" } }))));
+    expect((await st.accounts.getCredits(id))?.purchased).toBe(15_000_000);
+    await webhookPOST(signed(evt("checkout.session.completed", paid(id, { id: "cs_credit_3", payment_status: "unpaid" }))));
+    expect((await st.accounts.getCredits(id))?.purchased).toBe(15_000_000);
+  });
+});

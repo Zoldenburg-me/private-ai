@@ -1,4 +1,4 @@
-import type { AccountStore, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, QuotaScope, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import type { AccountStore, CreditBalance, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, QuotaScope, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
 import { dailySuffix, dayKey, minuteStartOf, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
@@ -12,6 +12,8 @@ export class MemoryAccountStore implements AccountStore {
   providerKeys = new Map<string, ProviderKeyInfo & { ciphertext: Uint8Array }>();
   audit: AuditEntry[] = [];
   invites = new Map<string, InviteInfo & { codeHash: string }>();
+  credits = new Map<string, CreditBalance>();
+  topups = new Map<string, string>();
   private seq = 0;
 
   async touchSession(id: string, now = Date.now()) {
@@ -38,7 +40,27 @@ export class MemoryAccountStore implements AccountStore {
     for (const [k, x] of this.subscriptions) if (x.accountId === id) this.subscriptions.delete(k);
     for (const [k, c] of this.credentials) if (c.accountId === id) this.credentials.delete(k);
     for (const [k, d] of this.devices) if (d.accountId === id) this.devices.delete(k);
+    this.credits.delete(id);
+    for (const [k, a] of this.topups) if (a === id) this.topups.delete(k);
     this.audit = this.audit.map((e) => (e.accountId === id ? { ...e, accountId: null } : e));
+    return true;
+  }
+  async getCredits(id: string) { const c = this.credits.get(id); return c ? { ...c } : null; }
+  async spendCredits(id: string, micros: number, month: string, allowance: number) {
+    if (!this.sessions.has(id)) throw new Error("no such account"); // foreign key in Postgres
+    const c = this.credits.get(id) ?? { purchased: 0, included: allowance, includedMonth: month };
+    if (c.includedMonth < month) { c.included = allowance; c.includedMonth = month; } // "YYYY-MM" sorts as text; forward only
+    const fromIncluded = Math.min(c.included, micros);
+    c.included -= fromIncluded; c.purchased -= micros - fromIncluded;
+    this.credits.set(id, c);
+    return { ...c };
+  }
+  async addCredits(id: string, micros: number, stripeSessionId: string) {
+    if (!this.sessions.has(id)) throw new Error("no such account"); // foreign key in Postgres
+    if (this.topups.has(stripeSessionId)) return false;
+    this.topups.set(stripeSessionId, id);
+    const c = this.credits.get(id) ?? { purchased: 0, included: 0, includedMonth: "" };
+    c.purchased += micros; this.credits.set(id, c);
     return true;
   }
   async getEntitlement(id: string) { return this.entitlements.get(id) ?? null; }
@@ -111,6 +133,7 @@ export class MemoryAccountStore implements AccountStore {
       if (s.lastSeenOn >= day) continue;
       if ([...this.subscriptions.values()].some((x) => x.accountId === id && (ENTITLED_STATUSES as readonly string[]).includes(x.status)
         && (x.currentPeriodEnd == null || x.currentPeriodEnd >= cutoff))) continue;
+      if ((this.credits.get(id)?.purchased ?? 0) > 0) continue; // bought credits keep the account
       this.drop(id); n++;
     }
     return n;

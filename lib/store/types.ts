@@ -37,6 +37,9 @@ export interface AuditEntry { id: number; at: number; adminId: string; action: s
 export type NewAuditEntry = { adminId: string; action: string; accountId?: string | null; target?: string | null; detail?: string | null };
 
 /** Invite code row: only the SHA-256 of the code is stored. */
+/** Credit balance in micro-euros. `includedMonth` is the UTC month ("2026-10") the included part belongs to. */
+export interface CreditBalance { purchased: number; included: number; includedMonth: string }
+
 export interface InviteInfo { id: string; maxUses: number; uses: number; createdAt: number; revokedAt: number | null }
 
 /** Durable account data (Postgres in production). */
@@ -109,8 +112,21 @@ export interface AccountStore {
   releaseInvite(codeHash: string): Promise<void>;
   /** Ledgered like deleteAccount. */
   revokeInvite(id: string): Promise<boolean>;
+  /** Null if the account never had credits. */
+  getCredits(accountId: string): Promise<CreditBalance | null>;
+  /**
+   * Atomically spend `micros`: first reset the included part to `allowance` if its month is not `month`, then take from
+   * included, then from purchased (which may go below zero by one message; callers check the balance first).
+   * Never creates the account: a deleted account makes it throw, so a late charge cannot bring it back.
+   */
+  spendCredits(accountId: string, micros: number, month: string, allowance: number): Promise<CreditBalance>;
+  /** Add bought credits once per Stripe session (atomic). False if that session was already credited. */
+  addCredits(accountId: string, micros: number, stripeSessionId: string): Promise<boolean>;
   ping(): Promise<void>;
 }
+
+/** UTC month key of `now`, e.g. "2026-10". */
+export const monthKey = (now: number) => new Date(now).toISOString().slice(0, 7);
 
 /** Audit entries older than this are pruned by the retention job. */
 export const AUDIT_LOG_DAYS = 365;
@@ -159,7 +175,7 @@ export interface HitResult { allowed: boolean; count: number; resetAt: number }
 
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 
-export type QuotaScope = "incognito";
+export type QuotaScope = "incognito" | "top";
 /** Suffix of the daily counter after the id: ":<scope>:<day>" or ":<day>". */
 export const dailySuffix = (now: number, scope?: QuotaScope) => `${scope ? `:${scope}` : ""}:${dayKey(now)}`;
 

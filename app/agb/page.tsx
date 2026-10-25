@@ -5,7 +5,7 @@ export const metadata = { title: "AGB / Terms of service" };
 const eur = (n: number) => `${n} €`;
 
 export default function Agb() {
-  const { free, pro, max } = TIERS;
+  const { free, plus, pro, max } = TIERS;
   return (
     <LegalPage title="Allgemeine Geschäftsbedingungen / Terms of service">
       <p><Todo>Gesamten Text anwaltlich prüfen, insb. Widerrufsrecht, Haftung, Preisangaben / full text needs lawyer review</Todo></p>
@@ -19,9 +19,11 @@ export default function Agb() {
         <h3>§ 3 Tarife und Preise</h3>
         <ul>
           <li>{free.name}: kostenlos, {free.dailyMessages} Nachrichten pro Tag.</li>
+          <li>{plus.name}: {eur(plus.priceEurMonth)} pro Monat oder jährlich <Todo>Jahrespreis</Todo>, bis zu {plus.dailyMessages} Nachrichten pro Tag.</li>
           <li>{pro.name}: {eur(pro.priceEurMonth)} pro Monat oder jährlich <Todo>Jahrespreis</Todo>, bis zu {pro.dailyMessages} Nachrichten pro Tag.</li>
           <li>{max.name}: {eur(max.priceEurMonth)} pro Monat oder jährlich <Todo>Jahrespreis</Todo>, Fair-Use bis zu {max.dailyMessages} Nachrichten pro Tag.</li>
         </ul>
+        <p>Die bezahlten Tarife unterscheiden sich nur in ihren Limits. Ausgewählte Spitzenmodelle werden über Guthaben abgerechnet: Jeder Tarif enthält ein monatliches Inklusiv-Guthaben, das am Monatsende verfällt; gekauftes Guthaben verfällt nicht. <Todo>Guthabenbedingungen (Verfall, Erstattung bei Kündigung, Preisangabe je Modell) prüfen</Todo></p>
         <p>Alle Preise inkl. gesetzlicher USt. <Todo>USt-Behandlung (inkl./zzgl., OSS) prüfen</Todo></p>
         <h3>§ 4 Vertragsschluss, Laufzeit, Kündigung</h3>
         <p>Der Vertrag über einen bezahlten Tarif kommt mit Abschluss des Bezahlvorgangs bei Stripe zustande. Abos verlängern sich um die gewählte Laufzeit, bis sie gekündigt werden.
@@ -45,9 +47,11 @@ export default function Agb() {
         <h3>3. Plans and prices</h3>
         <ul>
           <li>{free.name}: free, {free.dailyMessages} messages per day.</li>
+          <li>{plus.name}: {eur(plus.priceEurMonth)} per month or yearly <Todo>annual price</Todo>, up to {plus.dailyMessages} messages per day.</li>
           <li>{pro.name}: {eur(pro.priceEurMonth)} per month or yearly <Todo>annual price</Todo>, up to {pro.dailyMessages} messages per day.</li>
           <li>{max.name}: {eur(max.priceEurMonth)} per month or yearly <Todo>annual price</Todo>, fair use up to {max.dailyMessages} messages per day.</li>
         </ul>
+        <p>Paid plans differ only in their limits. Selected top models are paid from credit: every plan includes a monthly credit that lapses at the end of the month; bought credit does not expire. <Todo>credit terms (expiry, refund on cancellation, price per model)</Todo></p>
         <h3>4. Contract, term, cancellation</h3>
         <p>A paid plan starts when payment at Stripe completes and renews for the chosen period until cancelled. You can cancel at any time, effective at the end of the period, via “Manage subscription” (Stripe customer portal).</p>
         <h3>5. Right of withdrawal (consumers)</h3>

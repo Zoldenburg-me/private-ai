@@ -1,11 +1,17 @@
 "use client";
 import { useState } from "react";
-import { TIERS, type Tier, type TierId } from "@/lib/tiers";
+import { planLines, TIERS, type Tier, type TierId } from "@/lib/tiers";
 import type { Usage } from "./UsageMeter";
 import { Devices, DownloadSimple, Fingerprint, IconContext, PlusCircle, SignIn, SignOut, Trash, UploadSimple, UserCirclePlus, WarningCircle } from "@phosphor-icons/react";
 import "./settings.css";
 
-export interface Billing { configured: boolean; plans?: { plan: string; interval: string; available: boolean }[]; subscription: { tier: string; status: string; currentPeriodEnd?: number | null } | null }
+/** `credits`: spendable micro-euros; `topups`: the euro amounts a top-up can be, empty when top-ups are not set up. */
+export interface Billing {
+  configured: boolean; plans?: { plan: string; interval: string; available: boolean }[]; subscription: { tier: string; status: string; currentPeriodEnd?: number | null } | null;
+  credits?: { included: number; purchased: number; total: number }; topups?: number[];
+}
+export type PaidPlan = "plus" | "pro" | "max";
+const eur = (micros: number) => `€${(Math.max(0, micros) / 1e6).toFixed(2)}`;
 export interface PasskeyInfo { id: string; label: string; createdAt: number }
 export interface AccountInfo { signedIn: boolean; id: string }
 export interface DeviceInfo { id: string; createdAt: number; lastSeenOn: string; current: boolean }
@@ -16,7 +22,7 @@ const dayOf = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefi
 export function SettingsView(p: {
   tier: Tier | null; usage: Usage | null; billing: Billing | null; passkeys: PasskeyInfo[] | null; ghost: boolean;
   account: AccountInfo | null; devices: DeviceInfo[]; onSignOut: () => void; onRemoveDevice: (id: string) => void;
-  onCheckout: (plan: "pro" | "max", interval: "month" | "year") => void; onPortal: () => void;
+  onCheckout: (plan: PaidPlan, interval: "month" | "year") => void; onPortal: () => void; onTopUp: (eur: number) => void;
   onAddPasskey: () => void; onLoginPasskey: () => void; onRemovePasskey: (id: string) => void;
   onExportAccount: () => void; onDeleteAccount: () => void;
   onExport: (pass: string) => void; onImport: (f: File, pass: string) => void; onWipe: () => void;
@@ -71,15 +77,11 @@ export function SettingsView(p: {
                   <div key={id} className={`acct-tier${cur ? " on" : ""}`} data-testid={`plan-${id}`}>
                     <div className="top"><span className="name">{t.name}</span>{cur && <span className="hs-tag">current plan</span>}</div>
                     <div className="price">€{t.priceEurMonth}<span> / month</span></div>
-                    <ul>
-                      <li>{id === "max" ? "High fair-use limit" : `${t.dailyMessages.toLocaleString("en")} messages a day`}</li>
-                      <li>{t.maxContextTokens >= 1e6 ? "1M" : `${t.maxContextTokens / 1000}k`} context</li>
-                      <li>{id === "free" ? "Basic models" : "All models"}</li>
-                    </ul>
+                    <ul>{planLines(id).map((l) => <li key={l}>{l}</li>)}</ul>
                     {!cur && id !== "free" && p.billing?.configured && !active && (
                       <div className="hs-actions">
-                        {available(id, "month") && <button type="button" className="hs-btn primary" onClick={() => p.onCheckout(id as "pro" | "max", "month")}>Monthly</button>}
-                        {available(id, "year") && <button type="button" className="hs-btn" onClick={() => p.onCheckout(id as "pro" | "max", "year")}>Yearly</button>}
+                        {available(id, "month") && <button type="button" className="hs-btn primary" onClick={() => p.onCheckout(id as PaidPlan, "month")}>Monthly</button>}
+                        {available(id, "year") && <button type="button" className="hs-btn" onClick={() => p.onCheckout(id as PaidPlan, "year")}>Yearly</button>}
                       </div>
                     )}
                   </div>
@@ -88,6 +90,21 @@ export function SettingsView(p: {
             </div>
             {active && <div className="acct-after"><button type="button" className="hs-btn" data-testid="billing-portal" onClick={p.onPortal}>Manage subscription</button></div>}
           </section>
+
+          {p.billing?.credits && (
+            <section>
+              <h2>Frontier credits</h2>
+              <p className="hs-note" data-testid="credits-balance">
+                {eur(p.billing.credits.total)} left: {eur(p.billing.credits.included)} included this month, {eur(p.billing.credits.purchased)} bought.
+                {" "}Claude, Gemini, ChatGPT and Grok top models are paid from this; bought credits never expire.
+              </p>
+              {signedIn && !!p.billing.topups?.length && (
+                <div className="hs-actions">
+                  {p.billing.topups.map((x) => <button key={x} type="button" className="hs-btn" data-testid={`topup-${x}`} onClick={() => p.onTopUp(x)}>Add €{x}</button>)}
+                </div>
+              )}
+            </section>
+          )}
 
           {signedIn && (<>
             <section>

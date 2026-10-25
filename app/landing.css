@@ -192,7 +192,7 @@ html:has(.landing) { scroll-padding-top: 84px; }
 .ledger > div + div h3 svg { color: var(--tint); }
 .ledger ul { list-style: none; margin: 0; padding: 0; color: var(--ink-soft); font-size: 18px; line-height: 2.1; }
 
-.plans-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; align-items: stretch; }
+.plans-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; align-items: stretch; }
 .l-plan { padding: 32px; display: flex; flex-direction: column; border: 1px solid var(--line-card); border-radius: 4px; }
 .l-plan.featured { border-color: var(--tint); background: var(--bg-raised); box-shadow: 0 12px 32px rgba(42,36,32,.1); }
 .plan-top { display: flex; justify-content: space-between; align-items: baseline; }

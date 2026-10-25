@@ -38,7 +38,9 @@ async function exportData(id: string): Promise<Response> {
     })),
     devices: devices.map((d) => ({ id: d.id, createdAt: iso(d.createdAt), lastSeenOn: d.lastSeenOn })),
     usage: await usage(id, tier),
-    incognitoUsage: await usage(id, tier, Date.now(), true),
+    incognitoUsage: await usage(id, tier, Date.now(), "incognito"),
+    topUsage: await usage(id, tier, Date.now(), "top"),
+    credits: await (await stores()).accounts.getCredits(id),
     notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see /datenschutz.",
   };
   return json(data, 200, { "Content-Disposition": `attachment; filename="private-ai-account-${id.slice(0, 8)}.json"` });

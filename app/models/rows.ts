@@ -31,7 +31,7 @@ export interface Filters { query: string; providers: string[]; privacy: Privacy[
 export type FilterKey = "query" | "providers" | "privacy" | "plan";
 export const NO_FILTERS: Filters = { query: "", providers: [], privacy: [], plan: null };
 
-const PLAN_RANK: Record<TierId, number> = { free: 0, pro: 1, max: 2 };
+const PLAN_RANK: Record<TierId, number> = { free: 0, plus: 1, pro: 2, max: 3 };
 /** `skip` leaves one filter out, so each option's count shows what picking it would give. */
 export function passes(r: ModelRow, f: Filters, skip?: FilterKey): boolean {
   const q = f.query.trim().toLowerCase();

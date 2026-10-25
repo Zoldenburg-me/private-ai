@@ -8,7 +8,7 @@ import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
-import { TIERS, type TierId } from "@/lib/tiers";
+import { planLines, TIERS, type TierId } from "@/lib/tiers";
 import { HeroComposer } from "./HeroComposer";
 import { HeroSky } from "./HeroSky";
 import { MotionToggle } from "./MotionToggle";
@@ -236,12 +236,6 @@ export function ServerSees() {
   );
 }
 
-const PLAN_LINES: Record<TierId, string[]> = {
-  free: [`${TIERS.free.dailyMessages} messages a day`, `+ ${TIERS.free.incognitoDailyMessages} incognito messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
-  pro: [`${TIERS.pro.dailyMessages.toLocaleString("en")} messages a day`, `${TIERS.pro.maxContextTokens / 1000}k context`, "All models"],
-  max: ["High fair-use limit", "1M context", "All models"],
-};
-
 export function Pricing() {
   return (
     <section id="pricing" className="l-section" aria-labelledby="price-h">
@@ -251,12 +245,12 @@ export function Pricing() {
           <div key={id} className={`l-plan ${id === "pro" ? "featured" : ""}`}>
             <div className="plan-top"><h3>{TIERS[id].name}</h3>{id === "pro" && <span className="l-kicker">most picked</span>}</div>
             <p className="l-price">€{TIERS[id].priceEurMonth}<span>/ month</span></p>
-            <ul>{PLAN_LINES[id].map((l) => <li key={l}>{l}</li>)}</ul>
+            <ul>{planLines(id).map((l) => <li key={l}>{l}</li>)}</ul>
             <Link href="/chat" className={id === "pro" ? "btn-solid" : "btn-outline"}>{id === "free" ? "Start free" : `Choose ${TIERS[id].name}`}</Link>
           </div>
         ))}
       </div>
-      <p className="fine">You upgrade inside the app; card data goes to Stripe.</p>
+      <p className="fine">Same features on every paid plan, only the limits grow. Daily limits are fair use. You upgrade inside the app; card data goes to Stripe.</p>
     </section>
   );
 }

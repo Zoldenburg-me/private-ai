@@ -8,7 +8,9 @@ import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit, refundLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
-import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
+import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, modelGroup, TIERS, type TierId } from "./tiers";
+import { chargeCredits, costMicros, creditsAvailable, priceFor } from "./credits";
+import type { QuotaScope } from "./store/types";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
@@ -29,7 +31,8 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
   return failClosed(route, deps, async () => {
     const p = await prepareChat(req, route, deps, {});
     if (p instanceof Response) return p;
-    const res = await relay({ provider: p.provider, body: p.body, log: p.log, route, fetchImpl: deps.fetchImpl, extraHeaders: p.headers });
+    const onUsage = p.price ? (u: { prompt: number; completion: number } | null, streamed: number) => charge(p, u, streamed) : undefined;
+    const res = await relay({ provider: p.provider, body: p.body, log: p.log, route, fetchImpl: deps.fetchImpl, extraHeaders: p.headers, onUsage });
     if (res.status >= 500) await recordFailure(p.id);
     return res;
   });
@@ -46,11 +49,14 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
       // Like the first check: the cache secret uses no model context (JSON.stringify drops undefined).
-      const g = await gate(p.id, p.tier, estimateBodyTokens({ ...body, user_cache_secret: undefined }), Date.now(), p.incognito);
+      const tokens = estimateBodyTokens({ ...body, user_cache_secret: undefined });
+      if (p.price && (await creditsAvailable(p.id, p.tier)).total < costMicros(p.price, tokens, p.outCap)) return "not enough credits";
+      const g = await gate(p.id, p.tier, tokens, Date.now(), p.scope);
       remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
-    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
+    const onStep = p.price ? (u: { prompt: number; completion: number } | null, body: Record<string, unknown>, streamed: number) => charge(p, u, streamed, body) : undefined;
+    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }
@@ -63,8 +69,23 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
   }
 }
 
-/** `incognito`: the model counts against the incognito daily quota (lib/ratelimit.ts). */
-interface Prepared { id: string; incognito: boolean; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger }
+/**
+ * `scope`: the daily quota the model counts against (lib/ratelimit.ts). `price` is set for credit models only: each call
+ * is charged from the account's credits; `tokens` is the first call's input estimate, `outCap` the reply cap.
+ */
+interface Prepared {
+  id: string; scope?: QuotaScope; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger;
+  price?: { in: number; out: number }; tokens: number; outCap: number;
+}
+
+/** Charge one call, however it ended. Without a usage report: the input estimate plus the reply tokens already streamed. */
+async function charge(p: Prepared, u: { prompt: number; completion: number } | null, streamed: number, body?: Record<string, unknown>) {
+  if (!u && streamed === 0) return; // nothing reached the user (provider error or stop before the first word): no charge
+  const tokens = u ? u.prompt : body ? estimateBodyTokens({ ...body, user_cache_secret: undefined }) : p.tokens;
+  if (!u) p.log({ event: "usage_missing", provider: p.provider.id });
+  await chargeCredits(p.id, p.tier, costMicros(p.price!, tokens, u?.completion ?? streamed))
+    .catch(() => p.log({ event: "credit_charge_failed", provider: p.provider.id, status: 500 }));
+}
 
 /**
  * Identity, body, model, tier and the first rate-limit check: everything before the upstream call.
@@ -107,7 +128,13 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
     return Response.json({ error: { message: "Sign in to use this model.", code: "signin_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   if (entry.paid && tier === "free")
     return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
-  const incognito = entry.incognito === true;
+  // Quota by list price (lib/tiers.ts modelGroup); Venice lists no prices, so its models borrow another gateway's.
+  const price = priceFor(catalog, entry);
+  const group = modelGroup({ tee: entry.tee, price });
+  if (group === "top" && TIERS[tier].topDailyMessages === 0)
+    return Response.json({ error: { message: "Top Max Privacy models need a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
+  const scope: QuotaScope | undefined = group === "top" ? "top" : group === "tee" ? undefined : "incognito";
+  const metered = group === "credits" ? price : undefined;
   const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
   const cap = anonFree ? ANON_MAX_OUTPUT_TOKENS : TIERS[tier].maxOutputTokens;
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
@@ -115,7 +142,8 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const field = max_completion_tokens != null ? "max_completion_tokens" : "max_tokens";
   // Tinfoil shares its prompt cache per API key + user_cache_secret; one opaque secret per account keeps users' cache timing apart.
   const cacheScope = provider.id === "tinfoil" ? { user_cache_secret: createHmac("sha256", sessionSecret()).update(`tinfoil-cache:${id}`).digest("base64url") } : {};
-  const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
+  const outCap = Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap);
+  const prompt = { ...rest, model: entry.id, [field]: outCap };
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
   const tokens = estimateBodyTokens(sent(prompt, tier, provider)); // the cache secret uses no model context
@@ -123,14 +151,20 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   // The whole-instance cap goes before the daily quota, so a message it refuses costs the session nothing. Rejected
   // requests must not use up everyone's budget: one too long for the tier or from a session out of daily messages skips
   // the cap (gate() refuses it), and one gate() refuses for any other reason, or a store error ends, gives its slot back.
-  const capped = anonGated && tokens <= TIERS[tier].maxContextTokens && (await usage(id, tier, now, incognito)).remainingToday > 0;
+  // Refuse before counting anything: the call's worst case (full reply) must fit the credits left.
+  if (metered && (await creditsAvailable(id, tier, now)).total < costMicros(metered, tokens, outCap))
+    return Response.json({ error: { message: "Not enough credits for this model. Top up in Settings → Plan.", code: "credits_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
+  const capped = anonGated && tokens <= TIERS[tier].maxContextTokens && (await usage(id, tier, now, scope)).remainingToday > 0;
   if (capped) {
     const limited = await overLimit(LIMITS.anonChat, "anon-chat", now);
     if (limited) return limited;
   }
   const refund = () => (capped ? refundLimit(LIMITS.anonChat, "anon-chat", now) : Promise.resolve());
-  const g = await gate(id, tier, tokens, now, incognito).catch(async (e) => { await refund().catch(() => {}); throw e; });
-  const body = { ...prompt, ...cacheScope, ...exchange };
+  const g = await gate(id, tier, tokens, now, scope).catch(async (e) => { await refund().catch(() => {}); throw e; });
+  // Credit models report their real token counts at the end of the stream (agent steps always stream).
+  const streams = rest.stream === true || allow.webSearch === true;
+  const usageReport = metered && streams ? { stream_options: { ...(rest.stream_options as object | undefined), include_usage: true } } : {};
+  const body = { ...prompt, ...cacheScope, ...exchange, ...usageReport };
   if (!g.allowed) {
     await refund().catch(() => {}); // a failed refund leaves the slot spent (the safe side) and the real refusal stands
     log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers);
@@ -138,7 +172,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  return { id, incognito, tier, provider, body, headers: g.headers, log };
+  return { id, scope, tier, provider, body, headers: g.headers, log, price: metered, tokens, outCap };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */
