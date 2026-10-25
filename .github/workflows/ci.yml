@@ -76,6 +76,27 @@ jobs:
       - run: npm run build
       # Uses the package.json defaults (pai:pai@127.0.0.1:5432/pai_test, redis db 1); the store applies migrations/*.sql itself.
       - run: npm run test:integration
+      # The image job runs only when the image changes, so every PR still renders its dynamic pages in the production
+      # server here (the same pages scripts/smoke-image.sh checks), against real Postgres/Redis. Throwaway values only.
+      - name: Production server renders the main pages
+        env:
+          PORT: 3000
+          HOSTNAME: 127.0.0.1
+          DATABASE_URL: postgres://pai:pai@127.0.0.1:5432/pai_test
+          REDIS_URL: redis://127.0.0.1:6379/2
+          INVITE_ONLY: 1
+          WEBAUTHN_RP_ID: localhost
+          WEBAUTHN_ORIGIN: http://localhost:3000
+          APP_URL: http://localhost:3000
+        run: |
+          export SESSION_SECRET=$(openssl rand -hex 32) ADMIN_KEY_KEK=$(openssl rand -base64 32)
+          echo "::add-mask::$SESSION_SECRET"; echo "::add-mask::$ADMIN_KEY_KEK"
+          node .next/standalone/server.js > server.log 2>&1 &
+          for _ in $(seq 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
+          for p in / /chat /models /privacy/metadata; do
+            c=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000$p"); echo "$p $c"
+            [ "$c" = 200 ] || { tail -40 server.log; exit 1; }
+          done
 
   proxy:
     needs: changes
