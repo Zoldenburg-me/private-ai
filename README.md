@@ -29,7 +29,7 @@ Stripe Checkout / Portal ──webhook──► /api/billing/webhook ──► e
 | id | Provider | Privacy | Base URL | Notes |
 |---|---|---|---|---|
 | near | NEAR AI Cloud | TEE (TDX + NVIDIA CC), attestation per response | https://cloud-api.near.ai/v1 | per-token, no subscription |
-| phala | Phala Confidential AI | TEE, `provider.zdr` / `aci_verified` routing | https://inference.phala.com/v1 | |
+| phala | Phala Confidential AI | TEE only for models its `/models` routes to Phala alone (`phalaOnly` in `lib/catalog.ts`) | https://inference.phala.com/v1 | |
 | redpill | RedPill gateway | aggregates Phala/Tinfoil/NEAR/Chutes, signed receipts | env | |
 | tinfoil | Tinfoil | TEE (SEV-SNP/TDX + NVIDIA CC) | env | |
 | privatemode | Privatemode (Edgeless) | TEE, attestation verified and requests encrypted by the privatemode-ai SDK on our server | https://api.privatemode.ai/v1 | chat models only (task `generate`); Auto route for GLM 5.3 |

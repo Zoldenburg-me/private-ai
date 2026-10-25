@@ -27,7 +27,13 @@ export interface ModelEntry {
 export interface Modalities { in: string[]; out: string[] }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
-const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
+const ALL_TEE = new Set(["tinfoil", "privatemode", "mock"]);
+/**
+ * Phala marks every model is_tee but routes many to other backends (Chutes, whose attestation this app cannot check,
+ * Tinfoil, Privatemode, …), listed per model in `providers` (seen 2026-10-25). Only a model it serves from its own
+ * enclaves alone counts as TEE; no routing data means no claim. Its other privacy hints are not trusted.
+ */
+const phalaOnly = (raw: Raw) => Array.isArray(raw.providers) && raw.providers.length > 0 && raw.providers.every((p) => p === "phala");
 
 type Raw = Record<string, unknown>;
 
@@ -69,12 +75,12 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
-  const tee =
+  const tee = provider.id === "phala" ? phalaOnly(raw) :
     bool(raw.tee) || bool(raw.is_tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
     word(privacyText, "tee") || word(privacyText, "confidential") ||
     (ALL_TEE.has(provider.id) && !privacyText.includes("anonym"));
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
-  const zdr = bool(raw.zdr) || bool(meta.zdr) || word(privacyText, "private") || word(privacyText, "zdr") || provider.privacy === "zdr-contract";
+  const zdr = provider.id !== "phala" && (bool(raw.zdr) || bool(meta.zdr) || word(privacyText, "private") || word(privacyText, "zdr") || provider.privacy === "zdr-contract");
   const privacy: Privacy = tee ? "tee" : zdr ? "private" : "anonymized";
   return {
     id,

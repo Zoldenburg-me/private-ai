@@ -13,7 +13,7 @@ export interface StreamUpdate { text: string; receipt?: Receipt; remaining?: str
 
 type UiPart = { type: string; text?: string; image?: string };
 /** Minimal shape of an assistant-ui ThreadMessage we need (kept structural so it is testable). */
-export interface UiMessage { role: string; content: readonly UiPart[]; attachments?: readonly { name: string; content?: readonly UiPart[] }[]; metadata?: { custom?: Record<string, unknown> } }
+export interface UiMessage { role: string; content: readonly UiPart[]; attachments?: readonly { name: string; content?: readonly UiPart[] }[]; metadata?: { custom?: Record<string, unknown> }; status?: { type: string; reason?: string } }
 
 /** The incognito route an assistant reply came from (zero-retention or anonymized gateway); enclave replies have none. */
 export type Incognito = "private" | "anonymized";
@@ -23,7 +23,8 @@ export type StoredMsg = ChatMessage & { signed?: Signed; incognito?: Incognito }
 /** What /api/chat receives: a user message with images carries OpenAI content parts. */
 export type OutgoingMsg = Omit<ChatMessage, "content"> & { content: string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] };
 
-const isChatRole = (m: UiMessage) => m.role === "user" || m.role === "assistant" || m.role === "system";
+/** An error turn ("⚠️ …") is shown, but never sent back to the model or kept in history. */
+const isChatRole = (m: UiMessage) => (m.role === "user" || m.role === "assistant" || m.role === "system") && m.status?.reason !== "error";
 const textOfParts = (parts: readonly UiPart[]) => parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join("");
 
 /** Attached documents (already wrapped as text) come before what the user typed; images are listed separately. */
@@ -43,13 +44,20 @@ const withNames = (text: string, images: { name: string }[]) => [...images.map((
 export function toChatMessages(msgs: readonly UiMessage[], { images: send = true } = {}): OutgoingMsg[] {
   const chat = msgs.filter(isChatRole);
   const newest = chat.findLastIndex((m) => m.role === "user");
-  return chat.map((m, i) => {
+  const out = chat.map((m, i): OutgoingMsg => {
     const { text, images } = split(m);
     const role = m.role as ChatMessage["role"];
     if (!images.length) return { role, content: text };
     if (i !== newest || !send) return { role, content: withNames(text, images) };
     return { role, content: [...(text ? [{ type: "text" as const, text }] : []), ...images.map((i) => ({ type: "image_url" as const, image_url: { url: i.url } }))] };
   });
+  // A user message left unanswered (its error turn is dropped) joins the next one, so roles still alternate. Only the newest can carry parts.
+  return out.reduce<OutgoingMsg[]>((acc, m) => {
+    const prev = acc.at(-1);
+    if (prev?.role !== "user" || m.role !== "user" || typeof prev.content !== "string") { acc.push(m); return acc; }
+    acc[acc.length - 1] = { role: "user", content: typeof m.content === "string" ? [prev.content, m.content].filter(Boolean).join("\n\n") : [...(prev.content ? [{ type: "text" as const, text: prev.content }] : []), ...m.content] };
+    return acc;
+  }, []);
 }
 
 /** The newest user message carries an image (to refuse it up front for a model that does not read images). */

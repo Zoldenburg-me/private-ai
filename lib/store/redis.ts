@@ -26,16 +26,23 @@ redis.call('PEXPIRE', KEYS[2], ARGV[8])
 return {'ok', daily, minute, oldest}
 `;
 
-/** Fixed-window counter: INCR, set the TTL on the first hit only. KEYS: counter. ARGV: windowMs. */
+/** Fixed-window counter: INCR, set the TTL whenever the count starts at 1 (keys are per window). KEYS: counter. ARGV: windowMs. */
 const HIT = `
 local c = redis.call('INCR', KEYS[1])
 if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return c
 `;
 
+/** Undo one HIT, never below zero (a missing or expired key stays missing). KEYS: counter. */
+const UNHIT = `
+if tonumber(redis.call('GET', KEYS[1]) or '0') > 0 then redis.call('DECR', KEYS[1]) end
+return 0
+`;
+
 type WithConsume = Redis & {
   paiConsume(...args: (string | number)[]): Promise<[string, number, number, number]>;
   paiHit(key: string, windowMs: number): Promise<number>;
+  paiUnhit(key: string): Promise<number>;
 };
 
 export class RedisCounterStore implements CounterStore {
@@ -43,6 +50,7 @@ export class RedisCounterStore implements CounterStore {
   constructor(client: Redis, private prefix = "pai:") {
     client.defineCommand("paiConsume", { numberOfKeys: 3, lua: CONSUME });
     client.defineCommand("paiHit", { numberOfKeys: 1, lua: HIT });
+    client.defineCommand("paiUnhit", { numberOfKeys: 1, lua: UNHIT });
     this.r = client as WithConsume;
   }
 
@@ -73,6 +81,7 @@ export class RedisCounterStore implements CounterStore {
     const count = Number(await this.r.paiHit(this.k("rl", bucket, `:${start}`), windowMs));
     return { allowed: count <= limit, count, resetAt: start + windowMs };
   }
+  async unhit(bucket: string, windowMs: number, now: number) { await this.r.paiUnhit(this.k("rl", bucket, `:${Math.floor(now / windowMs) * windowMs}`)); }
   async putOnce(key: string, value: string, ttlMs: number) { await this.r.set(`${this.prefix}once:${key}`, value, "PX", ttlMs); }
   async takeOnce(key: string) { return this.r.getdel(`${this.prefix}once:${key}`); }
   async ping() { await this.r.ping(); }

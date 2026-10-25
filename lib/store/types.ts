@@ -146,6 +146,8 @@ export interface CounterStore {
    * Always increments; `allowed` is false once the count exceeds `limit` in this window.
    */
   hit(bucket: string, limit: number, windowMs: number, now: number): Promise<HitResult>;
+  /** Undo one hit in the window that holds `now` (a request refused later on); never below zero. */
+  unhit(bucket: string, windowMs: number, now: number): Promise<void>;
   /** Store a one-time value with a TTL (e.g. a WebAuthn challenge). */
   putOnce(key: string, value: string, ttlMs: number): Promise<void>;
   /** Read and delete atomically; null if missing or expired. */

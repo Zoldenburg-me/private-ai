@@ -4,8 +4,22 @@ import { loadProviders } from "../lib/providers";
 
 describe("model catalog + privacy policy", () => {
   it("TEE provider models are tee + selectable", () => {
-    const m = normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "Qwen/Qwen3.8-27B" });
+    const m = normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "kimi-k3" });
     expect(m).toMatchObject({ privacy: "tee", tee: true, selectable: true });
+  });
+  it("Phala: TEE only where its own /models routes the model to Phala alone, whatever else it claims", () => {
+    const phala = { id: "phala", privacy: "tee-attested" } as const;
+    // Shapes from Phala's live /models (2026-10-25): it marks every model is_tee and routes many to other backends.
+    expect(normaliseModel(phala, { id: "phala/qwen3.8-27b-uncensored", is_tee: true, providers: ["phala"] })).toMatchObject({ privacy: "tee", tee: true, selectable: true });
+    for (const raw of [
+      { id: "moonshotai/kimi-k3", is_tee: true, providers: ["chutes"] }, // Chutes' attestation cannot be checked here
+      { id: "qwen/qwen3.8-27b", is_tee: true, providers: ["chutes", "phala"] }, // any one request may go to Chutes
+      { id: "z-ai/glm-5.3", is_tee: true, providers: ["0g-private-computer", "privatemode", "tinfoil"] },
+      { id: "x", is_tee: true, providers: [] },
+      { id: "x", tee: true, privacy: "tee" }, // no routing data (e.g. the allowlist fallback while /models is down)
+      { id: "x", zdr: true, providers: ["chutes"] },
+      { id: "x", privacy: "private", providers: ["chutes"] },
+    ]) expect(normaliseModel(phala, raw)).toMatchObject({ tee: false, selectable: false });
   });
   it("anonymized models are selectable only through the anonymizing gateway", () => {
     const m = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "x", privacy: "anonymized" });
@@ -35,7 +49,7 @@ describe("model catalog + privacy policy", () => {
       expect(normaliseModel(tinfoil, { id, type })).toMatchObject({ privacy: "tee", selectable: false });
     // No type (the allowlist fallback when /models is down): the operator picked it, keep it.
     expect(normaliseModel(tinfoil, { id: "gpt-oss-120b" }).selectable).toBe(true);
-    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", type: "embedding" }).selectable).toBe(true);
+    expect(normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "e", type: "embedding" }).selectable).toBe(true);
   });
   it("only Privatemode's generate models are selectable, by the tasks its /models lists", () => {
     const pm = { id: "privatemode", privacy: "tee-attested" } as const;
@@ -44,13 +58,13 @@ describe("model catalog + privacy policy", () => {
       expect(normaliseModel(pm, { id, tasks: [task] }).selectable).toBe(false);
     // No tasks (the allowlist fallback when /models is down): the operator picked it, keep it.
     expect(normaliseModel(pm, { id: "glm-5.3" }).selectable).toBe(true);
-    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", tasks: ["embed"] }).selectable).toBe(true);
+    expect(normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "e", tasks: ["embed"] }).selectable).toBe(true);
   });
   it("Privatemode works with only a key: no local proxy URL needed", () => {
     expect(loadProviders({ PRIVATEMODE_API_KEY: "k" })).toMatchObject([{ id: "privatemode", baseUrl: "https://api.privatemode.ai/v1" }]);
   });
   it("e2ee and zdr flags", () => {
-    expect(normaliseModel({ id: "phala", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
+    expect(normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "e", capabilities: { e2ee: true } }).e2ee).toBe(true);
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "z", zdr: true }).privacy).toBe("private");
     expect(normaliseModel({ id: "redpill", privacy: "tee-gateway" }, { id: "plain" }).selectable).toBe(false);
     // RedPill's /models marks confidential models with is_tee; standard ones stay unselectable.

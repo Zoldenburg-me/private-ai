@@ -7,6 +7,19 @@ const sse = (parts: string[]) => new Response(new ReadableStream({ start(c) { fo
   { headers: { "content-type": "text/event-stream", "x-usage-remaining-daily": "7" } });
 
 describe("client chat stream", () => {
+  it("an error turn is neither sent back to the model nor kept in history", () => {
+    const ui = [
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "text", text: "⚠️ daily limit reached" }], status: { type: "incomplete", reason: "error" } },
+      { role: "user", content: [{ type: "text", text: "again" }] },
+      { role: "assistant", content: [{ type: "text", text: "partial" }], status: { type: "incomplete", reason: "cancelled" } },
+    ];
+    // The unanswered message joins the next one, so roles still alternate (some chat templates require it).
+    expect(toChatMessages(ui)).toEqual([{ role: "user", content: "hi\n\nagain" }, { role: "assistant", content: "partial" }]);
+    const img = [ui[0], ui[1], { role: "user", content: [{ type: "text", text: "this" }], attachments: [{ name: "a.png", content: [{ type: "image", image: "data:image/png;base64,AA" }] }] }];
+    expect(toChatMessages(img)).toEqual([{ role: "user", content: [{ type: "text", text: "hi" }, { type: "text", text: "this" }, { type: "image_url", image_url: { url: "data:image/png;base64,AA" } }] }]);
+    expect(toStoredMessages(ui).map((m) => m.content)).toEqual(["hi", "again", "partial"]);
+  });
   it("maps assistant-ui messages to OpenAI messages (text parts only)", () => {
     expect(toChatMessages([{ role: "user", content: [{ type: "text", text: "hi" }, { type: "image" }] }, { role: "tool", content: [] }]))
       .toEqual([{ role: "user", content: "hi" }]);

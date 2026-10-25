@@ -7,11 +7,16 @@ import type { ModelEntry } from "./catalog";
  */
 export const CURATED: Record<string, Record<string, string>> = {
   // Not Phala: it serves Kimi K3 through Chutes, whose attestation format this app cannot check (seen 2026-10-21).
+  // Phala routes count only while its /models serves them from Phala alone (lib/catalog.ts phalaOnly); on 2026-10-25 neither did.
   "kimi-k3": { near: "moonshotai/kimi-k3", tinfoil: "kimi-k3" },
   "glm-5.3": { phala: "z-ai/glm-5.3", tinfoil: "glm-5-3", privatemode: "glm-5.3" },
   "deepseek-v4.1-flash": { near: "deepseek/deepseek-v4.1-flash", tinfoil: "deepseek-v4-1-flash" },
   "qwen3.8-27b": { near: "Qwen/Qwen3.8-27B", phala: "qwen/qwen3.8-27b" },
 };
+
+/** `m` is one of the provider routes above. */
+export const isCuratedRoute = (m: Pick<ModelEntry, "provider" | "id">) =>
+  Object.values(CURATED).some((routes) => Object.hasOwn(routes, m.provider) && routes[m.provider] === m.id);
 
 /** Blended USD per 1M tokens at 3 input : 1 output, the ratio Artificial Analysis prices by. Unpriced sorts last. */
 const blended = (m: ModelEntry) => (m.price ? (3 * m.price.in + m.price.out) / 4 : Infinity);

@@ -8,9 +8,10 @@ import { _reset } from "../lib/ratelimit";
 const tee = (provider: string, raw: Record<string, unknown>) => normaliseModel({ id: provider, privacy: "tee-attested" }, raw);
 // Real price shapes from each provider's /models (2026-10-20). NEAR is TEE only when its /model/list attests the model.
 const near = normaliseModel({ id: "near", privacy: "tee-attested" }, { id: "moonshotai/kimi-k3", pricing: { prompt: "0.0000033", completion: "0.0000165" } }, true);
-const phala = tee("phala", { id: "moonshotai/kimi-k3", pricing: { prompt: "0.000003", completion: "0.000015" } });
+// Phala's own routing decides its TEE claim (lib/catalog.ts); these stand for models it serves from its enclaves alone.
+const phala = tee("phala", { id: "moonshotai/kimi-k3", providers: ["phala"], pricing: { prompt: "0.000003", completion: "0.000015" } });
 const tinfoil = tee("tinfoil", { id: "kimi-k3", pricing: { inputTokenPricePer1M: 4, outputTokenPricePer1M: 20 } });
-const phalaGlm = tee("phala", { id: "z-ai/glm-5.3", pricing: { prompt: "0.0000014", completion: "0.0000044" } });
+const phalaGlm = tee("phala", { id: "z-ai/glm-5.3", providers: ["phala"], pricing: { prompt: "0.0000014", completion: "0.0000044" } });
 const tinfoilGlm = tee("tinfoil", { id: "glm-5-3", pricing: { inputTokenPricePer1M: 1.8, outputTokenPricePer1M: 5.75 } });
 
 describe("cheapest TEE routing", () => {
@@ -114,7 +115,7 @@ describe("modalities decide what can chat", () => {
     expect(near.modalities).toBeUndefined();
     expect(near.selectable).toBe(true);
     expect(tee("near", { id: "x", input_modalities: "text", output_modalities: ["text"] }).modalities).toBeUndefined(); // not an array: ignored
-    const empty = tee("phala", { id: "x", input_modalities: [], output_modalities: [] }); // empty: unknown
+    const empty = tee("tinfoil", { id: "x", input_modalities: [], output_modalities: [] }); // empty: unknown
     expect(empty.modalities).toBeUndefined();
     expect(empty.selectable).toBe(true);
   });

@@ -1,4 +1,5 @@
 import type { ModelEntry } from "./catalog";
+import { isCuratedRoute } from "./routing";
 
 export type TierId = "free" | "pro" | "max";
 
@@ -21,8 +22,17 @@ export const TIERS: Record<TierId, Tier> = {
 /** Top frontier models, by canonical (Liquid) id: paid plans only. Venice aliases map via canonicalModelId. */
 export const PAID_ONLY_MODELS = new Set(["gemini-4-argon", "claude-fable-5-1", "gpt-6-astra"]);
 
-/** What a signed-out (anonymous) session on the free plan may use: free TEE models only. Frontier, paid-only and incognito models need an account. */
-export const anonAllowed = (m: Pick<ModelEntry, "privacy" | "paid">) => m.privacy === "tee" && !m.paid;
+/**
+ * What a signed-out (anonymous) session on the free plan may use: the curated Auto line-up (an `auto:` entry or one
+ * of its provider routes, which the web client sends once Auto has picked one) on TEE. Sessions are free to mint, so a
+ * fixed list bounds what they can spend; any other model, frontier, paid-only and incognito ones included, needs an account.
+ * The mock provider is dev/test only (MOCK_PROVIDER=1) and answers for free.
+ */
+export const anonAllowed = (m: Pick<ModelEntry, "privacy" | "paid" | "provider" | "id">) =>
+  m.privacy === "tee" && !m.paid && (m.provider === "auto" || m.provider === "mock" || isCuratedRoute(m));
+
+/** Output cap for those anonymous sessions, below the free plan's. */
+export const ANON_MAX_OUTPUT_TOKENS = 2_048;
 
 /** max_tokens sent upstream when the client sets none (never above the tier cap). */
 export const DEFAULT_OUTPUT_TOKENS = 4_096;

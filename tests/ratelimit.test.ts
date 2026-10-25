@@ -33,6 +33,15 @@ describe.each(backends)("server-side fair-use gate (%s)", (_name, make) => {
     expect((await counters.hit("b2", 2, 60_000, t)).allowed).toBe(true); // other bucket independent
     expect((await counters.hit("b1", 2, 60_000, Date.UTC(2026, 9, 13, 10, 1, 1))).allowed).toBe(true); // next window
   });
+  it("unhit: undoes one hit in the same window, never below zero", async () => {
+    const { counters } = await (await import("../lib/store")).stores();
+    const t = Date.UTC(2026, 9, 13, 10, 0, 5);
+    await counters.hit("b1", 2, 60_000, t); await counters.hit("b1", 2, 60_000, t);
+    await counters.unhit("b1", 60_000, t + 1);
+    expect(await counters.hit("b1", 2, 60_000, t + 2)).toMatchObject({ allowed: true, count: 2 });
+    await counters.unhit("b9", 60_000, t); await counters.unhit("b9", 60_000, t); // nothing to undo
+    expect(await counters.hit("b9", 2, 60_000, t)).toMatchObject({ count: 1 });
+  });
   it("resets daily counter next day", async () => {
     const now = Date.UTC(2026, 9, 13, 23, 50);
     for (let i = 0; i < 20; i++) await gate("u", "free", 1, now + i * 13_000);

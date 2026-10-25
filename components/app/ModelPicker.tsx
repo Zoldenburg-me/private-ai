@@ -13,7 +13,7 @@ export interface PrivacyControl { level: Level; onLevel: (l: Level) => void; aut
 const ref = (m: ModelEntry) => `${m.provider}:${m.id}`;
 /** Paid-only models are locked once the plan is known to be free; `paidPlan` is undefined while the tier loads. */
 export const isLocked = (m: ModelEntry, paidPlan: boolean | undefined) => !!m.paid && paidPlan === false;
-/** Signed-out visitors on the free plan get free TEE models only (the server says the same); undefined while the session loads. */
+/** Signed-out visitors on the free plan get the curated Auto line-up on TEE only (anonAllowed, as on the server); undefined while the session loads. */
 export const needsSignIn = (m: ModelEntry, signedIn: boolean | undefined, paidPlan: boolean | undefined) => signedIn === false && paidPlan === false && !anonAllowed(m);
 
 /** Menu badges, as in the design. */

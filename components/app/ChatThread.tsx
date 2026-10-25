@@ -215,8 +215,9 @@ export function ChatThread(props: ThreadProps) {
       };
       const reply = async function* (): AsyncGenerator<ChatModelRunResult, void> {
         if (!p.images && newestHasImage(messages as never)) { // the model was switched after the image was attached
-          text = "⚠️ This model does not read images. Pick one that does, or send a new message without the image."; save();
-          yield { content: [{ type: "text", text }], status: { type: "incomplete", reason: "error", error: text } };
+          save(); // the user's message only: an error turn is never stored
+          const error = "⚠️ This model does not read images. Pick one that does, or send a new message without the image.";
+          yield { content: [{ type: "text", text: error }], status: { type: "incomplete", reason: "error", error } };
           return;
         }
         try {
@@ -227,8 +228,8 @@ export function ChatThread(props: ThreadProps) {
         } catch (e) {
           if (signal.aborted) { save(); yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled(), incognito } } }; return; } // keep what streamed so far, no error text
           if (e instanceof ProviderFailure) p.onProviderFailure(p.modelRef);
-          text = `⚠️ ${(e as Error).message}`; save();
-          yield { content: [{ type: "text", text }], metadata: { custom: { tools: settled(), incognito } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
+          text = ""; save(); // the user's message only: an error turn is never stored
+          yield { content: [{ type: "text", text: `⚠️ ${(e as Error).message}` }], metadata: { custom: { tools: settled(), incognito } }, status: { type: "incomplete", reason: "error", error: (e as Error).message } };
           return;
         }
         save();
@@ -330,7 +331,7 @@ export function ChatThread(props: ThreadProps) {
           <div className="composer-dock">
             {composer(false)}
             {hints}
-            {!props.hint && <p className="composer-hint">{props.ghost ? "Close the tab and it's gone." : "Encrypted in this browser. Relayed, never logged."}</p>}
+            {!props.hint && <p className="composer-hint">{props.ghost ? "Close the tab and it's gone." : "Encrypted in this browser. Relayed via Cloudflare and our server, never logged by us."}</p>}
           </div>
         </ThreadPrimitive.If>
         <div className="sr-only" role="status">

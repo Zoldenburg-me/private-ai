@@ -55,9 +55,10 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
   let chatId = "";
   const dec = new TextDecoder();
   let head = "";
-  // Only the relay writes `pai_receipt`: upstream blocks of that event are dropped, line by line across chunks.
+  // Only our server names events (`pai_receipt` here, `agent_tool`/`pai_usage` in lib/agent.ts): every upstream block
+  // with an `event:` line is dropped, line by line across chunks. OpenAI-style streams send only unnamed `data:` blocks.
   const sse = new TextDecoder();
-  let line = ""; let dropping = false;
+  let line = ""; let dropping = false; let droppedLogged = false;
   const reader = upstream.body.getReader();
   const out = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
@@ -96,7 +97,11 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
       line = (lines.pop() ?? "") + (cr ? "\r" : "");
       const kept = lines.filter((l) => {
         const t = l.trim();
-        if (t.startsWith("event:")) dropping = t.slice(6).trim() === "pai_receipt";
+        if (t.startsWith("event:")) {
+          dropping = true;
+          // Once per request, no event name: a provider that names its own events (and loses them here) shows up in the logs.
+          if (!droppedLogged) { droppedLogged = true; log({ route, provider: provider.id, event: "upstream_event_dropped" }); }
+        }
         else if (t === "") dropping = false;
         return !dropping;
       });
