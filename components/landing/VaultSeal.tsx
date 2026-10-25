@@ -23,11 +23,12 @@ async function seal(text: string): Promise<string> {
 export function VaultSeal() {
   const [sealed, setSealed] = useState(true);
   const [cipher, setCipher] = useState(PLACEHOLDER);
+  const [real, setReal] = useState(false); // the cipher text is SAMPLE, sealed in this tab
   const [frame, setFrame] = useState<string | null>(null); // mid-scramble text
   const timer = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
-    seal(SAMPLE).then(setCipher, () => { /* no WebCrypto (plain http): keep the placeholder */ });
+    seal(SAMPLE).then((c) => { setCipher(c); setReal(true); }, () => { /* no WebCrypto (plain http): keep the placeholder, labelled as one */ });
     return () => clearInterval(timer.current);
   }, []);
 
@@ -49,7 +50,7 @@ export function VaultSeal() {
 
   return (
     <div className="vault-dark">
-      <p className="vault-label">{sealed ? "The same chat, as your browser stores it" : "The same chat, if it were stored unencrypted"}</p>
+      <p className="vault-label">{sealed ? (real ? "The same chat, as your browser stores it" : "What an encrypted chat looks like") : "The same chat, if it were stored unencrypted"}</p>
       {/* The scramble frames are decorative; screen readers get the settled state only. */}
       <p className={`vault-text ${sealed ? "sealed" : ""}`} aria-hidden>{frame ?? (sealed ? cipher : SAMPLE)}</p>
       <p className="sr-only" aria-live="polite">{sealed ? "Shown encrypted." : `Shown in plain text: ${SAMPLE}`}</p>

@@ -32,6 +32,9 @@
   --field: #22252b; --ok: #3ecf8e; --logo: 1; --hover: rgba(242,243,245,.06);
 }
 body:has(> .landing) { background: #f7f7f5; }
+/* Anchor jumps land below the sticky nav (64px, two rows on narrow screens). */
+html:has(.landing) { scroll-padding-top: 80px; }
+@media (max-width: 900px) { html:has(.landing) { scroll-padding-top: 116px; } }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body:has(> .landing) { background: #0e0f11; } }
 :root[data-theme="dark"] body:has(> .landing) { background: #0e0f11; }
 
@@ -71,12 +74,17 @@ body:has(> .landing) { background: #f7f7f5; }
 
 /* Nav */
 .l-nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
-.nav-row { height: 64px; display: flex; align-items: center; gap: 32px; }
+.nav-row { min-height: 64px; display: flex; align-items: center; gap: 32px; }
 .nav-row nav { display: flex; gap: 28px; font-size: 14px; }
 .nav-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .landing .sound-btn { width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); display: grid; place-items: center; cursor: pointer; font-size: 16px; padding: 0; }
 .landing .sound-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-@media (max-width: 900px) { .nav-row nav { display: none; } }
+/* Narrow screens: the section links move to a second row that scrolls sideways. */
+@media (max-width: 900px) {
+  .nav-row { flex-wrap: wrap; row-gap: 0; }
+  .nav-row nav { order: 3; flex: 1 1 100%; gap: 20px; overflow-x: auto; padding: 0 0 12px; white-space: nowrap; scrollbar-width: none; }
+  .nav-row nav a { padding: 4px 0; }
+}
 
 /* Hero */
 .l-hero { padding-top: 72px; padding-bottom: 56px; display: flex; flex-wrap: wrap; align-items: center; gap: 48px; }
@@ -277,7 +285,7 @@ body:has(> .landing) { background: #f7f7f5; }
   .w0 { animation-delay: .1s; } .w1 { animation-delay: .22s; } .w2 { animation-delay: .34s; } .w3 { animation-delay: .46s; } .w4 { animation-delay: .58s; }
   .w5 { animation-delay: .7s; } .w6 { animation-delay: .82s; } .w7 { animation-delay: .94s; } .w8 { animation-delay: 1.06s; } .w9 { animation-delay: 1.18s; }
   .landing .rise { animation: rise .9s var(--ease) backwards; }
-  .rail-flow { animation: flow .9s linear infinite; }
+  .rail-flow { animation: flow .9s linear 5; } /* about 4.5s, so it stops on its own (WCAG 2.2.2) */
   /* Sections rise as they scroll in, on the compositor (no scroll listeners); browsers without view timelines show them as is. */
   @supports (animation-timeline: view()) {
     .landing main > section:not(.l-hero) { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
