@@ -1,8 +1,8 @@
 /* Account screen (design v3 "Profile") plus the shared broadsheet controls (hs-*) that the admin console reuses. */
 .hs-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius); background: transparent; color: var(--text); font: 15px var(--font); cursor: pointer; white-space: nowrap; text-decoration: none; transition: background .15s var(--ease), opacity .15s var(--ease); }
 .hs-btn:hover { background: var(--hover); }
-.hs-btn.primary { border: 0; background: var(--tint); color: var(--on-accent); }
-.hs-btn.primary:hover { background: var(--tint); opacity: .9; }
+.hs-btn.primary { border: 0; background: var(--accent); color: var(--on-accent); }
+.hs-btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--text)); }
 .hs-btn.danger { border-color: var(--bad); color: var(--bad); }
 .hs-btn.tall { height: 42px; }
 .hs-btn svg { font-size: 18px; flex: none; }
@@ -25,10 +25,10 @@
 .hs-mono { font-family: var(--mono); font-size: 13.5px; }
 .hs-card { padding: 20px; border-radius: var(--radius); background: var(--bg-raised); box-shadow: var(--shadow); }
 .hs-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; max-width: 320px; font-size: 14px; font-style: italic; color: var(--muted); }
-.hs-input { height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font: normal 15px var(--font); outline: 0; }
-.hs-input:focus { border-color: var(--tint); }
+.hs-input { height: 42px; padding: 0 12px; border: 1px solid var(--field-line); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font: normal 15px var(--font); outline: 0; }
+.hs-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); } /* the resting border is already dark: focus needs more than a hue change */
 .hs-input::placeholder { color: var(--ink-faint); font-style: italic; }
-.hs-search { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); color: var(--muted); }
+.hs-search { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; border: 1px solid var(--field-line); border-radius: var(--radius); background: var(--bg-raised); color: var(--muted); }
 .hs-search svg { font-size: 18px; flex: none; }
 .hs-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; color: var(--text); font: 15px var(--font); }
 .hs-seg { display: flex; flex-wrap: wrap; gap: 4px; }

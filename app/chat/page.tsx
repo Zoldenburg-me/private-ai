@@ -494,7 +494,7 @@ export default function Home() {
     startChat({ ghost: !ghost }); setNavOpen(false);
   };
   const TITLES: Record<View, string> = { chat: "", dashboard: "Dashboard", personas: "Personas", settings: "Account" };
-  const title = view !== "chat" ? TITLES[view] : ghost ? "Ghost chat — not saved" : chat.messages.length ? chat.title : "";
+  const title = view !== "chat" ? TITLES[view] : ghost ? "Ghost chat: not saved" : chat.messages.length ? chat.title : "";
   const NAV = [
     { v: "dashboard" as const, label: "Dashboard", Icon: ChartBar },
     { v: "personas" as const, label: "Personas", Icon: UserFocus },
@@ -547,7 +547,7 @@ export default function Home() {
                 onSaved={onSaved} onUsage={onUsage} verifySignature={verifySignature} onProviderFailure={onProviderFailure}
                 handoff={handoff} onHandoff={() => setHandoff(null)}
                 hint={sessionDone && !signedIn && invite ? <>You&apos;re invited. <button type="button" className="link" data-testid="invite-hint" onClick={() => go("settings")}>Create your account</button>: a passkey and an account ID.</>
-                  : sessionDone && !signedIn ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
+                  : sessionDone && !signedIn && ghost ? <>Nothing from this chat is saved. <button type="button" className="link" data-testid="signup-hint" onClick={() => promptSignup("Sign up to save chats.")}>Sign up to save chats</button></> : undefined}
                 anonymized={anonymized} suggestions={anonymized ? SUGGESTIONS.filter((s) => !/private/i.test(s)) : SUGGESTIONS}
                 onOpenProof={() => setDrawer(true)}
                 incognito={selectedPrivacy === "private" || selectedPrivacy === "anonymized" ? selectedPrivacy : undefined}

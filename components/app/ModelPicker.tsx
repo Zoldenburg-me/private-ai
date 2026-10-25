@@ -155,7 +155,7 @@ export function ModelPicker({ models, value, onChange, paidPlan, signedIn, onExp
             </div>
           ))}
         </div>
-        {onExplain && <button type="button" className="picker-explain" onClick={() => { setOpen(false); onExplain(); }}><Question weight="duotone" aria-hidden />Enclave, private, anonymized — what&apos;s the difference?</button>}
+        {onExplain && <button type="button" className="picker-explain" onClick={() => { setOpen(false); onExplain(); }}><Question weight="duotone" aria-hidden />Enclave, private or anonymized: what&apos;s the difference?</button>}
         </div>
       )}
     </div>
