@@ -15,6 +15,8 @@ import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
 import { ANONYMIZED_NOTE, GATEWAY_ONLY, PROVIDER_LABEL } from "@/lib/client/providers";
+import type { Level } from "@/lib/client/levels";
+import { MODE_LOOK, ModeNarwhal } from "./ModeNarwhal";
 
 /** Names the provider this chat is actually sent to (Auto picks it per proof), or none while Auto is still choosing. */
 export function enclaveLine(modelRef: string): string {
@@ -56,6 +58,8 @@ export interface ThreadProps {
   webSearch?: boolean;
   /** The selected model reads images (its input modalities include image); otherwise only documents can be attached. */
   images?: boolean;
+  /** The selected privacy level: picks the narwhal on the welcome screen. */
+  level?: Level;
   /** The composer's "+" tools menu; without one the design's "coming soon" icons show. */
   toolsSlot?: ReactNode;
 }
@@ -172,8 +176,11 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
   const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
   const images = tools?.filter((t) => t.name === "generate_image") ?? [];
   const searches = tools?.filter((t) => t.name !== "generate_image") ?? [];
+  // Each reply keeps the narwhal of the route it came from: its stored incognito label, otherwise the enclave.
+  const replyLevel: Level = incognito === "private" ? "medium" : incognito === "anonymized" ? "anon" : "max";
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
+      {role === "assistant" && <ModeNarwhal level={replyLevel} size={32} className="msg-avatar" />}
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {shown.files.length > 0 && <Files files={shown.files} />}
@@ -324,6 +331,12 @@ export function ChatThread(props: ThreadProps) {
         <ThreadPrimitive.Empty>
           <div className="welcome" data-testid="welcome">
             <div className="welcome-col">
+              {props.level && (
+                <div className="welcome-mode">
+                  <ModeNarwhal level={props.level} size={104} label />
+                  <span>{MODE_LOOK[props.level].caption}</span>
+                </div>
+              )}
               <h1>{props.persona ? props.persona.name : <>{hi} <em>{em}</em></>}</h1>
               <p className="sr-only">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)}</p>
               {composer(true)}

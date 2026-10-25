@@ -12,12 +12,14 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { Vault, idbKeyStore, MANAGED } from "@/lib/client/vault";
 import { openHistory, readHandoff, withInvite } from "@/lib/client/guest";
 import { DEFAULT_MODE, readModePrefs, readSidebarCollapsed, sidebarHidden, writeModePrefs, writeSidebarCollapsed, type ModePrefs } from "@/lib/client/ui-prefs";
-import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef, signInUnlocks } from "@/lib/client/levels";
+import { AUTO, autoRef, autoRouteNote, levelModels, nextUnbench, resolveRef, signInUnlocks, type Level } from "@/lib/client/levels";
 import { ToolsMenu } from "@/components/app/ToolsMenu";
 import { autoCandidates, autoRetryDelay, fallbackOf, firstPassing, handoffReady, isBenched, ROUTE_COOLDOWN_MS, noEnclaveProof, proofFromResponse, signatureLevel, unsignedReason, isServerChecked, sdkProof, LEVEL_LABEL, type Proof } from "@/lib/client/proof";
 import { ENABLED_PROVIDERS, autoEntryOf, autoModels, imagesFor, nearDefault } from "@/lib/client/providers";
 import { ChatThread, type Signed } from "@/components/app/ChatThread";
 import { ProofBadge } from "@/components/app/ProofBadge";
+import { MODE_LOOK, ModeNarwhal } from "@/components/app/ModeNarwhal";
+import { playNotes } from "@/lib/client/tone";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
 import { ModelPicker, needsSignIn } from "@/components/app/ModelPicker";
 import { PersonaGallery } from "@/components/app/PersonaGallery";
@@ -65,6 +67,8 @@ export default function Home() {
   const modelRef = resolveRef(usable, mode.level, mode.picks[mode.level], mode.pickProvider, failedAt);
   const autoOn = modelRef !== mode.picks[mode.level]; // Auto also covers a remembered pick the picker no longer offers
   const pick = (r: string) => updateMode({ picks: { ...mode.picks, [mode.level]: r } });
+  // The level's tone plays only if the user turned mode sounds on in settings (off by default).
+  const switchLevel = (l: Level) => { if (l !== mode.level && mode.sounds) playNotes(MODE_LOOK[l].sound); updateMode({ level: l }); };
   const anonymized = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.tee === false;
   const selectedPrivacy = models.find((m) => `${m.provider}:${m.id}` === modelRef)?.privacy;
   // The meter shows the quota the selected model counts against.
@@ -522,6 +526,7 @@ export default function Home() {
           <button type="button" className="icon-btn menu-btn" ref={menuRef} data-testid="nav-toggle" aria-label={narrow ? "Menu" : "Open sidebar"}
             aria-expanded={navShown} aria-controls="app-nav" onClick={toggleNav}>{narrow ? <List aria-hidden /> : <SidebarSimple weight="duotone" aria-hidden />}</button>
           <button type="button" className="icon-btn menu-btn" aria-label="New chat" onClick={() => startChat()}><NotePencil weight="duotone" aria-hidden /></button>
+          {view === "chat" && <ModeNarwhal level={mode.level} size={22} className="top-narwhal" />}
           <span className="top-title">{title}</span>
           {persona && <span className="chip" data-testid="persona-chip"><UserFocus aria-hidden />{persona.name}<button type="button" className="chip-x" aria-label="Clear persona" onClick={() => setPersonaId("")}><X aria-hidden /></button></span>}
           <div className="grow" />
@@ -554,10 +559,10 @@ export default function Home() {
                 ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
                   <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
                 webSearch={webSearch}
-                images={imagesFor(models, modelRef, sendRef)}
+                images={imagesFor(models, modelRef, sendRef)} level={mode.level}
                 toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))} />}
                 modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} signedIn={account ? account.signedIn : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
-                  privacy={{ level: mode.level, onLevel: (l) => updateMode({ level: l }), auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
+                  privacy={{ level: mode.level, onLevel: switchLevel, auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
             : vaultError ? <div className="loading bad">{vaultError}</div> : <div className="loading muted">Unlocking encrypted history…</div>
         )}
         {view === "dashboard" && (
@@ -575,7 +580,8 @@ export default function Home() {
             onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}
             onExportAccount={downloadAccountData} onDeleteAccount={deleteAccount}
             onExport={exportBackup} onImport={importBackup} onWipe={wipe}
-            tools={{ available: searchAvailable, webSearch: mode.webSearch, onWebSearch: (on) => updateMode({ webSearch: on }), pickProvider: mode.pickProvider, onPickProvider: (on) => updateMode({ pickProvider: on }) }} />
+            tools={{ available: searchAvailable, webSearch: mode.webSearch, onWebSearch: (on) => updateMode({ webSearch: on }), pickProvider: mode.pickProvider, onPickProvider: (on) => updateMode({ pickProvider: on }),
+              sounds: mode.sounds, onSounds: (on) => { updateMode({ sounds: on }); if (on) playNotes(MODE_LOOK[mode.level].sound); } }} />
         )}
       </main>
 
