@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleChat } from "../lib/handler";
-import { issueToken, setTier } from "../lib/session";
+import { setTier } from "../lib/session";
+import { signedIn } from "./helpers/signed-in";
 import { gate, _reset } from "../lib/ratelimit";
 import { normaliseModel } from "../lib/catalog";
 import { loadProviders } from "../lib/providers";
@@ -34,7 +35,7 @@ describe("Liquid provider", () => {
   });
 
   it("every request asks the exchange for zero-retention offers, and the client cannot override it", async () => {
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const r = await chat(token, "liquid:deepseek-v4.1-flash", { exchange: { retention_policy: "allowed" } });
     expect(r.status).toBe(200);
     expect(sent[0].exchange).toEqual({ retention_policy: "none", cache: "off" });
@@ -48,7 +49,7 @@ describe("paid-only frontier models", () => {
   });
 
   it("are refused for free users and served for paid ones", async () => {
-    const { id, token } = issueToken();
+    const { id, token } = await signedIn();
     expect((await chat(token, "liquid:claude-fable-5-1")).status).toBe(402);
     expect(sent).toHaveLength(0);
     await setTier(id, "pro");
@@ -68,7 +69,7 @@ describe("incognito quota", () => {
   });
 
   it("an incognito chat reports the incognito quota", async () => {
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const r = await chat(token, "liquid:deepseek-v4.1-flash");
     expect(r.headers.get("x-usage-limit-daily")).toBe("50");
     expect(r.headers.get("x-usage-remaining-daily")).toBe("49");
@@ -103,7 +104,7 @@ describe("Venice private routes", () => {
 
   it("private models count against the incognito quota and are never the default", async () => {
     expect(defaultModelRef([kimiPrivate])).toBe("");
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const d = { ...deps, catalog: async () => [kimiPrivate], env: { VENICE_API_KEY: "k", VENICE_BASE_URL: "http://upstream/v1" } };
     const r = await handleChat(new Request("http://app/api/chat", { method: "POST", headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ model: "venice:kimi-k3", messages: [{ role: "user", content: "hi" }] }) }), "/api/chat", d);
@@ -139,7 +140,7 @@ describe("review fixes", () => {
     expect(custom).toMatchObject({ privacy: "private", tee: false });
     expect(custom.incognito).toBeUndefined();
     expect(pickerGroup(custom)).toBe("custom");
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const d = { ...deps, catalog: async () => [custom], env: { CUSTOM_API_KEY: "k", CUSTOM_BASE_URL: "http://upstream/v1" } };
     const r = await handleChat(new Request("http://app/api/chat", { method: "POST", headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ model: "custom:zdr-model", messages: [{ role: "user", content: "hi" }] }) }), "/api/chat", d);
@@ -155,7 +156,7 @@ describe("review fixes", () => {
   it("paid-only applies to Venice aliases and on the API route too", async () => {
     const astra = normaliseModel(venice, { id: "openai-gpt-6-astra" });
     expect(astra.paid).toBe(true);
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const d = { ...deps, catalog: async () => [astra], env: { VENICE_API_KEY: "k", VENICE_BASE_URL: "http://upstream/v1" } };
     expect((await v1(token, "venice:openai-gpt-6-astra", d)).status).toBe(402);
     expect((await v1(token, "liquid:claude-fable-5-1")).status).toBe(402);
@@ -164,7 +165,7 @@ describe("review fixes", () => {
 
   it("paid plans get their own incognito quota", async () => {
     for (const tier of ["pro", "max"] as const) {
-      const { id, token } = issueToken();
+      const { id, token } = await signedIn();
       await setTier(id, tier);
       expect((await chat(token, "liquid:deepseek-v4.1-flash")).headers.get("x-usage-limit-daily")).toBe(String(TIERS[tier].incognitoDailyMessages));
     }

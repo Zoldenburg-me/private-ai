@@ -8,7 +8,7 @@ import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
-import { DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
+import { anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
@@ -100,6 +100,9 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   if (hasImage && !entry.modalities?.in.includes("image")) { await recordFailure(id); return err(400, "this model does not read images; pick one that does"); }
 
   const tier = await tierOf(id);
+  // Signed-out sessions are free to mint: on the free plan they get only free TEE models (an anonymous paid account keeps its plan).
+  if (!me.deviceId && tier === "free" && !anonAllowed(entry))
+    return Response.json({ error: { message: "Sign in to use this model.", code: "signin_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   if (entry.paid && tier === "free")
     return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
   const incognito = entry.incognito === true;
