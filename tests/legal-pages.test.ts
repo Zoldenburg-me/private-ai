@@ -25,6 +25,11 @@ describe("legal pages", () => {
     expect(html).toMatch(/verlässt dann die Enklave/);
     expect(html).toMatch(/leaves the enclave/);
   });
+  it("datenschutz: image prompts go to NEAR AI Cloud from other providers' chats, not offered on NEAR chats (DE + EN)", () => {
+    const html = render(Datenschutz);
+    expect(html).toMatch(/Bilderzeugung \([^)]*nicht bei Modellen auf NEAR AI Cloud\)[^<]*auch wenn Sie für den Chat einen anderen Anbieter gewählt haben/);
+    expect(html).toMatch(/Image generation \([^)]*not for models on NEAR AI Cloud\)[^<]*even when you picked another provider for the chat/);
+  });
   it("privacy/metadata lists every inventory field in both languages", () => {
     const html = render(Metadata);
     for (const d of DATA_INVENTORY) {

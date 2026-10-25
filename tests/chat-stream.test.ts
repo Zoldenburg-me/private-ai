@@ -116,6 +116,16 @@ describe("client chat stream", () => {
     expect(out.at(-1)!.remaining).toBe("5"); // the header said 7: later agent steps used two more
   });
 
+  it("agent mode: an image event split over newline-less chunks arrives whole, and an unterminated [DONE] still ends the answer", async () => {
+    const image = `data:image/png;base64,${"A".repeat(30_000)}`;
+    const ev = `event: agent_tool\ndata: ${JSON.stringify({ id: "i1", name: "generate_image", status: "done", query: "cat", image })}\n\n`;
+    const parts = [ev.slice(0, 10_000), ev.slice(10_000, 20_000), ev.slice(20_000), 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]'];
+    const out = [];
+    for await (const u of streamChat({ model: "near:m", messages: [], agent: true, fetchImpl: (async () => sse(parts)) as unknown as typeof fetch })) out.push(u);
+    expect(out.at(-1)!.tools[0].image).toBe(image);
+    expect(out.at(-1)!.text).toBe("ok");
+  });
+
   it("agent mode: agent_error and a stream cut before [DONE] both surface as errors", async () => {
     const run = (parts: string[]) => (async () => {
       for await (const _ of streamChat({ model: "near:m", messages: [], agent: true, fetchImpl: (async () => sse(parts)) as unknown as typeof fetch })) void _;

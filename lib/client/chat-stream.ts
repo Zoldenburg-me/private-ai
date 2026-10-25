@@ -131,7 +131,10 @@ export async function* streamChat({ model, messages, persona, signal, fetchImpl 
     // A stream that breaks here stays a plain error: the browser cannot tell the relay's failure from the user's own network.
     const { value, done } = await reader.read();
     if (done) break;
-    const p = parseSseChunk(buf + dec.decode(value, { stream: true }));
+    const chunk = dec.decode(value, { stream: true });
+    // A generated image is one multi-MB line: parse only once a line ends, not the growing line on every chunk.
+    if (!chunk.includes("\n")) { buf += chunk; continue; }
+    const p = parseSseChunk(buf + chunk);
     buf = p.rest; text += p.deltas.join(""); if (p.receipt) receipt = p.receipt; tools = mergeTools(tools, p.tools); finished ||= p.done; remaining = p.remaining ?? remaining;
     if (p.error) throw failure(p.error, agent && providerText(p.error)); // only /api/agent writes agent_error; a relayed provider could fake it
     yield { text, remaining, limit, quota, tools };
