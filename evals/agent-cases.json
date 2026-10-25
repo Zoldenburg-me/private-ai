@@ -1,0 +1,18 @@
+[
+  { "id": "news-today", "expect": "search", "prompt": "What are the top technology news headlines today?" },
+  { "id": "price-btc", "expect": "search", "prompt": "What is the current price of Bitcoin in euros?" },
+  { "id": "weather-berlin", "expect": "search", "prompt": "What's the weather forecast for Berlin this weekend?" },
+  { "id": "latest-release", "expect": "search", "prompt": "What is the latest stable release of Node.js and when did it come out?" },
+  { "id": "recent-event", "expect": "search", "prompt": "Who won the most recent Formula 1 Grand Prix?" },
+  { "id": "company-ceo", "expect": "search", "prompt": "Who is the current CEO of Intel? Give me a source." },
+  { "id": "de-news", "expect": "search", "prompt": "Was sind heute die wichtigsten Nachrichten in Deutschland?" },
+  { "id": "opening-hours", "expect": "search", "prompt": "Find the current opening hours of the Louvre museum." },
+  { "id": "math", "expect": "no_search", "prompt": "What is 17 multiplied by 23?" },
+  { "id": "rewrite", "expect": "no_search", "prompt": "Rewrite this sentence to sound more polite: 'Send me the report now.'" },
+  { "id": "translate", "expect": "no_search", "prompt": "Translate 'Good morning, how are you?' into German." },
+  { "id": "code", "expect": "no_search", "prompt": "Write a JavaScript function that reverses a string." },
+  { "id": "definition", "expect": "no_search", "prompt": "Explain in two sentences what a prime number is." },
+  { "id": "poem", "expect": "no_search", "prompt": "Write a four-line poem about the sea." },
+  { "id": "de-grammar", "expect": "no_search", "prompt": "Ist es 'wegen dem Wetter' oder 'wegen des Wetters'? Kurz erklären." },
+  { "id": "summarize", "expect": "no_search", "prompt": "Summarize in one sentence: The meeting was moved from Monday to Wednesday because two team members were travelling, and the agenda stays the same." }
+]
