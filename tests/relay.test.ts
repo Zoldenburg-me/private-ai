@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleChat } from "../lib/handler";
 import { issueToken, setTier } from "../lib/session";
+import { signedIn } from "./helpers/signed-in";
 import { _reset } from "../lib/ratelimit";
 import { metaLogger } from "../lib/log";
 import { applyExtensions } from "../lib/extensions";
@@ -62,7 +63,7 @@ describe("relay: zero content logging", () => {
     expect((await handleChat(req("pai_forgedforgedforged.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", { model: "mock:m", messages: [] }), "/t", deps)).status).toBe(401);
   });
   it("anonymized frontier model: relayed to the gateway with our key only, no identity fields", async () => {
-    const { token } = issueToken();
+    const { token } = await signedIn();
     const venice = normaliseModel({ id: "venice", privacy: "anon-gateway" }, { id: "claude-opus-5-5" });
     const deps = { catalog: async () => [venice], env: { VENICE_API_KEY: "gw-key", VENICE_BASE_URL: "http://venice/v1", VENICE_MODELS: "claude-opus-5-5" }, fetchImpl: upstream };
     const res = await handleChat(req(token, { model: "venice:claude-opus-5-5", user: "alice", metadata: { account: "a" }, safety_identifier: "s", messages: [{ role: "user", content: "x" }] }), "/t", deps);

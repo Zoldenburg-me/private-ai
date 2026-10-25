@@ -153,7 +153,7 @@ Enable the Customer Portal (cancel + plan switch) in the Stripe dashboard. Event
 **Invite-only signup:** set `INVITE_CODES=code1,code2` (long random strings, e.g. `openssl rand -hex 12`). The first
 passkey (account creation) asks for a code; logins and extra passkeys do not. Codes are shared and reusable; remove one
 from INVITE_CODES and restart to revoke it (a signup already started with it can still finish within 5 minutes). While the gate is on, signed-out visitors can still
-chat in the web app (ghost chat, nothing saved) under one instance-wide cap (`PAI_LIMIT_ANON_CHATS_PER_MIN`, default 60, never per IP); the API (`/api/v1`) needs a signed-in
+chat in the web app (ghost chat, nothing saved) with the free TEE models only, under one instance-wide cap (`PAI_LIMIT_ANON_CHATS_PER_MIN`, default 10, never per IP); the API (`/api/v1`) needs a signed-in
 passkey account. Panel codes count a use only when the passkey is created, so a cancelled prompt spends nothing. Code attempts are capped instance-wide before the code is checked, so a correct guess past the cap is refused too (`PAI_LIMIT_INVITE_FAILS_PER_MIN`, default 30).
 
 **Admin panel (`/admin`):** operators only, not linked from the site and `noindex`. Set `ADMIN_ACCOUNT_IDS` to the
