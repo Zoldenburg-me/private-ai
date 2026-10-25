@@ -1,6 +1,6 @@
 "use client";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { ArrowUp } from "@phosphor-icons/react";
+import { ArrowUp, LockSimple } from "@phosphor-icons/react";
 import { chatUrl } from "./chat-url";
 
 const CHIPS = ["Draft a sensitive email", "Explain a medical test result", "Plan a budget for next month", "How does this app prove privacy?"] as const;
@@ -17,11 +17,15 @@ export function HeroComposer() {
 
   return (
     <>
-      <form className="composer" onSubmit={submit}>
+      <form className="l-composer" onSubmit={submit}>
         {/* No name: a pre-hydration native submit must not put the prompt in a query string. */}
-        <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
-          placeholder="Ask anything privately…" aria-label="Ask anything privately" enterKeyHint="send" autoComplete="off" />
-        <button type="submit" className="composer-send" disabled={!text.trim()} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></button>
+        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
+          placeholder="Ask anything, privately" aria-label="Ask anything, privately" enterKeyHint="send" autoComplete="off" />
+        <div className="l-composer-bar">
+          {/* DEFAULT_MODE is the enclave (Max) level; a visitor's saved pick can change it, hence "by default". */}
+          <span className="l-composer-tag"><LockSimple aria-hidden />Enclave by default</span>
+          <button type="submit" className="l-composer-send" disabled={!text.trim()} aria-label="Send"><ArrowUp weight="bold" aria-hidden /></button>
+        </div>
       </form>
       <ul className="chips" aria-label="Suggestions">
         {CHIPS.map((c) => <li key={c}><button type="button" onClick={() => go(c)}>{c}</button></li>)}

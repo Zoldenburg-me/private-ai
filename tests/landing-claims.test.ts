@@ -3,7 +3,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { NOT_VERIFIED } from "../lib/client/proof";
-import { Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Proof, frontierOn } from "../components/landing/Sections";
+import { Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, frontierOn } from "../components/landing/Sections";
+import { SoundToggle } from "../components/landing/SoundToggle";
+import { PAID_ONLY_MODELS, TIERS } from "../lib/tiers";
 
 const render = (c: () => React.ReactElement | null) => renderToStaticMarkup(createElement(c));
 
@@ -67,7 +69,7 @@ describe("landing claims follow the invite gate", () => {
     for (const k of ["NEAR_AI", "PHALA", "TINFOIL", "PRIVATEMODE", "VENICE", "LIQUID"]) vi.stubEnv(`${k}_API_KEY`, ""); // keys live in the admin panel, not env
     const html = render(PoweredBy);
     const [tee, gateways = ""] = html.split("Frontier models via");
-    expect(tee).toContain("Powered by confidential compute from");
+    expect(tee).toContain("Runs on confidential compute from");
     expect(tee).toContain('alt="NEAR AI Cloud"');
     expect(tee).toContain('alt="Phala Confidential AI"');
     expect(tee).toContain("Tinfoil");
@@ -90,8 +92,63 @@ describe("landing claims follow the invite gate", () => {
     expect(html).toContain("<details");
     expect(html).toContain("Technical details");
     expect(html).toContain("Not verified yet");
-    expect(html).toContain("Example · fully verified reply"); // the verified demo is labelled as an example
+    expect(html).toContain("Example reply."); // the demo is labelled as an example
+    expect(html).toContain("chain not verified yet"); // and claims no more than the app shows today
+    expect(html).not.toMatch(/signed in (the )?enclave/i); // with the chain unverified the app says "signature matches", not "signed by"
     for (const n of NOT_VERIFIED) expect(html).toContain(n.replace(/&/g, "&amp;"));
+  });
+});
+
+// Pricing belongs to lib/tiers.ts (another branch reworks it): the page shows what TIERS has and nothing it lacks.
+describe("landing pricing follows lib/tiers.ts", () => {
+  const html = renderToStaticMarkup(Pricing({ frontier: true }));
+
+  it("renders every plan TIERS has, at its price", () => {
+    for (const t of Object.values(TIERS)) {
+      expect(html).toContain(`<h3>${t.name}</h3>`);
+      expect(html).toContain(`€${t.priceEurMonth}`);
+    }
+    expect(html).toContain(TIERS.pro.dailyMessages.toLocaleString("en"));
+    expect(html).toContain(`up to ${TIERS.pro.agentMaxSteps} steps per run`);
+  });
+
+  it("has no numbers or features TIERS does not define", () => {
+    expect(html).not.toMatch(/credit|images? a day|video|music|yearly|billed/i);
+    expect(readFileSync("components/landing/Sections.tsx", "utf8")).not.toMatch(/Generate images|€8\b|€80\b|€150\b|€490\b|Choose Plus|"Plus"/);
+  });
+
+  it("frontier models only while a gateway is live, and only the paid-only ones TIERS lists", () => {
+    expect(renderToStaticMarkup(Pricing({ frontier: false }))).not.toContain("frontier models");
+    const shown = [...html.matchAll(/brand\/frontier\/(\w+)\.svg/g)].map((m) => m[1]);
+    expect(shown.length).toBeGreaterThan(0);
+    const prefix: Record<string, string> = { claude: "claude", gemini: "gemini", chatgpt: "gpt", grok: "grok" };
+    for (const s of shown) expect([...PAID_ONLY_MODELS].some((id) => id.startsWith(prefix[s]))).toBe(true);
+  });
+});
+
+// Sound is opt-in (Map.dc.html: "opt-in synthesised sound"), synthesised, and never remembered.
+describe("landing sound and storage", () => {
+  it("the toggle starts off", () => {
+    const html = renderToStaticMarkup(createElement(SoundToggle));
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("Turn sound on");
+  });
+
+  it("plays no audio files and writes no browser storage; motion needs no scroll listener", () => {
+    const files = ["sound.ts", "SoundToggle.tsx", "VaultSeal.tsx", "HeroComposer.tsx", "Sections.tsx", "DotNarwhal.tsx"].map((f) => readFileSync(`components/landing/${f}`, "utf8")).join("\n");
+    expect(files).not.toMatch(/new Audio\(|\.mp3|\.wav|\.ogg/);
+    expect(files).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
+    expect(files + readFileSync("app/landing.css", "utf8")).not.toMatch(/addEventListener\(\s*["']scroll/);
+    const css = readFileSync("app/landing.css", "utf8");
+    expect(css).toContain("prefers-reduced-motion: no-preference");
+    expect(css).not.toMatch(/infinite/); // looping motion would need a pause control (WCAG 2.2.2)
+  });
+
+  it("keeps the section anchors the nav and other pages link to", async () => {
+    const page = readFileSync("app/page.tsx", "utf8");
+    for (const c of ["HowItWorks", "Proof", "Compare", "Pricing", "Faq"]) expect(page).toContain(`<${c}`);
+    const html = render(HowItWorks) + render(Proof) + render(Compare) + renderToStaticMarkup(Pricing({})) + render(Faq);
+    for (const id of ["how", "proof", "compare", "pricing", "faq"]) expect(html).toContain(`id="${id}"`);
   });
 });
 

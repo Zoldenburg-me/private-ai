@@ -1,17 +1,17 @@
-import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowsLeftRight, Check, Minus, X, Cpu, Eye, EyeSlash, LockKey, SealCheck, ShieldCheck,
+  ArrowRight, ArrowsLeftRight, Check, Cpu, Eye, EyeSlash, Key, Minus, Monitor, Plus, ShieldCheck, X,
 } from "@phosphor-icons/react/dist/ssr";
 import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
-import { TIERS, type TierId } from "@/lib/tiers";
+import { PAID_ONLY_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
+import { DotNarwhal } from "./DotNarwhal";
 import { HeroComposer } from "./HeroComposer";
-import { HeroSky } from "./HeroSky";
-import { MotionToggle } from "./MotionToggle";
+import { SoundToggle } from "./SoundToggle";
+import { VaultSeal } from "./VaultSeal";
 
 export const BRAND = "Hiddensee";
 /** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
@@ -24,63 +24,46 @@ export async function frontierOn(load: () => Promise<{ privacy: string }[]> = li
 }
 const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 
-function Mark({ size = 28 }: { size?: number }) {
+/** The narwhal on its ink tile, like an app icon (same tile in both themes). */
+export function Mark({ size = 22 }: { size?: number }) {
   return <span className="mark-tile" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={size} height={Math.round(size * 132 / 244)} unoptimized /></span>;
 }
 
-/** Label that rolls up on hover (Jiro "Roamer" nav); the top copy is decorative. */
-function Roll({ children }: { children: string }) {
-  return <span className="roll"><span className="roll-top" aria-hidden>{children}</span><span className="roll-main">{children}</span></span>;
-}
-
 const NAV: readonly { href: string; label: string }[] = [
-  { href: "#compare", label: "Compare" }, { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" }, { href: "/models", label: "Models" },
-  { href: "#pricing", label: "Pricing" }, { href: "#faq", label: "FAQ" },
+  { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" }, { href: "#compare", label: "Compare" },
+  { href: "/models", label: "Models" }, { href: "#pricing", label: "Pricing" }, { href: "#faq", label: "FAQ" },
 ];
 
 export function SiteNav() {
   return (
     <header className="l-nav">
-      <div className="nav-pill">
-        <Link href="/" className="wordmark" aria-label={`${BRAND} home`}><Mark size={22} />{BRAND}</Link>
-        <nav aria-label="Main">{NAV.map(({ href, label }) => <a key={href} href={href}><Roll>{label}</Roll></a>)}</nav>
-        <Link href="/chat" className="btn-solid"><Roll>Start chatting</Roll></Link>
+      <div className="l-wrap nav-row">
+        <Link href="/" className="wordmark" aria-label={`${BRAND} home`}><Mark />{BRAND}</Link>
+        <nav aria-label="Main">{NAV.map(({ href, label }) => <a key={href} href={href} className="navlink">{label}</a>)}</nav>
+        <div className="nav-end">
+          <SoundToggle />
+          <Link href="/chat" className="pill pill-ink">Start chatting</Link>
+        </div>
       </div>
     </header>
   );
 }
 
-/** Full-screen night lake (Venice-style): stars and moon glitter on the water, centred mark, headline and a working chat bar. */
+/** Split hero: headline and a working chat bar on the left, the dot narwhal resolving on the right. */
 export function Hero() {
   return (
-    <section className="l-hero l-band theme-dark" aria-labelledby="hero-h">
-      <div className="lake" aria-hidden />
-      <HeroSky />
-      <div className="hero-copy">
-        <span className="hero-mark" aria-hidden><Mark size={56} /></span>
-        <h1 id="hero-h">Ask anything, <em>privately.</em></h1>
-        <p className="lead">Private by design. We never store a copy of your chats.</p>
+    <section className="l-wrap l-hero" aria-labelledby="hero-h">
+      <div className="hero-copy rise">
+        <h1 id="hero-h">Ask anything.<br /><span>We keep no copy.</span></h1>
+        <p className="lead">Open models run in sealed hardware enclaves. Your history stays encrypted in your browser. No email needed.</p>
         <HeroComposer />
-        <p className="hero-trust">
-          <Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link>
-        </p>
+        <p><Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link></p>
       </div>
-      <MotionToggle />
+      <div className="hero-art"><DotNarwhal /></div>
     </section>
   );
 }
 
-/** The opening claim, in three inks: statement, accent, and the quieter tail. */
-export function Statement() {
-  return (
-    <section className="l-statement">
-      <p>Most AI apps ask you to trust them. <em>{BRAND} proves your data is private.</em></p>
-      <a href="#how" className="link-arrow">See how <ArrowRight aria-hidden /></a>
-    </section>
-  );
-}
-
-/** Enclave providers this deployment actually routes to; nothing is listed that is not configured. */
 /** Partner logos (from each brand's kit, in public/brand/partners); providers without one show their name. */
 const LOGO: Record<string, { src: string; w: number; h: number }> = {
   near: { src: "/brand/partners/near-ai.svg", w: 449, h: 85 },
@@ -90,35 +73,134 @@ const LOGO: Record<string, { src: string; w: number; h: number }> = {
 
 function Partner({ id, name }: { id: string; name: string }) {
   const logo = LOGO[id];
-  return <li>{logo ? <Image src={logo.src} alt={name} width={logo.w} height={logo.h} unoptimized className={`partner partner-${id}`} /> : name}</li>;
+  return <li>{logo ? <Image src={logo.src} alt={name} width={logo.w} height={logo.h} unoptimized className={`logo partner-${id}`} /> : <span className="logo logo-word">{name}</span>}</li>;
 }
 
 /** The partners we run on. Shown always: their keys live in the admin panel (the database), which the
- *  landing page does not read. Gateways (Venice, Liquid) are not confidential compute, so they get their own row. */
+ *  landing page does not read. Gateways (Venice, Liquid) are not confidential compute, so they get their own group. */
 const TEE_PARTNERS = ["near", "phala", "tinfoil"];
 const GATEWAY_PARTNERS = ["venice", "liquid"];
 const partnerName = (id: string) => (DEFS.find((d) => d.id === id)?.name ?? id).replace(/ \(.*\)$/, "");
 
 export function PoweredBy() {
   return (
-    <section className="l-powered" aria-label="Powered by">
-      <p className="l-kicker">Powered by confidential compute from</p>
-      <ul>{TEE_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
-      <p className="l-kicker">Frontier models via</p>
-      <ul>{GATEWAY_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
+    <section className="l-partners" aria-label="Partners">
+      <div className="l-wrap partners-row">
+        <div className="partner-group">
+          <p>Runs on confidential compute from</p>
+          <ul>{TEE_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
+        </div>
+        <div className="partner-group">
+          <p>Frontier models via</p>
+          <ul>{GATEWAY_PARTNERS.map((id) => <Partner key={id} id={id} name={partnerName(id)} />)}</ul>
+        </div>
+      </div>
     </section>
   );
 }
 
-export function Video() {
+/** Full-width band: a saved chat in plain words, and the same chat as the browser stores it. */
+export function Vault() {
   return (
-    <section id="video" className="l-section" aria-labelledby="vid-h">
-      <div className="vid-head">
-        <SectionHead id="vid-h" title={<>How it works, <em>in two minutes</em></>} />
-        <p>From your browser, through our relay, into the enclave and back, with what each step can and can&rsquo;t see.</p>
+    <section className="l-vault" aria-labelledby="vault-h">
+      <div className="vault-light">
+        <h2 id="vault-h">Saved chats are sealed on your device.</h2>
+        <div className="vault-chat">
+          <p className="l-bubble">My ferritin came back at 9. Should I be worried?</p>
+          <p className="reply">That is below the usual range, which often points to low iron stores. It is worth asking your doctor about...</p>
+        </div>
       </div>
-      <div className="vid-frame">
-        <video src="/media/hiddensee-how-it-works.mp4" poster="/media/hiddensee-how-it-works-poster.jpg" controls playsInline preload="metadata" aria-label="How Hiddensee works" />
+      <VaultSeal />
+    </section>
+  );
+}
+
+const STOPS = [
+  { icon: Monitor, title: "Your browser", body: "Encrypts and keeps your history. The key never leaves this device.", note: "AES-256-GCM" },
+  { icon: ArrowsLeftRight, title: "Our relay in Germany", body: "Passes messages to the enclave. Never stores or logs them.", note: "In transit only" },
+  { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs replies where the provider supports it. The host machine cannot look inside.", note: "Attested before you chat" },
+];
+
+export function HowItWorks() {
+  return (
+    <section id="how" className="l-how" aria-labelledby="how-h">
+      <div className="l-wrap">
+        <h2 id="how-h" className="display">Three stops. Only your browser keeps a copy.</h2>
+        <ol className="stops">
+          <li className="rail" aria-hidden />
+          {STOPS.map(({ icon: Icon, title, body, note }, i) => {
+            const last = i === STOPS.length - 1;
+            return (
+              <li key={title} className={last ? "stop stop-enclave" : "stop"}>
+                {last && <span className="rail-flow" aria-hidden />}
+                <span className="stop-dot" aria-hidden />
+                <Icon className="stop-icon" weight="light" aria-hidden />
+                <h3>{title}</h3>
+                <p>{body}</p>
+                <code>{note}</code>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+const SEES = ["Opaque account id", "Your plan and usage counters", "Timestamps", "Messages while relayed, never logged"];
+const NEVER = ["Chat content, encrypted in your browser", "Your email, there is none", "IP-based tracking", "Card data, held by Stripe"];
+
+/** Bento: the proof card (an example, the landing page checks nothing), passkeys, the explainer video and the server ledger. */
+export function Proof() {
+  return (
+    <section id="proof" className="l-wrap l-section" aria-labelledby="proof-h">
+      <div className="bento">
+        <div className="l-card proof-card">
+          <div className="proof-copy">
+            <h2 id="proof-h">Proof, not promises.</h2>
+            <p>Before you chat, the app checks that the model runs in a sealed enclave and shows you exactly what passed.</p>
+          </div>
+          <figure className="demo">
+            <div className="demo-top">
+              <span className="demo-model">GLM 5.3</span>
+              <span className="demo-route">NEAR AI enclave</span>
+              <span className="demo-status"><ShieldCheck weight="bold" aria-hidden />Enclave checks passed</span>
+            </div>
+            <p className="demo-reply">Narwhals are toothed whales that live year-round in the Arctic. The long tusk is an elongated canine tooth, packed with nerve endings.</p>
+            <figcaption><span>TDX quote checked</span><span>signature matches the enclave&rsquo;s key</span><span>chain not verified yet</span></figcaption>
+          </figure>
+          <p className="fine">Example reply. In the app these checks run before you chat, and the proof panel shows the result.</p>
+          <details className="l-tech">
+            <summary>Technical details<Plus className="chev" aria-hidden /></summary>
+            <p>Replies carry a signature line where the provider supports it. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified. Not verified yet:</p>
+            <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
+          </details>
+        </div>
+        <div className="bento-side">
+          <div className="l-card card-blue">
+            <Key size={32} weight="light" aria-hidden />
+            <div>
+              <h3>No email. Just a passkey.</h3>
+              <p>Your account is an opaque id. A passkey links it across your devices.</p>
+            </div>
+          </div>
+          <div id="video" className="l-card card-video">
+            <video src="/media/hiddensee-how-it-works.mp4" poster="/media/hiddensee-how-it-works-poster.jpg" controls playsInline preload="none" aria-label="How Hiddensee works, in two minutes" />
+            <p>How it works, in two minutes</p>
+          </div>
+        </div>
+        <div className="l-card ledger dotfield">
+          <h3>What our server sees, and what it never stores.</h3>
+          <div className="ledger-col">
+            <p className="ledger-h"><Eye aria-hidden />Sees</p>
+            <ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul>
+          </div>
+          <div className="ledger-col">
+            <p className="ledger-h accent"><EyeSlash aria-hidden />Never stores</p>
+            <ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul>
+          </div>
+          <Link href="/privacy/metadata" className="link-arrow">Every stored field, listed <ArrowRight aria-hidden /></Link>
+        </div>
       </div>
     </section>
   );
@@ -139,22 +221,23 @@ const compareRows = (frontierLive: boolean): readonly Row[] => [
   { label: "Frontier models (GPT, Claude, Gemini)", cells: [frontierLive ? ["yes", "Anonymized"] : ["part", "Coming soon, anonymized"], ["part", "OpenAI only"], ["no", "No"], ["yes", "Anonymized"]] },
 ];
 const MARK_ICON = { yes: Check, part: Minus, no: X };
+const MARK_TEXT = { yes: "Yes", part: "Partly", no: "No" };
 
 export function Compare({ frontier: frontierLive = frontier() }: { frontier?: boolean } = {}) {
   return (
-    <section id="compare" className="l-section" aria-labelledby="cmp-h">
-      <SectionHead id="cmp-h" title={<>How it <em>stacks up</em></>} />
+    <section id="compare" className="l-wrap l-section" aria-labelledby="cmp-h">
+      <h2 id="cmp-h" className="h2">How it compares</h2>
       {/* Focusable so keyboard users can scroll the table on narrow screens. */}
       <div className="cmp-wrap" tabIndex={0} role="region" aria-labelledby="cmp-h">
         <table className="cmp">
-          <thead><tr><th scope="col"><span className="sr-only">Feature</span></th>{RIVALS.map((r, i) => <th key={r} scope="col" className={i === 0 ? "us" : undefined}>{r}</th>)}</tr></thead>
+          <thead><tr><th scope="col">Feature</th>{RIVALS.map((r, i) => <th key={r} scope="col" className={i === 0 ? "us" : undefined}>{r}</th>)}</tr></thead>
           <tbody>
             {compareRows(frontierLive).map(({ label, cells }) => (
               <tr key={label}>
                 <th scope="row">{label}</th>
                 {cells.map(([m, note], i) => {
                   const Icon = MARK_ICON[m];
-                  return <td key={RIVALS[i]} className={`${i === 0 ? "us " : ""}m-${m}`}><Icon weight="bold" aria-hidden /><span>{note}</span></td>;
+                  return <td key={RIVALS[i]} className={`${i === 0 ? "us " : ""}m-${m}`}><Icon weight="bold" aria-label={MARK_TEXT[m]} /><span>{note}</span></td>;
                 })}
               </tr>
             ))}
@@ -166,97 +249,86 @@ export function Compare({ frontier: frontierLive = frontier() }: { frontier?: bo
   );
 }
 
-const HOPS = [
-  { icon: LockKey, title: "Your browser", body: "Encrypts and keeps your history. The key never leaves it.", note: "AES-256-GCM" },
-  { icon: ArrowsLeftRight, title: "Our server", body: "Relays messages to the enclave. Never stores or logs them.", note: "in transit only · hosted in Germany" },
-  { icon: Cpu, title: "The enclave", body: "Runs the model on Intel TDX and NVIDIA confidential GPUs, and signs replies where the provider supports it.", note: "attested · Privatemode runs in Bochum, Germany" },
+// Plan copy is derived from lib/tiers.ts only (another branch owns pricing): no number on this page that TIERS lacks.
+const n = (v: number) => v.toLocaleString("en");
+const ctx = (tokens: number) => (tokens >= 1_000_000 ? `${tokens / 1_000_000}M` : `${Math.round(tokens / 1000)}k`);
+const times = (a: number, b: number) => (b > 0 && a > b ? `${n(Math.round(a / b))} times Free. ` : "");
+/** The top frontier models' logos, from their PAID_ONLY_MODELS ids. */
+const FRONTIER_LOGO: readonly { prefix: string; name: string }[] = [
+  { prefix: "claude", name: "Claude" }, { prefix: "gemini", name: "Gemini" }, { prefix: "gpt", name: "ChatGPT" }, { prefix: "grok", name: "Grok" },
 ];
+const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...PAID_ONLY_MODELS].some((id) => id.startsWith(l.prefix)));
 
-function SectionHead({ id, eyebrow, title }: { id: string; eyebrow?: string; title: ReactNode }) {
-  return <div className="s-head">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h2 id={id}>{title}</h2></div>;
+function bigFeatures(t: Tier, frontierLive: boolean) {
+  const free = TIERS.free;
+  const logos = frontierLogos();
+  return [
+    { title: `${n(t.dailyMessages)} Max privacy messages a day`, note: `${times(t.dailyMessages, free.dailyMessages)}Sealed in hardware the host machine cannot read.` },
+    { title: `${n(t.incognitoDailyMessages)} incognito messages a day`, note: `${times(t.incognitoDailyMessages, free.incognitoDailyMessages)}For anything that does not need an enclave.` },
+    ...(frontierLive && logos.length ? [{ title: "Top frontier models, anonymously", note: `${logos.map((l) => l.name).join(", ")} through an anonymizing gateway, no extra subscription.`, logos }] : []),
+    { title: `${ctx(t.maxContextTokens)} context`, note: `Paste long contracts or a whole thread, with replies up to ${ctx(t.maxOutputTokens)} tokens.` },
+    { title: "Agentic tasks", note: `Hand over a multi-step job and it plans and works through it, up to ${t.agentMaxSteps} steps per run.` },
+  ];
 }
+const summary = (t: Tier) => [
+  `${n(t.dailyMessages)} Max privacy and ${n(t.incognitoDailyMessages)} incognito messages a day`,
+  `${ctx(t.maxContextTokens)} context`,
+  t.priceEurMonth > 0 ? "all models" : "basic models",
+].join(", ") + ".";
+const price = (t: Tier) => `€${t.priceEurMonth}`;
 
-export function HowItWorks() {
+/** Pricing: Pro as the big card, every other plan TIERS has stacked beside it. */
+export function Pricing({ frontier: frontierLive = frontier() }: { frontier?: boolean } = {}) {
+  const ids = Object.keys(TIERS) as TierId[];
+  const big = TIERS.pro;
+  const small = ids.filter((id) => id !== big.id).map((id) => TIERS[id]);
   return (
-    <section id="how" className="l-section" aria-labelledby="how-h">
-      <SectionHead id="how-h" title={<>Where your words <em>go</em></>} />
-      <ol className="hops">
-        {HOPS.map(({ icon: Icon, title, body, note }, i) => (
-          <li key={title}>
-            <div className="hop-top"><span className="num" aria-hidden>{String(i + 1).padStart(2, "0")}</span><Icon weight="duotone" className="hop-icon" aria-hidden /></div>
-            <h3>{title}</h3><p>{body}</p><span className="l-note">{note}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/** The design's proof card: an illustration of what each reply shows, labelled as an example (the landing page checks nothing). */
-export function Proof() {
-  return (
-    <section id="proof" className="l-section" aria-labelledby="proof-h">
-      <div className="l-proof">
-        <div className="proof-copy">
-          <p className="eyebrow">Proof</p>
-          <h2 id="proof-h">Proof, not <em>promises</em></h2>
-          <p>Before you chat, the app checks that your model runs in a sealed enclave the host machine can&rsquo;t read, and shows you the result.</p>
-          <details className="not-yet">
-            <summary>Technical details</summary>
-            <p>Replies carry a signature line where the provider supports it. We say &ldquo;Verified&rdquo; only when the hardware certificate chain is verified. Not verified yet:</p>
-            <ul>{NOT_VERIFIED.map((n) => <li key={n}>{n}</li>)}</ul>
-          </details>
+    <section id="pricing" className="l-wrap l-section" aria-labelledby="price-h">
+      <div className="price-head">
+        <h2 id="price-h" className="h2">Start free. Upgrade when it sticks.</h2>
+        <p>Paid plans differ only in how much you get.</p>
+      </div>
+      <div className="l-plans">
+        <div className="plan-big">
+          <div className="plan-big-main">
+            <div className="plan-big-top">
+              <div className="plan-name"><h3>{big.name}</h3><span className="badge">Most picked</span></div>
+              <p>For people who use AI every day and don&rsquo;t want to think about limits.</p>
+            </div>
+            <div className="plan-big-buy">
+              <p className="plan-price"><span>{price(big)}</span> / month</p>
+              <Link href="/chat" className="pill pill-light">Choose {big.name}</Link>
+              <p className="plan-fine">You upgrade inside the app. Card data stays with Stripe.</p>
+            </div>
+          </div>
+          <div className="plan-big-list">
+            <p>What you get with {big.name}:</p>
+            <ul>
+              {bigFeatures(big, frontierLive).map((f) => (
+                <li key={f.title}>
+                  <Check weight="bold" aria-hidden />
+                  <span>
+                    <span className="f-title">{f.title}</span>
+                    <span className="f-note">{f.note}</span>
+                    {"logos" in f && f.logos && (
+                      <span className="f-logos">{f.logos.map((l) => <Image key={l.name} src={`/brand/frontier/${l.name.toLowerCase()}.svg`} alt={l.name} title={l.name} width={18} height={18} unoptimized />)}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-        <figure className="demo-card">
-          <div className="demo-top">
-            <span className="demo-model">Example · fully verified reply</span>
-            <span className="demo-status"><ShieldCheck weight="duotone" aria-hidden />Verified</span>
-          </div>
-          <p className="demo-reply">Narwhals are toothed whales that live year-round in the Arctic. The long &ldquo;tusk&rdquo; is an elongated canine tooth…</p>
-          <figcaption className="l-sig"><SealCheck weight="duotone" aria-hidden />Signed in the enclave · chain verified</figcaption>
-        </figure>
+        <div className="plans-small">
+          {small.map((t) => (
+            <div key={t.id} className="l-card plan-small">
+              <div className="plan-small-top"><h3>{t.name}</h3><p className="plan-price-sm"><span>{price(t)}</span>{t.priceEurMonth > 0 && " / month"}</p></div>
+              <p>{summary(t)}</p>
+              <Link href="/chat" className="pill pill-ghost">{t.priceEurMonth > 0 ? `Choose ${t.name}` : "Start free"}</Link>
+            </div>
+          ))}
+        </div>
       </div>
-    </section>
-  );
-}
-
-const SEES = ["Opaque account id", "Plan", "Timestamps", "Usage counters", "Messages while relayed (not logged)"];
-const NEVER = ["Chat content (encrypted in your browser)", "Your email (passkeys instead)", "IP-based tracking", "Card data (held by Stripe)"];
-
-export function ServerSees() {
-  return (
-    <section className="l-section" aria-labelledby="sees-h">
-      <SectionHead id="sees-h" title={<>What the server <em>sees</em></>} />
-      <div className="ledger">
-        <div><h3><Eye weight="duotone" aria-hidden />Sees</h3><ul>{SEES.map((s) => <li key={s}>{s}</li>)}</ul></div>
-        <div><h3><EyeSlash weight="duotone" aria-hidden />Never stores</h3><ul>{NEVER.map((s) => <li key={s}>{s}</li>)}</ul></div>
-      </div>
-      <Link href="/privacy/metadata" className="link-arrow">Every stored field, listed <ArrowRight aria-hidden /></Link>
-    </section>
-  );
-}
-
-const PLAN_LINES: Record<TierId, string[]> = {
-  free: [`${TIERS.free.dailyMessages} messages a day`, `+ ${TIERS.free.incognitoDailyMessages} incognito messages a day`, `${TIERS.free.maxContextTokens / 1000}k context`, "Basic models"],
-  pro: [`${TIERS.pro.dailyMessages.toLocaleString("en")} messages a day`, `${TIERS.pro.maxContextTokens / 1000}k context`, "All models"],
-  max: ["High fair-use limit", "1M context", "All models"],
-};
-
-export function Pricing() {
-  return (
-    <section id="pricing" className="l-section" aria-labelledby="price-h">
-      <SectionHead id="price-h" eyebrow="Pricing" title={<>Simple <em>plans</em></>} />
-      <div className="plans-row">
-        {(Object.keys(TIERS) as TierId[]).map((id) => (
-          <div key={id} className={`l-plan ${id === "pro" ? "featured" : ""}`}>
-            <div className="plan-top"><h3>{TIERS[id].name}</h3>{id === "pro" && <span className="l-kicker">most picked</span>}</div>
-            <p className="l-price">€{TIERS[id].priceEurMonth}<span>/ month</span></p>
-            <ul>{PLAN_LINES[id].map((l) => <li key={l}>{l}</li>)}</ul>
-            <Link href="/chat" className={id === "pro" ? "btn-solid" : "btn-outline"}>{id === "free" ? "Start free" : `Choose ${TIERS[id].name}`}</Link>
-          </div>
-        ))}
-      </div>
-      <p className="fine">You upgrade inside the app; card data goes to Stripe.</p>
     </section>
   );
 }
@@ -271,20 +343,23 @@ const FAQ = [
 
 export function Faq() {
   return (
-    <section id="faq" className="l-section l-faq" aria-labelledby="faq-h">
-      <SectionHead id="faq-h" title={<>Questions, <em>answered</em></>} />
-      {FAQ.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}
+    <section id="faq" className="l-wrap l-section l-faq" aria-labelledby="faq-h">
+      <h2 id="faq-h" className="h2">Questions</h2>
+      <div>{FAQ.map(([q, a]) => <details key={q}><summary>{q}<Plus className="chev" aria-hidden /></summary><p>{a}</p></details>)}</div>
     </section>
   );
 }
 
 export function Closing() {
   return (
-    <section className="l-closing l-band theme-dark" aria-label="Get started">
-      {gated() ? <p><span>No email.</span> <em>Just an invite.</em></p> : <p><span>No account.</span> <em>No email.</em></p>}
-      <div className="hero-ctas">
-        <Link href="/chat" className="btn-solid lg">{start()} <ArrowRight aria-hidden /></Link>
-        <Link href="/privacy/metadata" className="btn-outline lg">What the server stores</Link>
+    <section className="l-closing" aria-label="Get started">
+      <Image src="/brand/narwhal-dots-blue.svg" alt="" width={1040} height={540} unoptimized className="closing-art" aria-hidden />
+      <div className="l-wrap closing-in">
+        <h2>{gated() ? <>No email.<br />Just an invite.</> : <>No account.<br />No email.</>}</h2>
+        <div className="closing-ctas">
+          <Link href="/chat" className="pill pill-light lg">{start()} <ArrowRight aria-hidden /></Link>
+          <Link href="/privacy/metadata" className="pill pill-outline-light lg">What the server stores</Link>
+        </div>
       </div>
     </section>
   );
@@ -293,14 +368,15 @@ export function Closing() {
 export function SiteFooter() {
   return (
     <footer className="l-footer">
-      <div className="foot-row">
-        <span className="wordmark"><Mark size={18} />{BRAND}</span>
+      <div className="l-wrap foot-row">
+        <span className="wordmark"><Mark size={17} />{BRAND}</span>
         <nav aria-label="Legal">
-          <Link href="/impressum">Impressum</Link><Link href="/datenschutz">Datenschutz</Link><Link href="/agb">AGB</Link><Link href="/privacy/metadata">What the server stores</Link>
+          <Link href="/impressum" className="navlink">Impressum</Link><Link href="/datenschutz" className="navlink">Datenschutz</Link>
+          <Link href="/agb" className="navlink">AGB</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
         </nav>
-        <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt) · {BRAND}</span>
+        <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt)</span>
       </div>
-      <p className="giant" aria-hidden>{BRAND}</p>
+      <div className="l-wrap giant-wrap" aria-hidden><p className="giant">{BRAND}</p></div>
     </footer>
   );
 }
