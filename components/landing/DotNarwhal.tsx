@@ -44,7 +44,7 @@ export function DotNarwhal() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const grid = ref.current;
-    if (!grid || !matchMedia("(prefers-reduced-motion: no-preference) and (pointer: fine)").matches) return;
+    if (!grid || !matchMedia("(prefers-reduced-motion: no-preference) and (any-pointer: fine)").matches) return;
     const dots = [...grid.children] as HTMLElement[];
     let frame = 0, cx = 0, cy = 0, inside = false;
     const paint = () => {
