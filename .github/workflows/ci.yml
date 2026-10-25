@@ -91,8 +91,11 @@ jobs:
         run: |
           export SESSION_SECRET=$(openssl rand -hex 32) ADMIN_KEY_KEK=$(openssl rand -base64 32)
           echo "::add-mask::$SESSION_SECRET"; echo "::add-mask::$ADMIN_KEY_KEK"
+          # Lay out the server the way the Dockerfile does: static assets, public/ and migrations/ next to server.js.
+          cp -r .next/static .next/standalone/.next/static && cp -r public migrations .next/standalone/
           node .next/standalone/server.js > server.log 2>&1 &
           for _ in $(seq 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/api/health || { echo "health not ok"; tail -40 server.log; exit 1; }
           for p in / /chat /models /privacy/metadata; do
             c=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000$p"); echo "$p $c"
             [ "$c" = 200 ] || { tail -40 server.log; exit 1; }
