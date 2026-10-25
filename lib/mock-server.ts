@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { crc32, deflateSync } from "node:zlib";
 import { mockReport, mockSign, mockAddress } from "./mock-tee";
 
 /** DEV/TEST ONLY mock enclave provider (enabled with MOCK_PROVIDER=1). Keeps hashes only, never content. */
@@ -47,6 +48,20 @@ export async function mockChat(req: Request) {
 export function mockSearch() {
   if (!mockEnabled()) return off();
   return Response.json({ web: { results: [{ title: "Mock result", url: "https://example.org/mock", description: "A mock search snippet." }] } });
+}
+
+/** OpenAI-shaped image for agent mode in dev/e2e: a 64x64 gradient PNG, stored uncompressed so it passes the placeholder size check. */
+export function mockImage() {
+  if (!mockEnabled()) return off();
+  const chunk = (type: string, data: Buffer) => {
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(64, 0); ihdr.writeUInt32BE(64, 4); ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  const rows = Buffer.concat(Array.from({ length: 64 }, (_, y) => Buffer.from([0, ...Array.from({ length: 64 }, (_, x) => [x * 4, y * 4, 160]).flat()])));
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows, { level: 0 })), chunk("IEND", Buffer.alloc(0))]);
+  return Response.json({ data: [{ b64_json: png.toString("base64") }] });
 }
 
 export function mockAttestation(req: Request) {

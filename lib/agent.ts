@@ -6,6 +6,8 @@ import { providerFetch } from "./provider-fetch";
 import { FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, TOTAL_TIMEOUT_MS } from "./relay";
 import { WEB_SEARCH_TOOL, queryOf, searchConfigured, webSearch } from "./web-search";
 import { isUnavailable } from "./store";
+import { IMAGE_TOOL, generateImage, imageConfigured, promptOf } from "./image-gen";
+import type { TierId } from "./tiers";
 import { NEAR_SEARCH_TIMEOUT_MS, NEAR_SEARCH_TOOL, NearSearchSteps, searchesInEnclave } from "./near-search";
 
 /**
@@ -22,6 +24,9 @@ export const MAX_TOOL_RESULT_CHARS = 6_000;
 export const MAX_CALLS_PER_STEP = 2;
 /** Searches per run, whatever the tier's step limit: bounds search cost and what a steered model can send out. */
 export const MAX_SEARCHES_PER_RUN = 6;
+/** Images per run, and the messages each one counts against the user's limits: one costs far more than a search. */
+export const MAX_IMAGES_PER_RUN = 2;
+export const IMAGE_COST_MESSAGES = 5;
 /** Chunks buffered for a slow reader before the loop stops reading upstream, and how often it re-checks. */
 const STREAM_HIGH_WATER = 64;
 const BACKPRESSURE_POLL_MS = 20;
@@ -34,8 +39,12 @@ type Msg = Record<string, unknown>;
 interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string }
 
-interface ToolCtx { provider: ProviderConfig; env: Env }
-interface RunCtx { env: Env; fetchImpl: typeof fetch; signal: AbortSignal }
+interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId }
+/**
+ * `charge` counts one more message against the user's limits, like a step, and returns the refusal reason or null;
+ * `remaining` is the user's daily messages left at the last check (undefined when unknown).
+ */
+interface RunCtx { env: Env; fetchImpl: typeof fetch; signal: AbortSignal; charge: () => Promise<string | null>; remaining: () => number | undefined }
 interface ToolBase { def: object; maxPerRun: number; available: (ctx: ToolCtx) => boolean }
 /** A tool the provider runs inside its enclave (NEAR): we only offer it, and count and show its calls (callStep's NearHooks). */
 interface EnclaveTool extends ToolBase { inEnclave: true }
@@ -45,7 +54,7 @@ interface LocalTool extends ToolBase {
   def: { type: "function"; function: { name: string; description: string; parameters: object } };
   /** What every event of a call shows (its query), or null when the arguments are invalid. */
   shown: (args: string) => { query?: string } | null;
-  run: (args: string, ctx: RunCtx) => Promise<{ forModel: string; event?: Pick<ToolEvent, "results"> }>;
+  run: (args: string, ctx: RunCtx) => Promise<{ forModel: string; event?: Pick<ToolEvent, "results" | "image"> }>;
   /** Fixed texts fed back to the model for bad arguments, the run's cap reached, or a failed run. */
   errors: { args: string; cap: string; failed: string };
 }
@@ -63,10 +72,27 @@ export const TOOLS = new Map<string, AgentTool>([
     },
     errors: { args: "error: arguments must be {\"query\": string}", cap: "error: search limit for this answer reached, answer with what you have", failed: "error: web search failed, answer without it" },
   }],
+  ["generate_image", {
+    def: IMAGE_TOOL, maxPerRun: MAX_IMAGES_PER_RUN,
+    available: ({ env, tier }) => imageConfigured(env) && !!tier && tier !== "free",
+    shown: (args) => { const query = promptOf(args); return query ? { query } : null; },
+    run: async (args, ctx) => {
+      // Headroom first, the charge only once the image exists: a failed or refused image costs nothing.
+      const left = ctx.remaining();
+      if (left !== undefined && left < IMAGE_COST_MESSAGES) throw Object.assign(new Error("not enough messages left"), { status: 429 });
+      const image = await generateImage(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
+      // shortcut: a limit hit while charging stops the count, so an image can cost less than its weight; needs a counted gate call to fix.
+      for (let i = 0; i < IMAGE_COST_MESSAGES && !ctx.signal.aborted; i++) if (await ctx.charge()) break;
+      // The image goes to the browser only; the model learns that it was shown, never its bytes.
+      return { forModel: "image generated and already shown to the user above your reply; do not add a link or a Markdown image for it", event: { image } };
+    },
+    errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: image limit for this answer reached",
+      failed: "error: no image: generation failed, was refused, or the user's plan has too few messages left today; tell the user" },
+  }],
   ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider }) => searchesInEnclave(provider), inEnclave: true }],
 ]);
 
-/** The tools a run offers: those available for its provider and env. */
+/** The tools a run offers: those available for its provider, env and tier. */
 const availableTools = (ctx: ToolCtx) => new Map([...TOOLS].filter(([, t]) => t.available(ctx)));
 /** The upstream body for one step; the last step offers no tools, so the model must answer. */
 const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean, defs: object[]) =>
@@ -77,6 +103,8 @@ export const firstStepBody = (base: Record<string, unknown>, maxSteps: number, c
 
 export interface AgentOpts {
   provider: ProviderConfig; body: Record<string, unknown>; maxSteps: number;
+  /** Server-side tier: paid-only tools (images) need it. */
+  tier?: TierId;
   /** Rate-limit check before every step after the first; returns the refusal reason or null. */
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
   /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
@@ -95,7 +123,7 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const tools = availableTools({ provider: o.provider, env: o.env });
+  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier });
   const defs = [...tools.values()].map((t) => t.def);
   const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
   const inEnclave = enclave !== undefined;
@@ -152,7 +180,9 @@ export function runAgent(o: AgentOpts): Response {
               ctrl.enqueue(enc.encode("data: [DONE]\n\n"));
               break;
             }
-            const results = await Promise.all(r.calls.map((c) => runTool(c, tools, o, searchFetch, abort.signal, left, tool)));
+            const charge = () => o.beforeStep(body);
+            const remaining = () => { const r = o.remaining?.(); return r === undefined ? undefined : Number(r); };
+            const results = await Promise.all(r.calls.map((c) => runTool(c, tools, o, searchFetch, abort.signal, left, tool, { charge, remaining })));
             messages = [...messages,
               { role: "assistant", content: r.text, tool_calls: r.calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args } })) },
               ...r.calls.map((c, i) => ({ role: "tool", tool_call_id: c.id, content: results[i] }))];
@@ -194,7 +224,7 @@ class ProviderError extends Error {
 const TOOLS_REJECTED = [400, 404, 422];
 
 /** Runs one tool call; returns the text fed back to the model. Failures go back as text, never as a throw. */
-async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fetchImpl: typeof fetch, signal: AbortSignal, left: Map<string, number>, emit: (e: ToolEvent) => void): Promise<string> {
+async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fetchImpl: typeof fetch, signal: AbortSignal, left: Map<string, number>, emit: (e: ToolEvent) => void, limits: Pick<RunCtx, "charge" | "remaining">): Promise<string> {
   const tool = tools.get(c.name);
   const local = tool && !tool.inEnclave ? tool : undefined;
   const shown = local?.shown(c.args) ?? null;
@@ -204,11 +234,12 @@ async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fet
   left.set(c.name, left.get(c.name)! - 1);
   const t = Date.now();
   try {
-    const r = await local.run(c.args, { env: o.env, fetchImpl, signal });
+    const r = await local.run(c.args, { env: o.env, fetchImpl, signal, ...limits });
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: 200, ms: Date.now() - t });
     emit({ id: c.id, name: c.name, status: "done", ...shown, ...r.event });
     return r.forModel;
   } catch (e) {
+    if (isUnavailable(e)) throw e; // our store is down (a charge failed): the run fails closed, not the tool
     // The tool provider's status (401 bad key, 429 quota) or 504 for a timeout, so a broken key shows in the logs.
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: (e as { status?: number }).status ?? 504, ms: Date.now() - t });
     emit({ id: c.id, name: c.name, status: "error", ...shown });

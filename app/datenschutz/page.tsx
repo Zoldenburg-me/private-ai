@@ -45,6 +45,10 @@ export default function Datenschutz() {
           Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.
           Sie schalten die Websuche unter Einstellungen → Account → „Privacy &amp; tools“ oder im „+“-Menü der Chatleiste aus; im Ghost-Chat ist sie aus, bis Sie sie dort einschalten.
           Diese Einstellung speichern wir nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
+        <p>Bilderzeugung (Pro und Max, nur bei eingeschalteter Websuche): Bitten Sie um ein Bild, darf das Modell eine Bildbeschreibung formulieren. Unser Server sendet diese Beschreibung an ein Bildmodell
+          von NEAR AI Cloud, das in einer attestierten Enklave läuft, unabhängig davon, welchen Anbieter Sie für den Chat gewählt haben. Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf,
+          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token; die Beschreibung kann aber Inhalte Ihrer Nachricht wiedergeben. Das Bild kommt durch unseren Server zu Ihnen;
+          wir speichern und protokollieren weder Beschreibung noch Bild, und auch Ihr Browser speichert das Bild nicht im Chatverlauf. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
         <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien, die Sie an eine Nachricht anhängen, werden in Ihrem Browser gelesen (Bilder verkleinert, PDFs in Text umgewandelt)
           und als Teil der Nachricht an den gewählten Anbieter gesendet, genau wie getippter Text, bei Dokumenten mit dem Dateinamen. Beim Verkleinern entfallen die Metadaten der Bilder
           (z. B. EXIF-Standortangaben). Ist die Websuche an, kann das Modell auch Inhalte angehängter Dateien in Suchanfragen übernehmen. Wir speichern und protokollieren Anhänge nicht.
@@ -109,6 +113,10 @@ export default function Datenschutz() {
           account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.
           Switch web search off under Settings → Account → “Privacy &amp; tools” or in the chat bar’s “+” menu; in ghost chat it is off until you turn it on there.
           We keep this setting only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
+        <p>Image generation (Pro and Max, only with web search on): when you ask for an image, the model may write an image description. Our server sends that description to an image model
+          on NEAR AI Cloud that runs in an attested enclave, whichever provider you picked for the chat. Only the description is sent, not your chat history,
+          account id, IP address or session token; the description can still repeat parts of your message. The image reaches you through our server;
+          we neither store nor log the description or the image, and your browser does not keep the image in your chat history either. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
         <p>Attaching files (optional): images, PDFs and text files you attach to a message are read in your browser (images scaled down, PDFs turned into text) and sent to the
           selected provider as part of the message, just like typed text; documents go with their file name. Scaling images down drops their metadata (such as EXIF location).
           With web search on, the model may also put content from attached files into search queries. We neither store nor log attachments. Your chat history in the browser

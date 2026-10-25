@@ -40,7 +40,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
   const env = deps.env ?? process.env;
   if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
   return failClosed(route, deps, async () => {
-    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env }));
+    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env, tier }));
     if (p instanceof Response) return p;
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
@@ -49,7 +49,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
       remaining = g.headers["x-usage-remaining-daily"];
       return g.allowed ? null : g.reason!;
     };
-    return runAgent({ provider: p.provider, body: p.body, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
+    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }

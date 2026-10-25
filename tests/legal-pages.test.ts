@@ -25,6 +25,11 @@ describe("legal pages", () => {
     expect(html).toMatch(/verlässt dann die Enklave/);
     expect(html).toMatch(/leaves the enclave/);
   });
+  it("datenschutz: image prompts go to NEAR AI Cloud whichever chat provider is picked (DE + EN)", () => {
+    const html = render(Datenschutz);
+    expect(html).toMatch(/Bilderzeugung[^<]*NEAR AI Cloud/);
+    expect(html).toMatch(/Image generation[^<]*NEAR AI Cloud/);
+  });
   it("privacy/metadata lists every inventory field in both languages", () => {
     const html = render(Metadata);
     for (const d of DATA_INVENTORY) {
