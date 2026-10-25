@@ -1,5 +1,5 @@
 import "./landing.css";
-import { BRAND, Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, ServerSees, SiteFooter, SiteNav, Statement, Video, frontierOn } from "@/components/landing/Sections";
+import { BRAND, Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, SiteFooter, SiteNav, Vault, frontierOn } from "@/components/landing/Sections";
 
 // Always per request: the invite-gate copy (INVITE_CODES) must never be frozen at build time.
 export const dynamic = "force-dynamic";
@@ -13,18 +13,16 @@ export const metadata = {
 export default async function Landing() {
   const frontier = await frontierOn(); // admin-panel keys count, like in the chat
   return (
-    <div className="landing theme-island">
+    <div className="landing">
       <SiteNav />
-      <main>
+      <main id="top">
         <Hero />
-        <Statement />
         <PoweredBy />
-        <Compare frontier={frontier} />
+        <Vault />
         <HowItWorks />
-        <Video />
         <Proof />
-        <ServerSees />
-        <Pricing />
+        <Compare frontier={frontier} />
+        <Pricing frontier={frontier} />
         <Faq />
         <Closing />
       </main>
