@@ -13,8 +13,9 @@ export function writeSidebarCollapsed(collapsed: boolean): void {
 
 /** Privacy level, model pick per level ("auto" or a model ref) and tool settings: UI preferences, never content (tests/ghost.test.ts). */
 export const MODE_KEY = "pai.ui.mode";
-export interface ModePrefs { level: Level; picks: Record<Level, string>; webSearch: boolean; pickProvider: boolean }
-export const DEFAULT_MODE: ModePrefs = { level: "max", picks: { max: AUTO, medium: AUTO, anon: AUTO }, webSearch: true, pickProvider: false };
+/** sounds: a short synthesised tone when the privacy level changes; off unless the user turns it on in settings. */
+export interface ModePrefs { level: Level; picks: Record<Level, string>; webSearch: boolean; pickProvider: boolean; sounds: boolean }
+export const DEFAULT_MODE: ModePrefs = { level: "max", picks: { max: AUTO, medium: AUTO, anon: AUTO }, webSearch: true, pickProvider: false, sounds: false };
 const MAX_PICK_CHARS = 200;
 
 /** Reads a stored value field by field: browser storage is untrusted, so anything unexpected falls back to the default. */
@@ -28,6 +29,7 @@ export function parseModePrefs(raw: string | null): ModePrefs {
     picks: { max: pick("max"), medium: pick("medium"), anon: pick("anon") },
     webSearch: typeof j.webSearch === "boolean" ? j.webSearch : DEFAULT_MODE.webSearch,
     pickProvider: typeof j.pickProvider === "boolean" ? j.pickProvider : DEFAULT_MODE.pickProvider,
+    sounds: j.sounds === true,
   };
 }
 

@@ -20,7 +20,7 @@ export default async function ModelsPage() {
   let rows: ModelRow[] | null = null;
   try { rows = toRows(await getCatalog()); } catch { rows = null; }
   return (
-    <div className="landing theme-island">
+    <div className="landing">
       <header className="mdl-nav">
         <Link href="/" className="mdl-brand"><span className="mark-tile mdl-mark" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={22} height={12} unoptimized /></span>{BRAND}</Link>
         <nav aria-label="Main">

@@ -27,7 +27,7 @@ export function SettingsView(p: {
   onExportAccount: () => void; onDeleteAccount: () => void;
   onExport: (pass: string) => void; onImport: (f: File, pass: string) => void; onWipe: () => void;
   /** Tool and picker settings; `available`: this server has web search (/api/session features). */
-  tools?: { available: boolean; webSearch: boolean; onWebSearch: (on: boolean) => void; pickProvider: boolean; onPickProvider: (on: boolean) => void };
+  tools?: { available: boolean; webSearch: boolean; onWebSearch: (on: boolean) => void; pickProvider: boolean; onPickProvider: (on: boolean) => void; sounds?: boolean; onSounds?: (on: boolean) => void };
 }) {
   const [pass, setPass] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -154,6 +154,13 @@ export function SettingsView(p: {
                 <span className="grow">Pick a provider
                   <span className="hs-sub">Off: you pick a model and we route it (the cheapest enclave whose proof passes on Max). On: the model list also shows each provider.</span></span>
               </label>
+              {p.tools.onSounds && (
+                <label className="hs-row">
+                  <input type="checkbox" data-testid="setting-sounds" checked={!!p.tools.sounds} onChange={(e) => p.tools!.onSounds!(e.target.checked)} />
+                  <span className="grow">Mode sounds
+                    <span className="hs-sub">A short tone when you switch between Max, Medium and Anon. Made in this browser, no audio files.</span></span>
+                </label>
+              )}
             </section>
           )}
 

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import {
   ActionBarPrimitive, AssistantRuntimeProvider, AttachmentPrimitive, ComposerPrimitive, ThreadPrimitive, useLocalRuntime, type ThreadRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
@@ -15,6 +16,8 @@ import type { Chat } from "@/lib/storage";
 import type { Persona } from "@/lib/personas";
 import type { ChatScope } from "@/lib/chat-scope";
 import { ANONYMIZED_NOTE, GATEWAY_ONLY, PROVIDER_LABEL } from "@/lib/client/providers";
+import type { Level } from "@/lib/client/levels";
+import { MODE_LOOK, ModeNarwhal } from "./ModeNarwhal";
 
 /** Names the provider this chat is actually sent to (Auto picks it per proof), or none while Auto is still choosing. */
 export function enclaveLine(modelRef: string): string {
@@ -56,6 +59,8 @@ export interface ThreadProps {
   webSearch?: boolean;
   /** The selected model reads images (its input modalities include image); otherwise only documents can be attached. */
   images?: boolean;
+  /** The selected privacy level: picks the narwhal on the welcome screen. */
+  level?: Level;
   /** The composer's "+" tools menu; without one the design's "coming soon" icons show. */
   toolsSlot?: ReactNode;
 }
@@ -164,6 +169,15 @@ function AttachButton({ thread, images, onError }: { thread: ThreadRuntime; imag
   );
 }
 
+/** Signature results that only an enclave route produces. */
+const ENCLAVE_SIGNED: ReadonlySet<Signed> = new Set<Signed>(["enclave", "key-match", "server"]);
+/**
+ * The narwhal a reply keeps: the route it came from, by its incognito label or an enclave signature result. A reply
+ * with neither (older chats, errors) gets undefined, shown as the plain mark: missing metadata is never read as Max.
+ */
+export const replyLevelOf = (incognito?: Incognito, signed?: Signed): Level | undefined =>
+  incognito === "private" ? "medium" : incognito === "anonymized" ? "anon" : signed && ENCLAVE_SIGNED.has(signed) ? "max" : undefined;
+
 function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognito, files }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognito?: Incognito; files?: readonly { name: string; type: string }[] }) {
   const sig = signed ? SIG[signed] : undefined;
   const line = incognitoLine(incognito);
@@ -172,8 +186,11 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
   const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
   const images = tools?.filter((t) => t.name === "generate_image") ?? [];
   const searches = tools?.filter((t) => t.name !== "generate_image") ?? [];
+  const replyLevel = replyLevelOf(incognito, signed);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
+      {role === "assistant" && (replyLevel ? <ModeNarwhal level={replyLevel} size={32} className="msg-avatar" />
+        : <span className="brand msg-avatar" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={22} height={12} unoptimized /></span>)}
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {shown.files.length > 0 && <Files files={shown.files} />}
@@ -324,6 +341,12 @@ export function ChatThread(props: ThreadProps) {
         <ThreadPrimitive.Empty>
           <div className="welcome" data-testid="welcome">
             <div className="welcome-col">
+              {props.level && (
+                <div className="welcome-mode">
+                  <ModeNarwhal level={props.level} size={104} label />
+                  <span>{MODE_LOOK[props.level].caption}</span>
+                </div>
+              )}
               <h1>{props.persona ? props.persona.name : <>{hi} <em>{em}</em></>}</h1>
               <p className="sr-only">{props.anonymized ? ANONYMIZED_NOTE : enclaveLine(props.modelRef)}</p>
               {composer(true)}

@@ -26,14 +26,14 @@ export const TIERS: Record<TierId, Tier> = {
 };
 
 const n = (x: number) => x.toLocaleString("en");
-/** What a plan includes, for the plan cards (landing page and Settings). */
+/** What a plan includes, for the Settings plan cards. */
 export function planLines(id: TierId): string[] {
   const t = TIERS[id];
   return [
     `${n(t.dailyMessages)} Max Privacy messages a day`,
     ...(t.topDailyMessages ? [`${n(t.topDailyMessages)} top Max Privacy messages a day`] : []),
     `${n(t.incognitoDailyMessages)} private and incognito messages a day`,
-    t.includedCreditsEur ? `€${t.includedCreditsEur} frontier credit a month, then pay as you go` : "Frontier models: pay as you go",
+    t.includedCreditsEur ? `€${t.includedCreditsEur} frontier credit a month, then pay as you go` : "Top frontier models on paid plans",
     `${t.maxContextTokens >= 1_000_000 ? `${t.maxContextTokens / 1_000_000}M` : `${t.maxContextTokens / 1000}k`} context, ${t.agentMaxSteps}-step agent`,
   ];
 }

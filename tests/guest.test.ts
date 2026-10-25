@@ -58,11 +58,14 @@ describe("privacy mode preference", () => {
   it("first visit and anything unreadable: Max, Auto everywhere, web search on, no provider choice", () => {
     for (const raw of [null, "", "{", "[]", JSON.stringify({ level: "root", picks: { max: 5 }, webSearch: "yes" })])
       expect(parseModePrefs(raw)).toEqual(DEFAULT_MODE);
-    expect(DEFAULT_MODE).toEqual({ level: "max", picks: { max: "auto", medium: "auto", anon: "auto" }, webSearch: true, pickProvider: false });
+    expect(DEFAULT_MODE).toEqual({ level: "max", picks: { max: "auto", medium: "auto", anon: "auto" }, webSearch: true, pickProvider: false, sounds: false });
   });
   it("keeps valid fields and drops the rest", () => {
-    const raw = JSON.stringify({ level: "anon", picks: { medium: "venice:kimi-k3", anon: "x".repeat(300) }, webSearch: false, pickProvider: true, extra: 1 });
-    expect(parseModePrefs(raw)).toEqual({ level: "anon", picks: { max: "auto", medium: "venice:kimi-k3", anon: "auto" }, webSearch: false, pickProvider: true });
+    const raw = JSON.stringify({ level: "anon", picks: { medium: "venice:kimi-k3", anon: "x".repeat(300) }, webSearch: false, pickProvider: true, sounds: true, extra: 1 });
+    expect(parseModePrefs(raw)).toEqual({ level: "anon", picks: { max: "auto", medium: "venice:kimi-k3", anon: "auto" }, webSearch: false, pickProvider: true, sounds: true });
+  });
+  it("mode sounds are off unless explicitly true", () => {
+    for (const sounds of [undefined, "true", 1, null]) expect(parseModePrefs(JSON.stringify({ sounds })).sounds).toBe(false);
   });
 });
 
