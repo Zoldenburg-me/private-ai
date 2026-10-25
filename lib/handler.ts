@@ -40,7 +40,7 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
   const env = deps.env ?? process.env;
   if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
   return failClosed(route, deps, async () => {
-    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier) => firstStepBody(prompt, TIERS[tier].agentMaxSteps));
+    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env }));
     if (p instanceof Response) return p;
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
@@ -70,7 +70,7 @@ interface Prepared { id: string; incognito: boolean; tier: TierId; provider: Pro
  * `sent` maps the prompt to the body the first upstream call really carries, for the context estimate.
  */
 async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow: { webSearch?: boolean },
-  sent: (prompt: Record<string, unknown>, tier: TierId) => unknown = (prompt) => prompt): Promise<Prepared | Response> {
+  sent: (prompt: Record<string, unknown>, tier: TierId, provider: ProviderConfig) => unknown = (prompt) => prompt): Promise<Prepared | Response> {
   const log = deps.log ?? metaLogger;
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
@@ -113,7 +113,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
-  const g = await gate(id, tier, estimateBodyTokens(sent(prompt, tier)), Date.now(), incognito); // the cache secret uses no model context
+  const g = await gate(id, tier, estimateBodyTokens(sent(prompt, tier, provider)), Date.now(), incognito); // the cache secret uses no model context
   const body = { ...prompt, ...cacheScope, ...exchange };
   if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
   if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { TOOLS, runAgent } from "../lib/agent";
+import { TOOLS, firstStepBody, runAgent } from "../lib/agent";
 import { parseSseChunk } from "../lib/sse";
 
 const enc = new TextEncoder();
@@ -41,6 +41,8 @@ describe("agent tool map", () => {
       run: async (args) => ({ forModel: `echo:${(JSON.parse(args) as { text: string }).text}` }) });
     const { bodies, out, toolMsg } = await run("echo");
     expect((bodies[0].tools as { function: { name: string } }[]).map((t) => t.function.name)).toEqual(["web_search", "echo"]);
+    // The first rate-limit estimate counts the same tools the first request sends.
+    expect(firstStepBody({ model: "m", messages: [{ role: "user", content: "q" }] }, 3, { provider, env: { MOCK_PROVIDER: "1" } }).tools).toEqual(bodies[0].tools);
     expect(toolMsg).toMatchObject({ role: "tool", content: "echo:hi" });
     expect(out.deltas.join("")).toBe("Done");
     expect(out.tools.map((t) => [t.name, t.status])).toEqual([["echo", "running"], ["echo", "done"]]);

@@ -66,12 +66,14 @@ export const TOOLS = new Map<string, AgentTool>([
   ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider }) => searchesInEnclave(provider), inEnclave: true }],
 ]);
 
+/** The tools a run offers: those available for its provider and env. */
+const availableTools = (ctx: ToolCtx) => new Map([...TOOLS].filter(([, t]) => t.available(ctx)));
 /** The upstream body for one step; the last step offers no tools, so the model must answer. */
-const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean, defs: object[] = [WEB_SEARCH_TOOL]) =>
+const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean, defs: object[]) =>
   ({ ...base, messages, stream: true, ...(last || !defs.length ? {} : { tools: defs }) });
-/** The first step's body, so the first rate-limit check can estimate what is really sent (system prompt and tool included). */
-export const firstStepBody = (base: Record<string, unknown>, maxSteps: number) =>
-  stepBody(base, [{ role: "system", content: AGENT_SYSTEM }, ...(base.messages as Msg[])], maxSteps <= 1);
+/** The first step's body, so the first rate-limit check can estimate what is really sent (system prompt and tools included). */
+export const firstStepBody = (base: Record<string, unknown>, maxSteps: number, ctx: ToolCtx) =>
+  stepBody(base, [{ role: "system", content: AGENT_SYSTEM }, ...(base.messages as Msg[])], maxSteps <= 1, [...availableTools(ctx).values()].map((t) => t.def));
 
 export interface AgentOpts {
   provider: ProviderConfig; body: Record<string, unknown>; maxSteps: number;
@@ -93,7 +95,7 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const tools = new Map([...TOOLS].filter(([, t]) => t.available({ provider: o.provider, env: o.env })));
+  const tools = availableTools({ provider: o.provider, env: o.env });
   const defs = [...tools.values()].map((t) => t.def);
   const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
   const inEnclave = enclave !== undefined;
@@ -112,7 +114,7 @@ export function runAgent(o: AgentOpts): Response {
         let steps = 0;
         let shown = ""; // every text delta this run sent, across steps
         try {
-          let messages = firstStepBody(o.body, o.maxSteps).messages;
+          let messages = firstStepBody(o.body, o.maxSteps, o).messages;
           for (let step = 1; ; step++) {
             const last = step >= o.maxSteps;
             const body = stepBody(o.body, messages, last, defs);
@@ -137,7 +139,7 @@ export function runAgent(o: AgentOpts): Response {
             } catch (e) {
               // A model without tool calls rejects the first step: answer it without search, still one message.
               if (step !== 1 || last || !(e instanceof ProviderError && e.status !== undefined && TOOLS_REJECTED.includes(e.status))) throw e;
-              r = await callStep(o.provider, stepBody(o.body, messages, true), step, modelFetch, abort, room, text);
+              r = await callStep(o.provider, stepBody(o.body, messages, true, []), step, modelFetch, abort, room, text);
               toolless = true;
             }
             if (!r.calls.length || toolless) {
