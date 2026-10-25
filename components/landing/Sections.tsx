@@ -7,7 +7,6 @@ import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
-import { canonicalModelId } from "@/lib/provider-models";
 import { PAID_ONLY_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
 import { DotNarwhal } from "./DotNarwhal";
 import { HeroComposer } from "./HeroComposer";
@@ -22,15 +21,6 @@ const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway")
 /** The same check with admin-panel keys (what the chat uses). If the key store is down, fall back to env keys: claim less, never more. */
 export async function frontierOn(load: () => Promise<{ privacy: string }[]> = liveProviders): Promise<boolean> {
   try { return (await load()).some((p) => p.privacy === "anon-gateway"); } catch { return frontier(); }
-}
-/** The paid-only frontier models a gateway actually serves (canonical ids), so the page names only models the chat offers. */
-const frontierIds = (providers: { privacy: string; models?: string[] }[]) => {
-  const served = new Set(providers.filter((p) => p.privacy === "anon-gateway").flatMap((p) => p.models ?? []).map(canonicalModelId));
-  return [...PAID_ONLY_MODELS].filter((id) => served.has(id));
-};
-/** frontierIds with admin-panel keys; a store outage falls back to env keys, like frontierOn. */
-export async function frontierModels(load: () => Promise<{ privacy: string; models?: string[] }[]> = liveProviders): Promise<string[]> {
-  try { return frontierIds(await load()); } catch { return frontierIds(loadProviders()); }
 }
 const start = () => (gated() ? "Start chatting with an invite" : "Start chatting, no signup");
 
@@ -65,7 +55,7 @@ export function Hero() {
     <section className="l-wrap l-hero" aria-labelledby="hero-h">
       <div className="hero-copy rise">
         <h1 id="hero-h">Ask anything.<br /><span>We keep no copy.</span></h1>
-        <p className="lead">By default, open models run in sealed hardware enclaves. Your history stays encrypted in your browser. No email needed.</p>
+        <p className="lead">Open models run in sealed hardware enclaves. Your history stays encrypted in your browser. No email needed.</p>
         <HeroComposer />
         <p><Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link></p>
       </div>
@@ -263,19 +253,19 @@ export function Compare({ frontier: frontierLive = frontier() }: { frontier?: bo
 const n = (v: number) => v.toLocaleString("en");
 const ctx = (tokens: number) => (tokens >= 1_000_000 ? `${tokens / 1_000_000}M` : `${Math.round(tokens / 1000)}k`);
 const times = (a: number, b: number) => (b > 0 && a > b ? `${n(Math.round(a / b))} times Free. ` : "");
-/** The top frontier models' logos, for the paid-only ids a gateway serves. */
+/** The top frontier models' logos, from their PAID_ONLY_MODELS ids. */
 const FRONTIER_LOGO: readonly { prefix: string; name: string }[] = [
   { prefix: "claude", name: "Claude" }, { prefix: "gemini", name: "Gemini" }, { prefix: "gpt", name: "ChatGPT" }, { prefix: "grok", name: "Grok" },
 ];
-const frontierLogos = (ids: readonly string[]) => FRONTIER_LOGO.filter((l) => ids.some((id) => id.startsWith(l.prefix)));
+const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...PAID_ONLY_MODELS].some((id) => id.startsWith(l.prefix)));
 
-function bigFeatures(t: Tier, frontierServed: readonly string[]) {
+function bigFeatures(t: Tier, frontierLive: boolean) {
   const free = TIERS.free;
-  const logos = frontierLogos(frontierServed);
+  const logos = frontierLogos();
   return [
     { title: `${n(t.dailyMessages)} Max privacy messages a day`, note: `${times(t.dailyMessages, free.dailyMessages)}Sealed in hardware the host machine cannot read.` },
     { title: `${n(t.incognitoDailyMessages)} incognito messages a day`, note: `${times(t.incognitoDailyMessages, free.incognitoDailyMessages)}For anything that does not need an enclave.` },
-    ...(logos.length ? [{ title: "Top frontier models, anonymously", note: `${logos.map((l) => l.name).join(", ")} through an anonymizing gateway, no extra subscription.`, logos }] : []),
+    ...(frontierLive && logos.length ? [{ title: "Top frontier models, anonymously", note: `${logos.map((l) => l.name).join(", ")} through an anonymizing gateway, no extra subscription.`, logos }] : []),
     { title: `${ctx(t.maxContextTokens)} context`, note: `Paste long contracts or a whole thread, with replies up to ${ctx(t.maxOutputTokens)} tokens.` },
     { title: "Agentic tasks", note: `Hand over a multi-step job and it plans and works through it, up to ${t.agentMaxSteps} steps per run.` },
   ];
@@ -287,8 +277,8 @@ const summary = (t: Tier) => [
 ].join(", ") + ".";
 const price = (t: Tier) => `€${t.priceEurMonth}`;
 
-/** Pricing: Pro as the big card, every other plan TIERS has stacked beside it. frontierModels: paid-only ids a gateway serves. */
-export function Pricing({ frontierModels: served = frontierIds(loadProviders()) }: { frontierModels?: readonly string[] } = {}) {
+/** Pricing: Pro as the big card, every other plan TIERS has stacked beside it. */
+export function Pricing({ frontier: frontierLive = frontier() }: { frontier?: boolean } = {}) {
   const ids = Object.keys(TIERS) as TierId[];
   const big = TIERS.pro;
   const small = ids.filter((id) => id !== big.id).map((id) => TIERS[id]);
@@ -314,7 +304,7 @@ export function Pricing({ frontierModels: served = frontierIds(loadProviders()) 
           <div className="plan-big-list">
             <p>What you get with {big.name}:</p>
             <ul>
-              {bigFeatures(big, served).map((f) => (
+              {bigFeatures(big, frontierLive).map((f) => (
                 <li key={f.title}>
                   <Check weight="bold" aria-hidden />
                   <span>
