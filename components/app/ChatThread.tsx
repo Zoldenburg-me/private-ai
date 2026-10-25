@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import {
   ActionBarPrimitive, AssistantRuntimeProvider, AttachmentPrimitive, ComposerPrimitive, ThreadPrimitive, useLocalRuntime, type ThreadRuntime,
   type ChatModelAdapter, type ChatModelRunResult, type ThreadMessageLike,
@@ -168,6 +169,15 @@ function AttachButton({ thread, images, onError }: { thread: ThreadRuntime; imag
   );
 }
 
+/** Signature results that only an enclave route produces. */
+const ENCLAVE_SIGNED: ReadonlySet<Signed> = new Set<Signed>(["enclave", "key-match", "server"]);
+/**
+ * The narwhal a reply keeps: the route it came from, by its incognito label or an enclave signature result. A reply
+ * with neither (older chats, errors) gets undefined, shown as the plain mark: missing metadata is never read as Max.
+ */
+export const replyLevelOf = (incognito?: Incognito, signed?: Signed): Level | undefined =>
+  incognito === "private" ? "medium" : incognito === "anonymized" ? "anon" : signed && ENCLAVE_SIGNED.has(signed) ? "max" : undefined;
+
 function Message({ role, content, signed, tools, running, isLast, onOpenProof, incognito, files }: { role: string; content: string; signed?: Signed; tools?: ToolEvent[]; running: boolean; isLast: boolean; onOpenProof?: () => void; incognito?: Incognito; files?: readonly { name: string; type: string }[] }) {
   const sig = signed ? SIG[signed] : undefined;
   const line = incognitoLine(incognito);
@@ -176,11 +186,11 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
   const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
   const images = tools?.filter((t) => t.name === "generate_image") ?? [];
   const searches = tools?.filter((t) => t.name !== "generate_image") ?? [];
-  // Each reply keeps the narwhal of the route it came from: its stored incognito label, otherwise the enclave.
-  const replyLevel: Level = incognito === "private" ? "medium" : incognito === "anonymized" ? "anon" : "max";
+  const replyLevel = replyLevelOf(incognito, signed);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
-      {role === "assistant" && <ModeNarwhal level={replyLevel} size={32} className="msg-avatar" />}
+      {role === "assistant" && (replyLevel ? <ModeNarwhal level={replyLevel} size={32} className="msg-avatar" />
+        : <span className="brand msg-avatar" aria-hidden><Image src="/brand/narwhal.svg" alt="" width={22} height={12} unoptimized /></span>)}
       <div className="bubble">
         <span className="sr-only">{role === "user" ? "You said:" : "Assistant:"}</span>
         {shown.files.length > 0 && <Files files={shown.files} />}

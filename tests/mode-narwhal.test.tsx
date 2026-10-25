@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MODE_LOOK, ModeNarwhal } from "@/components/app/ModeNarwhal";
 import { SettingsView } from "@/components/app/SettingsView";
 import { LEVELS } from "@/lib/client/levels";
+import { replyLevelOf } from "@/components/app/ChatThread";
 
 const noop = () => {};
 
@@ -21,6 +22,14 @@ describe("narwhal per privacy level", () => {
     expect(renderToStaticMarkup(<ModeNarwhal level="anon" size={104} label />)).toContain('alt="Classic narwhal: anonymized"');
     expect(MODE_LOOK.anon.caption).not.toMatch(/enclave/i);
     expect(MODE_LOOK.medium.caption).toMatch(/no hardware proof/);
+    expect(MODE_LOOK.max.caption).not.toMatch(/before you chat|verified/i); // a direct pick can send while the proof is pending
+  });
+
+  it("a reply keeps its own route, and unknown routes are never shown as the enclave", () => {
+    expect(replyLevelOf("private", "n/a")).toBe("medium");
+    expect(replyLevelOf("anonymized", undefined)).toBe("anon");
+    expect(replyLevelOf(undefined, "key-match")).toBe("max");
+    for (const s of [undefined, "n/a", "fail", "gateway"] as const) expect(replyLevelOf(undefined, s)).toBeUndefined();
   });
 });
 

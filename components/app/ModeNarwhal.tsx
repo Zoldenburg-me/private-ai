@@ -7,7 +7,7 @@ import type { Note } from "@/lib/client/tone";
  * ink = zero retention by contract (zdr-contract), classic = anonymized gateway (anon-gateway).
  */
 export const MODE_LOOK: Record<Level, { src: string; alt: string; caption: string; tone: string; sound: readonly Note[] }> = {
-  max: { src: "/brand/narwhal-tee.svg", alt: "Green narwhal: private enclave", caption: "Private enclave, checked before you chat", tone: "#0f7a4b",
+  max: { src: "/brand/narwhal-tee.svg", alt: "Green narwhal: private enclave", caption: "Private enclave: the proof badge shows its check", tone: "#0f7a4b",
     sound: [[196, 0.08, "triangle", 0.08], [784, 0.12], [1175, 0.26]] },
   medium: { src: "/brand/narwhal-zdr.svg", alt: "Ink narwhal: zero retention", caption: "Zero retention by contract, no hardware proof", tone: "#3b3e44",
     sound: [[660, 0.1], [880, 0.22]] },
