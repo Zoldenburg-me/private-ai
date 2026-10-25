@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Lightbulb, MagnifyingGlass, Paperclip, Plus } from "@phosphor-icons/react";
+import { Check, Lightbulb, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 
-/** The composer's "+" menu: tools the model may call. Web search is the only live one; the rest are marked "coming soon". */
+/** The composer's "+" menu: tools the model may call. Web search is the only live one; Think longer is marked "coming soon". Files go through the paperclip. */
 export function ToolsMenu({ available, webSearch, onWebSearch, ghost }: { available: boolean; webSearch: boolean; onWebSearch: (on: boolean) => void; ghost?: boolean }) {
   const [open, setOpen] = useState(false);
   const [tipOff, setTipOff] = useState(false); // Escape hides the hover/focus hint (WCAG 1.4.13: it can cover the draft)
@@ -38,11 +38,9 @@ export function ToolsMenu({ available, webSearch, onWebSearch, ghost }: { availa
               <span className="pi-desc">{!available ? "Not available on this server" : `${ghost ? "Off by default in ghost chat" : "When needed"}; queries go to Brave, without your identity. Each search counts as a message.`}</span></span>
             <Check weight="bold" aria-hidden className="pi-check" style={{ visibility: on ? "visible" : "hidden" }} />
           </button>
-          {([[Paperclip, "Attach a file"], [Lightbulb, "Think longer"]] as const).map(([Icon, label]) => (
-            <button type="button" aria-disabled="true" className="picker-item" key={label}>
-              <span className="pi-text"><span className="pi-name"><Icon weight="duotone" aria-hidden /> {label}</span><span className="pi-desc">Coming soon</span></span>
-            </button>
-          ))}
+          <button type="button" aria-disabled="true" className="picker-item">
+            <span className="pi-text"><span className="pi-name"><Lightbulb weight="duotone" aria-hidden /> Think longer</span><span className="pi-desc">Coming soon</span></span>
+          </button>
         </div>
       )}
     </div>

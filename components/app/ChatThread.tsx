@@ -275,7 +275,7 @@ export function ChatThread(props: ThreadProps) {
         </ComposerPrimitive.Attachments>
       </div>
       <ComposerPrimitive.Input className="composer-input" data-testid="prompt" aria-label="Message" rows={big ? 3 : 1} autoFocus
-        placeholder={big ? (props.ghost ? "Ask anything. This chat won't be saved." : "Ask anything, privately…") : (props.ghost ? "Reply — not saved" : "Reply…")} />
+        placeholder={big ? (props.ghost ? "Ask anything. This chat won't be saved." : "Ask anything, privately…") : (props.ghost ? "Reply (not saved)…" : "Reply…")} />
       <div className="composer-bar">
         <AttachButton thread={runtime.thread} images={!!props.images} onError={setAttachError} />
         {props.toolsSlot ?? <>
