@@ -4,7 +4,7 @@ import type { Logger } from "./log";
 import type { ToolEvent } from "./sse";
 import { providerFetch } from "./provider-fetch";
 import { FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, TOTAL_TIMEOUT_MS } from "./relay";
-import { WEB_SEARCH_TOOL, queryOf, webSearch } from "./web-search";
+import { WEB_SEARCH_TOOL, queryOf, searchConfigured, webSearch } from "./web-search";
 import { isUnavailable } from "./store";
 import { NEAR_SEARCH_TIMEOUT_MS, NEAR_SEARCH_TOOL, NearSearchSteps, searchesInEnclave } from "./near-search";
 
@@ -20,7 +20,7 @@ import { NEAR_SEARCH_TIMEOUT_MS, NEAR_SEARCH_TOOL, NearSearchSteps, searchesInEn
 // Small enough that a Free run (8k-token context) still fits a search step plus a short history.
 export const MAX_TOOL_RESULT_CHARS = 6_000;
 export const MAX_CALLS_PER_STEP = 2;
-/** Brave calls per run, whatever the tier's step limit: bounds search cost and what a steered model can send out. */
+/** Searches per run, whatever the tier's step limit: bounds search cost and what a steered model can send out. */
 export const MAX_SEARCHES_PER_RUN = 6;
 /** Chunks buffered for a slow reader before the loop stops reading upstream, and how often it re-checks. */
 const STREAM_HIGH_WATER = 64;
@@ -34,9 +34,41 @@ type Msg = Record<string, unknown>;
 interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string }
 
+interface ToolCtx { provider: ProviderConfig; env: Env }
+interface RunCtx { env: Env; fetchImpl: typeof fetch; signal: AbortSignal }
+interface ToolBase { def: object; maxPerRun: number; available: (ctx: ToolCtx) => boolean }
+/** A tool the provider runs inside its enclave (NEAR): we only offer it, and count and show its calls (callStep's NearHooks). */
+interface EnclaveTool extends ToolBase { inEnclave: true }
+/** A tool we run. Only `def` is sent to the model; `run` throws on failure (an error with `status` logs that status). */
+interface LocalTool extends ToolBase {
+  inEnclave?: false;
+  def: { type: "function"; function: { name: string; description: string; parameters: object } };
+  /** What every event of a call shows (its query), or null when the arguments are invalid. */
+  shown: (args: string) => { query?: string } | null;
+  run: (args: string, ctx: RunCtx) => Promise<{ forModel: string; event?: Pick<ToolEvent, "results"> }>;
+  /** Fixed texts fed back to the model for bad arguments, the run's cap reached, or a failed run. */
+  errors: { args: string; cap: string; failed: string };
+}
+export type AgentTool = EnclaveTool | LocalTool;
+
+/** The agent's tools by name: a run offers those available for its provider and env. */
+export const TOOLS = new Map<string, AgentTool>([
+  ["web_search", {
+    def: WEB_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN,
+    available: ({ provider, env }) => !searchesInEnclave(provider) && searchConfigured(env),
+    shown: (args) => { const query = queryOf(args); return query ? { query } : null; },
+    run: async (args, ctx) => {
+      const results = await webSearch(queryOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
+      return { forModel: JSON.stringify(results).slice(0, MAX_TOOL_RESULT_CHARS), event: { results: results.map(({ title, url }) => ({ title, url })) } };
+    },
+    errors: { args: "error: arguments must be {\"query\": string}", cap: "error: search limit for this answer reached, answer with what you have", failed: "error: web search failed, answer without it" },
+  }],
+  ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider }) => searchesInEnclave(provider), inEnclave: true }],
+]);
+
 /** The upstream body for one step; the last step offers no tools, so the model must answer. */
-const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean, tool: object = WEB_SEARCH_TOOL) =>
-  ({ ...base, messages, stream: true, ...(last ? {} : { tools: [tool] }) });
+const stepBody = (base: Record<string, unknown>, messages: Msg[], last: boolean, defs: object[] = [WEB_SEARCH_TOOL]) =>
+  ({ ...base, messages, stream: true, ...(last || !defs.length ? {} : { tools: defs }) });
 /** The first step's body, so the first rate-limit check can estimate what is really sent (system prompt and tool included). */
 export const firstStepBody = (base: Record<string, unknown>, maxSteps: number) =>
   stepBody(base, [{ role: "system", content: AGENT_SYSTEM }, ...(base.messages as Msg[])], maxSteps <= 1);
@@ -61,9 +93,12 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const inEnclave = searchesInEnclave(o.provider);
+  const tools = new Map([...TOOLS].filter(([, t]) => t.available({ provider: o.provider, env: o.env })));
+  const defs = [...tools.values()].map((t) => t.def);
+  const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
+  const inEnclave = enclave !== undefined;
   // NEAR's searches all happen in one call, so its budget is what our loop could at most run over the tier's steps.
-  const searches = { left: inEnclave ? Math.min(MAX_SEARCHES_PER_RUN, (o.maxSteps - 1) * MAX_CALLS_PER_STEP) : MAX_SEARCHES_PER_RUN };
+  const left = new Map([...tools].map(([n, t]) => [n, t.inEnclave ? Math.min(t.maxPerRun, (o.maxSteps - 1) * MAX_CALLS_PER_STEP) : t.maxPerRun]));
 
   const stream = new ReadableStream<Uint8Array>({
     start(ctrl) {
@@ -80,7 +115,7 @@ export function runAgent(o: AgentOpts): Response {
           let messages = firstStepBody(o.body, o.maxSteps).messages;
           for (let step = 1; ; step++) {
             const last = step >= o.maxSteps;
-            const body = stepBody(o.body, messages, last, inEnclave ? NEAR_SEARCH_TOOL : WEB_SEARCH_TOOL);
+            const body = stepBody(o.body, messages, last, defs);
             if (step > 1) { const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
             steps = step;
             const text = (content: string, id: string) => { shown += content; send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }); };
@@ -90,8 +125,8 @@ export function runAgent(o: AgentOpts): Response {
             // before NEAR can run it. Fail closed: a stream cut after that still counts, as NEAR may already be searching (and bills it).
             const near = inEnclave ? { steps: new NearSearchSteps(step), onSearch: async () => {
               // Our limits, not the provider's failure: a Refusal is kept out of the error budget.
-              if (searches.left <= 0) throw new Refusal("search limit for this answer reached");
-              searches.left -= 1;
+              if (left.get(enclave!)! <= 0) throw new Refusal("search limit for this answer reached");
+              left.set(enclave!, left.get(enclave!)! - 1);
               const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied);
             }, onEvent: (e: ToolEvent) => {
               if (e.status !== "running") o.log({ route: o.route, event: "tool_call", tool: "web_context_search", status: e.status === "done" ? 200 : 502 });
@@ -115,7 +150,7 @@ export function runAgent(o: AgentOpts): Response {
               ctrl.enqueue(enc.encode("data: [DONE]\n\n"));
               break;
             }
-            const results = await Promise.all(r.calls.map((c) => runTool(c, o, searchFetch, abort.signal, searches, tool)));
+            const results = await Promise.all(r.calls.map((c) => runTool(c, tools, o, searchFetch, abort.signal, left, tool)));
             messages = [...messages,
               { role: "assistant", content: r.text, tool_calls: r.calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args } })) },
               ...r.calls.map((c, i) => ({ role: "tool", tool_call_id: c.id, content: results[i] }))];
@@ -157,23 +192,25 @@ class ProviderError extends Error {
 const TOOLS_REJECTED = [400, 404, 422];
 
 /** Runs one tool call; returns the text fed back to the model. Failures go back as text, never as a throw. */
-async function runTool(c: Call, o: AgentOpts, fetchImpl: typeof fetch, signal: AbortSignal, searches: { left: number }, emit: (e: ToolEvent) => void): Promise<string> {
-  const query = c.name === "web_search" ? queryOf(c.args) : null;
-  emit({ id: c.id, name: c.name, status: "running", ...(query ? { query } : {}) });
-  if (!query) { emit({ id: c.id, name: c.name, status: "error" }); return c.name === "web_search" ? "error: arguments must be {\"query\": string}" : `error: unknown tool ${c.name}`; }
-  if (searches.left <= 0) { emit({ id: c.id, name: c.name, status: "error", query }); return "error: search limit for this answer reached, answer with what you have"; }
-  searches.left -= 1;
+async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fetchImpl: typeof fetch, signal: AbortSignal, left: Map<string, number>, emit: (e: ToolEvent) => void): Promise<string> {
+  const tool = tools.get(c.name);
+  const local = tool && !tool.inEnclave ? tool : undefined;
+  const shown = local?.shown(c.args) ?? null;
+  emit({ id: c.id, name: c.name, status: "running", ...shown });
+  if (!local || !shown) { emit({ id: c.id, name: c.name, status: "error" }); return local ? local.errors.args : `error: unknown tool ${c.name}`; }
+  if (left.get(c.name)! <= 0) { emit({ id: c.id, name: c.name, status: "error", ...shown }); return local.errors.cap; }
+  left.set(c.name, left.get(c.name)! - 1);
   const t = Date.now();
   try {
-    const results = await webSearch(query, o.env, fetchImpl, signal);
+    const r = await local.run(c.args, { env: o.env, fetchImpl, signal });
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: 200, ms: Date.now() - t });
-    emit({ id: c.id, name: c.name, status: "done", query, results: results.map(({ title, url }) => ({ title, url })) });
-    return JSON.stringify(results).slice(0, MAX_TOOL_RESULT_CHARS);
+    emit({ id: c.id, name: c.name, status: "done", ...shown, ...r.event });
+    return r.forModel;
   } catch (e) {
-    // The search provider's status (401 bad key, 429 quota) or 504 for a timeout, so a broken key shows in the logs.
+    // The tool provider's status (401 bad key, 429 quota) or 504 for a timeout, so a broken key shows in the logs.
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: (e as { status?: number }).status ?? 504, ms: Date.now() - t });
-    emit({ id: c.id, name: c.name, status: "error", query });
-    return "error: web search failed, answer without it";
+    emit({ id: c.id, name: c.name, status: "error", ...shown });
+    return local.errors.failed;
   }
 }
 
