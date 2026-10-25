@@ -56,11 +56,9 @@ export const registerOptions = withStores(async (req: Request) => {
     const invite = (await body<{ invite?: unknown }>(req))?.invite;
     // No code is the UI asking whether to prompt: answered before a stored code could be used up.
     if (invite === undefined) return json({ error: { message: "invite code required", code: "invite_required" } }, 403);
-    if (!(await inviteAccepted(invite, id))) {
-      // Only wrong codes count against the guessing cap.
-      const capped = await overLimit(LIMITS.inviteFail, "invite-fail"); if (capped) return capped;
-      return json({ error: { message: "invalid invite code", code: "invite_required" } }, 403);
-    }
+    // Every code counts against the guessing cap before it is checked, so a capped guess is never evaluated.
+    const capped = await overLimit(LIMITS.inviteFail, "invite-fail"); if (capped) return capped;
+    if (!(await inviteAccepted(invite, id))) return json({ error: { message: "invalid invite code", code: "invite_required" } }, 403);
   }
   if (!(await consumeStepUp(me))) return stepUpRequired();
   const o = await registrationOptions(id, r);
