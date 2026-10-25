@@ -94,3 +94,11 @@ describe("landing claims follow the invite gate", () => {
     for (const n of NOT_VERIFIED) expect(html).toContain(n.replace(/&/g, "&amp;"));
   });
 });
+
+// /datenschutz names Cloudflare as seeing messages in transit; the chat's own privacy copy must not leave it out.
+describe("chat privacy copy names Cloudflare", () => {
+  it("in settings and under the composer", () => {
+    for (const f of ["components/app/SettingsView.tsx", "components/app/ChatThread.tsx"])
+      expect(readFileSync(f, "utf8")).toContain("Cloudflare");
+  });
+});

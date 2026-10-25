@@ -6,24 +6,29 @@ import { LIMITS } from "../lib/limits";
 import { normaliseModel } from "../lib/catalog";
 import { isLocked, needsSignIn } from "../components/app/ModelPicker";
 import { signInUnlocks } from "../lib/client/levels";
+import { ANON_MAX_OUTPUT_TOKENS, TIERS } from "../lib/tiers";
+import { usage } from "../lib/ratelimit";
 
 const tee = normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "m" });
 const opus = normaliseModel({ id: "liquid", privacy: "anon-gateway" }, { id: "claude-opus-5-5" });
 const fable = normaliseModel({ id: "liquid", privacy: "anon-gateway" }, { id: "claude-fable-5-1" });
+const tinfoil = { id: "tinfoil", privacy: "tee-attested" } as const;
+const curated = normaliseModel(tinfoil, { id: "kimi-k3", type: "chat" }); // a curated Auto route
+const big = normaliseModel(tinfoil, { id: "gpt-oss-120b", type: "chat" }); // TEE and free, but not curated
 
-let sent = 0;
+let sent = 0; let bodies: Record<string, unknown>[] = [];
 const deps = {
-  catalog: async () => [tee, opus, fable],
-  env: { MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://upstream/v1", LIQUID_API_KEY: "k", LIQUID_BASE_URL: "http://upstream/v1" },
-  fetchImpl: (async () => { sent++; return Response.json({ id: "c", choices: [{ message: { content: "ok" } }] }); }) as unknown as typeof fetch,
+  catalog: async () => [tee, opus, fable, curated, big],
+  env: { MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://upstream/v1", LIQUID_API_KEY: "k", LIQUID_BASE_URL: "http://upstream/v1", TINFOIL_API_KEY: "k", TINFOIL_BASE_URL: "http://upstream/v1" },
+  fetchImpl: (async (_u: string, init: RequestInit) => { sent++; bodies.push(JSON.parse(String(init.body))); return Response.json({ id: "c", choices: [{ message: { content: "ok" } }] }); }) as unknown as typeof fetch,
   log: () => {},
 };
-const chat = (token: string, model: string) => handleChat(new Request("http://app/api/chat", {
+const chat = (token: string, model: string, extra: Record<string, unknown> = {}) => handleChat(new Request("http://app/api/chat", {
   method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-  body: JSON.stringify({ model, messages: [{ role: "user", content: "hi" }] }),
+  body: JSON.stringify({ model, messages: [{ role: "user", content: "hi" }], ...extra }),
 }), "/api/chat", deps);
 
-beforeEach(() => { _setStores(); sent = 0; vi.stubEnv("INVITE_CODES", ""); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", ""); });
+beforeEach(() => { _setStores(); sent = 0; bodies = []; vi.stubEnv("INVITE_CODES", ""); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", ""); });
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("anonymous sessions: free TEE models only", () => {
@@ -45,6 +50,27 @@ describe("anonymous sessions: free TEE models only", () => {
     expect((await chat(token, "mock:m")).status).toBe(200);
   });
 
+  it("only the curated Auto routes, not every free TEE model", async () => {
+    const { token } = await createSession();
+    const r = await chat(token, "tinfoil:gpt-oss-120b");
+    expect(r.status).toBe(401);
+    expect((await r.json()).error.code).toBe("signin_required");
+    expect(sent).toBe(0);
+    expect((await chat(token, "tinfoil:kimi-k3")).status).toBe(200); // the route the web client's Auto resolves to
+    expect((await chat(token, "auto:kimi-k3")).status).toBe(200);
+    const device = await signInDevice((await createSession()).id);
+    expect((await chat(device, "tinfoil:gpt-oss-120b")).status).toBe(200);
+  });
+
+  it("caps an anonymous reply below the free plan", async () => {
+    expect(ANON_MAX_OUTPUT_TOKENS).toBeLessThan(TIERS.free.maxOutputTokens);
+    await chat((await createSession()).token, "mock:m", { max_tokens: 100_000 });
+    await chat((await createSession()).token, "mock:m");
+    expect(bodies.map((b) => b.max_tokens)).toEqual([ANON_MAX_OUTPUT_TOKENS, ANON_MAX_OUTPUT_TOKENS]);
+    await chat(await signInDevice((await createSession()).id), "mock:m", { max_tokens: 100_000 });
+    expect(bodies[2].max_tokens).toBe(TIERS.free.maxOutputTokens);
+  });
+
   it("a signed-in free account may use incognito models", async () => {
     const device = await signInDevice((await createSession()).id);
     expect((await chat(device, "liquid:claude-opus-5-5")).status).toBe(200);
@@ -64,6 +90,28 @@ describe("anonymous web chat cap", () => {
     for (let i = 0; i < 10; i++) expect((await chat((await createSession()).token, "mock:m")).status).toBe(200);
     expect((await chat((await createSession()).token, "mock:m")).status).toBe(429);
   });
+
+  it("a session out of daily messages is refused by its own quota, not the shared cap", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-25T12:00:00Z"));
+    try {
+      vi.stubEnv("INVITE_CODES", "alpha-123"); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "2");
+      const { token } = await createSession();
+      for (let i = 0; i < TIERS.free.dailyMessages; i++) { // a minute apart: each is a fresh window for both limits
+        expect((await chat(token, "mock:m")).status).toBe(200);
+        vi.setSystemTime(Date.now() + 61_000);
+      }
+      for (let i = 0; i < 3; i++) expect((await chat(token, "mock:m")).status).toBe(429);
+      expect((await chat((await createSession()).token, "mock:m")).status).toBe(200);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a message the cap refuses does not cost the session a daily message", async () => {
+    vi.stubEnv("INVITE_CODES", "alpha-123"); vi.stubEnv("PAI_LIMIT_ANON_CHATS_PER_MIN", "1");
+    const { id, token } = await createSession();
+    expect((await chat(token, "mock:m")).status).toBe(200);
+    expect((await chat(token, "mock:m")).status).toBe(429);
+    expect((await usage(id, "free")).usedToday).toBe(1);
+  });
 });
 
 describe("picker", () => {
@@ -71,6 +119,9 @@ describe("picker", () => {
     expect(needsSignIn(opus, false, false)).toBe(true);
     expect(needsSignIn(fable, false, false)).toBe(true);
     expect(needsSignIn(tee, false, false)).toBe(false);
+    expect(needsSignIn(big, false, false)).toBe(true); // free TEE, but not a curated Auto route
+    expect(needsSignIn(curated, false, false)).toBe(false);
+    expect(needsSignIn({ ...curated, provider: "auto" }, false, false)).toBe(false);
     expect(needsSignIn(opus, true, false)).toBe(false); // signed in
     expect(needsSignIn(opus, false, true)).toBe(false); // paid anonymous account
     expect(needsSignIn(opus, undefined, undefined)).toBe(false); // session still loading

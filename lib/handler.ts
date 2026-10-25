@@ -1,14 +1,14 @@
 import { applyExtensions } from "./extensions";
 import { findSelectable, type ModelEntry } from "./catalog";
 import { cheapestRoute } from "./routing";
-import { gate, recordFailure } from "./ratelimit";
+import { gate, recordFailure, usage } from "./ratelimit";
 import { createHmac } from "node:crypto";
 import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
-import { anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
+import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, TIERS, type TierId } from "./tiers";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
@@ -100,14 +100,15 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   if (hasImage && !entry.modalities?.in.includes("image")) { await recordFailure(id); return err(400, "this model does not read images; pick one that does"); }
 
   const tier = await tierOf(id);
-  // Signed-out sessions are free to mint: on the free plan they get only free TEE models (an anonymous paid account keeps its plan).
-  if (!me.deviceId && tier === "free" && !anonAllowed(entry))
+  // Signed-out sessions are free to mint: on the free plan they get only the curated TEE line-up and a smaller reply (an anonymous paid account keeps its plan).
+  const anonFree = !me.deviceId && tier === "free";
+  if (anonFree && !anonAllowed(entry))
     return Response.json({ error: { message: "Sign in to use this model.", code: "signin_required" } }, { status: 401, headers: { "Cache-Control": "no-store" } });
   if (entry.paid && tier === "free")
     return Response.json({ error: { message: "This model needs a paid plan.", code: "upgrade_required" } }, { status: 402, headers: { "Cache-Control": "no-store" } });
   const incognito = entry.incognito === true;
   const { max_completion_tokens, max_tokens, ...rest } = parsed.body;
-  const cap = TIERS[tier].maxOutputTokens;
+  const cap = anonFree ? ANON_MAX_OUTPUT_TOKENS : TIERS[tier].maxOutputTokens;
   const wanted = [max_completion_tokens, max_tokens].map((v) => (typeof v === "number" ? Math.floor(v) : NaN)).find((v) => v >= 1);
   // Forward the field the client used: some models accept only max_completion_tokens.
   const field = max_completion_tokens != null ? "max_completion_tokens" : "max_tokens";
@@ -116,13 +117,18 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const prompt = { ...rest, model: entry.id, [field]: Math.min(wanted ?? DEFAULT_OUTPUT_TOKENS, cap) };
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
-  const g = await gate(id, tier, estimateBodyTokens(sent(prompt, tier, provider)), Date.now(), incognito); // the cache secret uses no model context
-  const body = { ...prompt, ...cacheScope, ...exchange };
-  if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
-  if (anonGated) { // counted only for requests that would reach the provider, so rejected ones cannot use up everyone's anonymous budget
+  const tokens = estimateBodyTokens(sent(prompt, tier, provider)); // the cache secret uses no model context
+  const now = Date.now(); // one clock for both checks: across UTC midnight they would read different days
+  // The whole-instance cap goes before the daily quota, so a message it refuses costs the session nothing. A request
+  // too long for the tier, or from a session out of daily messages, is left to gate() below, so it cannot use up everyone's budget.
+  // shortcut: a session over its per-minute or error budget still counts here; fresh sessions are free to mint, so the cap needs its own Cloudflare rule either way.
+  if (anonGated && tokens <= TIERS[tier].maxContextTokens && (await usage(id, tier, now, incognito)).remainingToday > 0) {
     const limited = await overLimit(LIMITS.anonChat, "anon-chat");
     if (limited) return limited;
   }
+  const g = await gate(id, tier, tokens, now, incognito);
+  const body = { ...prompt, ...cacheScope, ...exchange };
+  if (!g.allowed) { log({ route, event: "gated", status: g.status, tier }); return err(g.status, g.reason!, g.headers); }
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));

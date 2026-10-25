@@ -60,7 +60,7 @@ export default function Home() {
   // Routes whose chat failed at the provider, mirrored from routeFailedAt so Medium/Anon Auto re-picks on the next render.
   const [failedAt, setFailedAt] = useState<Record<string, number>>({});
   const [account, setAccount] = useState<AccountInfo | null>(null);
-  // Signed-out visitors on the free plan: Auto routes only to models the server lets them use (free TEE models).
+  // Signed-out visitors on the free plan: Auto routes only to models the server lets them use (the curated Auto line-up on TEE).
   const usable = models.filter((m) => !needsSignIn(m, account ? account.signedIn : undefined, tier ? tier.id !== "free" : undefined));
   const modelRef = resolveRef(usable, mode.level, mode.picks[mode.level], mode.pickProvider, failedAt);
   const autoOn = modelRef !== mode.picks[mode.level]; // Auto also covers a remembered pick the picker no longer offers

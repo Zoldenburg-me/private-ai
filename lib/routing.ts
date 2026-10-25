@@ -13,6 +13,10 @@ export const CURATED: Record<string, Record<string, string>> = {
   "qwen3.8-27b": { near: "Qwen/Qwen3.8-27B", phala: "qwen/qwen3.8-27b" },
 };
 
+/** `m` is one of the provider routes above. */
+export const isCuratedRoute = (m: Pick<ModelEntry, "provider" | "id">) =>
+  Object.values(CURATED).some((routes) => Object.hasOwn(routes, m.provider) && routes[m.provider] === m.id);
+
 /** Blended USD per 1M tokens at 3 input : 1 output, the ratio Artificial Analysis prices by. Unpriced sorts last. */
 const blended = (m: ModelEntry) => (m.price ? (3 * m.price.in + m.price.out) / 4 : Infinity);
 

@@ -114,7 +114,7 @@ describe("modalities decide what can chat", () => {
     expect(near.modalities).toBeUndefined();
     expect(near.selectable).toBe(true);
     expect(tee("near", { id: "x", input_modalities: "text", output_modalities: ["text"] }).modalities).toBeUndefined(); // not an array: ignored
-    const empty = tee("phala", { id: "x", input_modalities: [], output_modalities: [] }); // empty: unknown
+    const empty = tee("tinfoil", { id: "x", input_modalities: [], output_modalities: [] }); // empty: unknown
     expect(empty.modalities).toBeUndefined();
     expect(empty.selectable).toBe(true);
   });

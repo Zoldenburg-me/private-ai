@@ -27,7 +27,12 @@ export interface ModelEntry {
 export interface Modalities { in: string[]; out: string[] }
 
 /** Providers whose entire catalogue runs in attested TEEs (per their public docs). NEAR is not one: see nearAttested. */
-const ALL_TEE = new Set(["phala", "tinfoil", "privatemode", "mock"]);
+const ALL_TEE = new Set(["tinfoil", "privatemode", "mock"]);
+/**
+ * Phala also serves some models through Chutes (Kimi K3, seen 2026-10-21), whose attestation this app cannot check,
+ * and its /models does not tell them apart. Only these run in Phala's own attested GPU TEEs; its hints are not trusted.
+ */
+export const PHALA_ATTESTED = new Set(["z-ai/glm-5.3", "qwen/qwen3.8-27b"]);
 
 type Raw = Record<string, unknown>;
 
@@ -69,12 +74,12 @@ export function normaliseModel(provider: Pick<ProviderConfig, "id" | "privacy">,
   const caps = (raw.capabilities ?? {}) as Raw;
   const meta = (raw.metadata ?? {}) as Raw;
   const privacyText = String(raw.privacy ?? raw.privacy_tier ?? meta.privacy ?? "").toLowerCase();
-  const tee =
+  const tee = provider.id === "phala" ? PHALA_ATTESTED.has(id) :
     bool(raw.tee) || bool(raw.is_tee) || bool(caps.tee) || bool(caps.supports_tee) || bool(raw.confidential) ||
     word(privacyText, "tee") || word(privacyText, "confidential") ||
     (ALL_TEE.has(provider.id) && !privacyText.includes("anonym"));
   const e2ee = bool(raw.e2ee) || bool(caps.e2ee) || bool(caps.supports_e2ee);
-  const zdr = bool(raw.zdr) || bool(meta.zdr) || word(privacyText, "private") || word(privacyText, "zdr") || provider.privacy === "zdr-contract";
+  const zdr = provider.id !== "phala" && (bool(raw.zdr) || bool(meta.zdr) || word(privacyText, "private") || word(privacyText, "zdr") || provider.privacy === "zdr-contract");
   const privacy: Privacy = tee ? "tee" : zdr ? "private" : "anonymized";
   return {
     id,

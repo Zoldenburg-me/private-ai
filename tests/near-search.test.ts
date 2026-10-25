@@ -10,7 +10,7 @@ import { runAgent } from "../lib/agent";
 const PROMPT = "SECRET-QUESTION-7c2a";
 const QUERY = "SECRET-QUERY-3e91";
 const SNIPPET = "SECRET-SNIPPET-b40d";
-const MODEL = "z-ai/glm-5.3";
+const MODEL = "deepseek/deepseek-v4.1-flash"; // a curated Auto route: these sessions are signed out
 const env = { MOCK_PROVIDER: "1", MOCK_BASE_URL: "http://upstream/v1", BRAVE_SEARCH_API_KEY: "brave-key", NEAR_AI_API_KEY: "k", NEAR_AI_BASE_URL: "http://near/v1" };
 const catalog = async () => [normaliseModel({ id: "near", privacy: "tee-attested" }, { id: MODEL }, true), normaliseModel({ id: "mock", privacy: "tee-attested" }, { id: "m" })];
 const ask = (model: string) => ({ model, stream: true, messages: [{ role: "user", content: PROMPT }], pai_options: { web_search: true } });

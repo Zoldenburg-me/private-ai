@@ -142,7 +142,7 @@ export function SettingsView(p: {
 
           <section>
             <h2>Your data</h2>
-            <p className="acct-p">Chats live only in this browser, encrypted with AES-256-GCM. Our server sees your messages in transit but never stores or logs them. Export an encrypted backup to move them, or see <a href="/privacy/metadata">what little the server keeps about you</a>.</p>
+            <p className="acct-p">Chats live only in this browser, encrypted with AES-256-GCM. On their way to the model, your messages pass Cloudflare (our network provider) and our server; our server never stores or logs them. Export an encrypted backup to move them, or see <a href="/privacy/metadata">what little the server keeps about you</a>.</p>
             {p.ghost ? <p className="hs-note">Backup and wipe are hidden in ghost chat.</p> : (<>
               <div className="acct-data">
                 <label className="hs-field">Backup passphrase

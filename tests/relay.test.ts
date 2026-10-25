@@ -3,9 +3,10 @@ import { handleChat } from "../lib/handler";
 import { issueToken, setTier } from "../lib/session";
 import { signedIn } from "./helpers/signed-in";
 import { _reset } from "../lib/ratelimit";
-import { metaLogger } from "../lib/log";
+import { metaLogger, type LogMeta } from "../lib/log";
 import { applyExtensions } from "../lib/extensions";
 import { normaliseModel } from "../lib/catalog";
+import { ANON_MAX_OUTPUT_TOKENS } from "../lib/tiers";
 import { relay } from "../lib/relay";
 import { parseSseChunk, type Receipt } from "../lib/sse";
 import type { ProviderConfig } from "../lib/providers";
@@ -101,8 +102,8 @@ describe("tinfoil prompt-cache scoping", () => {
   it("sends a stable, per-account user_cache_secret that a client cannot set", async () => {
     const secrets: unknown[] = [];
     const spy = (async (_u: string, init: RequestInit) => { secrets.push(JSON.parse(String(init.body)).user_cache_secret); return Response.json({ choices: [] }); }) as unknown as typeof fetch;
-    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "t" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: spy };
-    const send = (token: string) => handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content: "x" }], user_cache_secret: "victim" }), "/t", deps);
+    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "kimi-k3" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: spy };
+    const send = (token: string) => handleChat(req(token, { model: "tinfoil:kimi-k3", messages: [{ role: "user", content: "x" }], user_cache_secret: "victim" }), "/t", deps);
     const a = issueToken(), b = issueToken();
     await send(a.token); await send(a.token); await send(b.token);
     expect(typeof secrets[0]).toBe("string");
@@ -112,14 +113,15 @@ describe("tinfoil prompt-cache scoping", () => {
   });
 
   it("does not count user_cache_secret toward the tier's context limit", async () => {
-    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "t" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: (async () => Response.json({ choices: [] })) as unknown as typeof fetch };
+    const deps = { catalog: async () => [normaliseModel({ id: "tinfoil", privacy: "tee-attested" }, { id: "kimi-k3" })], env: { TINFOIL_API_KEY: "k" }, fetchImpl: (async () => Response.json({ choices: [] })) as unknown as typeof fetch };
     // Sized so the forwarded body without the cache secret sits exactly at the free tier's 8,000-token estimate.
-    const shape = (content: string) => JSON.stringify({ messages: [{ role: "user", content }], model: "t", max_tokens: 4096 });
+    // kimi-k3: anonymous sessions may use only curated Auto routes (lib/tiers.ts anonAllowed).
+    const shape = (content: string) => JSON.stringify({ messages: [{ role: "user", content }], model: "kimi-k3", max_tokens: ANON_MAX_OUTPUT_TOKENS });
     const content = "a".repeat(8_000 * 3 - shape("").length);
     expect(shape(content).length).toBe(24_000);
     const { token } = issueToken();
-    expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content }] }), "/t", deps)).status).toBe(200);
-    expect((await handleChat(req(token, { model: "tinfoil:t", messages: [{ role: "user", content: content + "aaa" }] }), "/t", deps)).status).toBe(413);
+    expect((await handleChat(req(token, { model: "tinfoil:kimi-k3", messages: [{ role: "user", content }] }), "/t", deps)).status).toBe(200);
+    expect((await handleChat(req(token, { model: "tinfoil:kimi-k3", messages: [{ role: "user", content: content + "aaa" }] }), "/t", deps)).status).toBe(413);
   });
 });
 
@@ -160,10 +162,15 @@ describe("relay receipt framing", () => {
     }
   });
 
-  it("still relays the upstream's own events and deltas", async () => {
-    const res = await relay({ provider, body: { model: "m", stream: true }, log: () => {}, route: "/t",
-      fetchImpl: (async () => new Response('event: other\ndata: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n')) as unknown as typeof fetch });
+  it("drops every named upstream event (only our server names events), keeps its deltas", async () => {
+    const tool = '{"id":"t","name":"web_context_search","status":"done","query":"x"}';
+    const logged: LogMeta[] = [];
+    const res = await relay({ provider, body: { model: "m", stream: true }, log: (m) => logged.push(m), route: "/t",
+      fetchImpl: (async () => new Response(`event: agent_tool\ndata: ${tool}\n\nevent: pai_usage\ndata: {"remaining_daily":"999"}\n\nevent: other\ndata: {"choices":[{"delta":{"content":"no"}}]}\n\ndata: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n`)) as unknown as typeof fetch });
     const p = parseSseChunk(await res.text());
+    expect(p.tools).toEqual([]);
+    expect(logged.filter((m) => m.event === "upstream_event_dropped")).toEqual([{ route: "/t", provider: "custom", event: "upstream_event_dropped" }]); // once, no name
+    expect(p.remaining).toBeUndefined();
     expect(p.deltas).toEqual(["hi"]);
     expect(p.done).toBe(true);
     expect(p.receipt).toMatchObject({ provider: "custom", model: "m" });
