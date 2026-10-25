@@ -1,21 +1,23 @@
 /**
  * Image generation for the agent (lib/agent.ts), via NEAR AI Cloud's attested FLUX model. Only the model's prompt
  * leaves the server: no account id, session, IP or user agent. The image goes to the browser in the tool event and is
- * never stored or logged here. Off unless NEAR_AI_API_KEY is set (or, in dev/e2e only, MOCK_PROVIDER=1, which uses
+ * never stored or logged here. Off unless a NEAR key is configured, in env or /admin (or, in dev/e2e only, MOCK_PROVIDER=1, which uses
  * the mock image endpoint; production refuses MOCK_PROVIDER at boot).
  */
+import type { ProviderConfig } from "./providers";
+
 type Env = Record<string, string | undefined>;
 
 export const IMAGE_TIMEOUT_MS = 60_000;
 /** NEAR's /model/list reports attestationSupported for it (checked 2026-10-25); a fixed model, never the chat model's choice. */
 export const IMAGE_MODEL = "black-forest-labs/FLUX.2-klein-4B";
-const NEAR_URL = "https://cloud-api.near.ai/v1";
 const MAX_PROMPT_CHARS = 1_000;
 export const MAX_IMAGE_BYTES = 4_000_000;
 /** Some providers answer a moderation refusal with HTTP 200 and a tiny placeholder; a real image is far larger. */
 export const MIN_IMAGE_BYTES = 4_000;
 
-export const imageConfigured = (env: Env) => !!env.NEAR_AI_API_KEY || env.MOCK_PROVIDER === "1";
+/** `near`: the NEAR provider as liveProviders resolves it, so a key stored in /admin works like one in env. */
+export const imageConfigured = (env: Env, near?: ProviderConfig) => !!near?.apiKey || env.MOCK_PROVIDER === "1";
 
 /** The tool definition offered to the model (OpenAI function-calling format). */
 export const IMAGE_TOOL = {
@@ -45,11 +47,11 @@ export function imageType(b: Uint8Array): "png" | "jpeg" | "webp" | null {
 }
 
 /** One image as a data URL. Throws with `status` (the provider's, or 422 for a refusal or an unusable image). */
-export async function generateImage(prompt: string, env: Env, fetchImpl: typeof fetch = fetch, signal?: AbortSignal): Promise<string> {
-  const base = env.NEAR_AI_API_KEY ? env.NEAR_AI_BASE_URL || NEAR_URL : env.MOCK_BASE_URL || "http://127.0.0.1:3000/api/mock/v1";
+export async function generateImage(prompt: string, near: ProviderConfig | undefined, env: Env, fetchImpl: typeof fetch = fetch, signal?: AbortSignal): Promise<string> {
+  const base = near?.apiKey ? near.baseUrl : env.MOCK_BASE_URL || "http://127.0.0.1:3000/api/mock/v1";
   const res = await fetchImpl(`${base}/images/generations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.NEAR_AI_API_KEY ?? ""}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${near?.apiKey ?? ""}` },
     body: JSON.stringify({ model: IMAGE_MODEL, prompt, n: 1, response_format: "b64_json" }),
     redirect: "error", // never forward the API key to another host
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(IMAGE_TIMEOUT_MS)]) : AbortSignal.timeout(IMAGE_TIMEOUT_MS),

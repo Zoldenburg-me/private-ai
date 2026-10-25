@@ -39,12 +39,13 @@ type Msg = Record<string, unknown>;
 interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string }
 
-interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId }
+/** `imageProvider`: NEAR, resolved with stored keys, for the image tool (whatever provider the chat uses). */
+interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig }
 /**
  * `charge` counts one more message against the user's limits, like a step, and returns the refusal reason or null;
  * `remaining` is the user's daily messages left at the last check (undefined when unknown).
  */
-interface RunCtx { env: Env; fetchImpl: typeof fetch; signal: AbortSignal; charge: () => Promise<string | null>; remaining: () => number | undefined }
+interface RunCtx { env: Env; imageProvider?: ProviderConfig; fetchImpl: typeof fetch; signal: AbortSignal; charge: () => Promise<string | null>; remaining: () => number | undefined }
 interface ToolBase { def: object; maxPerRun: number; available: (ctx: ToolCtx) => boolean }
 /** A tool the provider runs inside its enclave (NEAR): we only offer it, and count and show its calls (callStep's NearHooks). */
 interface EnclaveTool extends ToolBase { inEnclave: true }
@@ -74,13 +75,14 @@ export const TOOLS = new Map<string, AgentTool>([
   }],
   ["generate_image", {
     def: IMAGE_TOOL, maxPerRun: MAX_IMAGES_PER_RUN,
-    available: ({ env, tier }) => imageConfigured(env) && !!tier && tier !== "free",
+    // Not on NEAR chats: NEAR runs every tool call of the stream in its enclave, so ours would never be dispatched.
+    available: ({ provider, env, tier, imageProvider }) => !searchesInEnclave(provider) && imageConfigured(env, imageProvider) && !!tier && tier !== "free",
     shown: (args) => { const query = promptOf(args); return query ? { query } : null; },
     run: async (args, ctx) => {
       // Headroom first, the charge only once the image exists: a failed or refused image costs nothing.
       const left = ctx.remaining();
       if (left !== undefined && left < IMAGE_COST_MESSAGES) throw Object.assign(new Error("not enough messages left"), { status: 429 });
-      const image = await generateImage(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
+      const image = await generateImage(promptOf(args)!, ctx.imageProvider, ctx.env, ctx.fetchImpl, ctx.signal);
       // shortcut: a limit hit while charging stops the count, so an image can cost less than its weight; needs a counted gate call to fix.
       for (let i = 0; i < IMAGE_COST_MESSAGES && !ctx.signal.aborted; i++) if (await ctx.charge()) break;
       // The image goes to the browser only; the model learns that it was shown, never its bytes.
@@ -105,6 +107,8 @@ export interface AgentOpts {
   provider: ProviderConfig; body: Record<string, unknown>; maxSteps: number;
   /** Server-side tier: paid-only tools (images) need it. */
   tier?: TierId;
+  /** NEAR with stored keys applied, for the image tool. */
+  imageProvider?: ProviderConfig;
   /** Rate-limit check before every step after the first; returns the refusal reason or null. */
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
   /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
@@ -123,7 +127,7 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier });
+  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier, imageProvider: o.imageProvider });
   const defs = [...tools.values()].map((t) => t.def);
   const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
   const inEnclave = enclave !== undefined;
@@ -234,7 +238,7 @@ async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fet
   left.set(c.name, left.get(c.name)! - 1);
   const t = Date.now();
   try {
-    const r = await local.run(c.args, { env: o.env, fetchImpl, signal, ...limits });
+    const r = await local.run(c.args, { env: o.env, imageProvider: o.imageProvider, fetchImpl, signal, ...limits });
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: 200, ms: Date.now() - t });
     emit({ id: c.id, name: c.name, status: "done", ...shown, ...r.event });
     return r.forModel;

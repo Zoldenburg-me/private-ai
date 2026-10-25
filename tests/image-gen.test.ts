@@ -19,18 +19,19 @@ beforeAll(() => { process.env.MOCK_PROVIDER = "1"; }); // mockImage() checks it
 afterAll(() => { delete process.env.MOCK_PROVIDER; });
 
 /** A model that asks for one image, then answers; `image` is the image endpoint's base64 (null: never called). */
-async function run(o: { tier?: TierId; image?: string; deny?: (n: number) => string | null; remaining?: string }) {
+async function run(o: { tier?: TierId; image?: string; deny?: (n: number) => string | null; remaining?: string; chat?: typeof provider; near?: typeof provider }) {
   const bodies: Record<string, unknown>[] = []; const imageCalls: string[] = []; let charges = 0;
+  const imageReqs: { url: string; auth: string | null }[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
-    if (url.endsWith("/images/generations")) { imageCalls.push(String(init.body)); return Response.json({ data: [{ b64_json: o.image ?? await png() }] }); }
+    if (url.endsWith("/images/generations")) { imageCalls.push(String(init.body)); imageReqs.push({ url, auth: new Headers(init.headers).get("authorization") }); return Response.json({ data: [{ b64_json: o.image ?? await png() }] }); }
     bodies.push(JSON.parse(String(init.body)));
     return bodies.length === 1 ? callStream() : answerStream();
   }) as unknown as typeof fetch;
-  const res = runAgent({ provider, body: { model: "m", messages: [{ role: "user", content: "draw a cat" }] }, maxSteps: 3, tier: o.tier, remaining: () => o.remaining,
+  const res = runAgent({ provider: o.chat ?? provider, imageProvider: o.near, body: { model: "m", messages: [{ role: "user", content: "draw a cat" }] }, maxSteps: 3, tier: o.tier, remaining: () => o.remaining,
     beforeStep: async () => { charges++; return o.deny?.(charges) ?? null; }, env: { MOCK_PROVIDER: "1" }, log: () => {}, route: "/api/agent", fetchImpl });
   const out = parseSseChunk((await res.text()) + "\n");
-  const names = ((bodies[0].tools ?? []) as { function: { name: string } }[]).map((t) => t.function.name);
-  return { bodies, out, names, imageCalls, charges, toolMsg: (bodies[1]?.messages as { role: string; content: string }[] | undefined)?.at(-1) };
+  const names = ((bodies[0].tools ?? []) as { type: string; function?: { name: string } }[]).map((t) => t.function?.name ?? t.type); // NEAR's own tool has no function
+  return { bodies, out, names, imageCalls, imageReqs, charges, toolMsg: (bodies[1]?.messages as { role: string; content: string }[] | undefined)?.at(-1) };
 }
 
 describe("generate_image tool", () => {
@@ -57,6 +58,15 @@ describe("generate_image tool", () => {
     expect(r.toolMsg!.content).toMatch(/^error: no image/);
     expect(r.out.tools.map((t) => t.status)).toEqual(["running", "error"]);
     expect(r.charges).toBe(1); // only the answering step
+  });
+
+  it("is not offered on NEAR chats, whose tool calls NEAR runs itself", async () => {
+    expect((await run({ tier: "pro", chat: { ...provider, id: "near" } })).names).not.toContain("generate_image");
+  });
+
+  it("uses the NEAR key liveProviders resolved (a key stored in /admin), not env", async () => {
+    const r = await run({ tier: "pro", near: { ...provider, id: "near", baseUrl: "https://near.example/v1", apiKey: "stored" } });
+    expect(r.imageReqs).toEqual([{ url: "https://near.example/v1/images/generations", auth: "Bearer stored" }]);
   });
 
   it("treats a tiny placeholder as a refusal that costs nothing", async () => {
