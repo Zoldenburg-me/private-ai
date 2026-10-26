@@ -42,7 +42,7 @@ async function exportData(id: string): Promise<Response> {
     topUsage: await usage(id, tier, Date.now(), "top"),
     credits: await (await stores()).accounts.getCredits(id),
     creditTopups: (await (await stores()).accounts.listTopups(id)).map((t) => ({ ...t, createdAt: iso(t.createdAt) })),
-    notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see /datenschutz.",
+    notStoredHere: "Chats and personas live only in your browser. Payment details are held by Stripe; see the privacy policy (/datenschutz).",
   };
   return json(data, 200, { "Content-Disposition": `attachment; filename="private-ai-account-${id.slice(0, 8)}.json"` });
 }

@@ -339,7 +339,7 @@ const FAQ = [
   ["What is an enclave?", "A sealed area of a processor, here Intel TDX with NVIDIA confidential GPUs, whose memory the host machine cannot read. It produces a signed report of what is running, and this app checks that report."],
   ["What if I lose my browser data?", "Your history is gone unless you exported an encrypted backup. Your plan is safe if you saved a passkey: log in with it on any device."],
   ["Why no email?", "We do not need it. Your account is an opaque id, and a passkey links it across devices."],
-  ["Is this GDPR compliant?", "Our server runs in Germany, and we keep only what plans and limits need, and you can download or delete it in one click. The details are in the Datenschutzerklärung."],
+  ["Is this GDPR compliant?", "Our server runs in Germany, and we keep only what plans and limits need, and you can download or delete it in one click. The details are in our privacy policy."],
 ];
 
 export function Faq() {
@@ -372,8 +372,8 @@ export function SiteFooter() {
       <div className="l-wrap foot-row">
         <span className="wordmark"><Mark size={17} />{BRAND}</span>
         <nav aria-label="Legal">
-          <Link href="/impressum" className="navlink">Impressum</Link><Link href="/datenschutz" className="navlink">Datenschutz</Link>
-          <Link href="/agb" className="navlink">AGB</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
+          <Link href="/impressum" className="navlink">Legal notice</Link><Link href="/datenschutz" className="navlink">Privacy</Link>
+          <Link href="/agb" className="navlink">Terms</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
         </nav>
         <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt)</span>
       </div>

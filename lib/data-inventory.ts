@@ -103,7 +103,8 @@ export const DATA_INVENTORY: DataField[] = [
     ["tool", "name of the agent tool used, e.g. web_search (never the search query)", "Name des genutzten Agenten-Werkzeugs, z. B. web_search (nie die Suchanfrage)"], ["steps", "number of agent steps (a number)", "Anzahl der Agenten-Schritte (eine Zahl)"],
   ] as const).map(([field, en, de]): DataField => ({
     store: "server-log", container: "stdout (metadata log)", field, en: `${en}; never the content`, de: `${de}; nie der Inhalt`,
-    retentionEn: "rotated, at most 30 MB per container (TODO: confirm host log retention)", retentionDe: "rotierend, höchstens 30 MB je Container (TODO: Log-Aufbewahrung des Hosts bestätigen)",
+    // TODO: confirm host log retention (lawyer/ops), then drop this note.
+    retentionEn: "rotated, at most 30 MB per container", retentionDe: "rotierend, höchstens 30 MB je Container",
   })),
   { store: "browser", container: "cookie pai_admin", field: "admin session token", en: "Operators only: signed operator account id, a random session id and the expiry. HttpOnly, sent only to /api/admin.", de: "Nur Betreiber: signierte Konto-ID des Betreibers, eine zufällige Sitzungs-ID und das Ablaufdatum. HttpOnly, nur an /api/admin gesendet.", retentionEn: "2 hours", retentionDe: "2 Stunden" },
   { store: "browser", container: "cookie pai_session", field: "session token", en: "Signed opaque account id, plus the device id once you are signed in. HttpOnly, strictly necessary.", de: "Signierte Konto-ID, nach der Anmeldung zusätzlich die Geräte-ID. HttpOnly, technisch notwendig.", retentionEn: "1 year or until you clear it", retentionDe: "1 Jahr oder bis Sie es löschen" },
