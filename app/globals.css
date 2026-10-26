@@ -283,7 +283,7 @@ details summary { cursor: pointer; color: var(--text); }
 .signup-ico { display: none; }
 .send-btn { display: grid; place-items: center; flex: none; width: 36px; height: 36px; margin-left: 2px; border: 0; border-radius: 999px; background: var(--text); color: var(--bg); font-size: 16px; cursor: pointer; }
 .send-btn:disabled { opacity: 1; background: var(--hover); color: var(--muted); cursor: not-allowed; }
-.send-btn.stop { background: var(--text); color: var(--bg); }
+.send-btn.send-stop { background: var(--text); color: var(--bg); }
 .tool-toggle { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 34px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 999px;
   background: transparent; color: var(--ink-soft); font-size: 13px; font-weight: 500; cursor: pointer; }
 .tool-toggle:hover { background: var(--hover); }
