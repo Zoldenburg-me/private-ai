@@ -23,7 +23,21 @@ const css = `
 .legal .lang-switch a[href="#en"],.legal:has(#de:target) .lang-switch a[href="#de"]{font-weight:700;text-decoration:none}
 .legal:has(#de:target) .lang-switch a[href="#en"]{font-weight:400;text-decoration:underline}
 .legal section{scroll-margin-top:200px}
+.legal nav[lang="de"]{display:none}
+.legal:has(#de:target) nav[lang="de"]{display:block}
+.legal:has(#de:target) nav[lang="en"]{display:none}
 `;
+
+const PAGES = [["/impressum", "Legal notice / Impressum"], ["/datenschutz", "Privacy / Datenschutz"], ["/agb", "Terms / AGB"], ["/privacy/metadata", "Stored data / Gespeicherte Daten"]] as const;
+/**
+ * One footer per language, toggled like the sections: the German one keeps #de, so the next page opens in German too.
+ * Plain <a>, not <Link>: :target only applies after a real page load, not a client-side navigation.
+ */
+const LegalNav = ({ lang }: { lang: "en" | "de" }) => (
+  <nav aria-label={lang === "de" ? "Rechtliches" : "Legal"} lang={lang} style={{ borderTop: "1px solid #333", marginTop: 32, paddingTop: 12, fontSize: 13 }}>
+    {PAGES.map(([href, label], i) => <span key={href}>{i > 0 && " · "}<a href={lang === "de" ? `${href}#de` : href} style={link}>{label}</a></span>)}
+  </nav>
+);
 
 /** Shared shell for legal pages. Both languages are full texts; one is shown at a time. */
 export function LegalPage({ children }: { children: ReactNode }) {
@@ -36,10 +50,8 @@ export function LegalPage({ children }: { children: ReactNode }) {
         <span> · In case of doubt the German version prevails. / Im Zweifel gilt die deutsche Fassung.</span>
       </p>
       {children}
-      <nav aria-label="Legal" style={{ borderTop: "1px solid #333", marginTop: 32, paddingTop: 12, fontSize: 13 }}>
-        <Link href="/impressum" style={link}>Legal notice / Impressum</Link> · <Link href="/datenschutz" style={link}>Privacy / Datenschutz</Link> ·{" "}
-        <Link href="/agb" style={link}>Terms / AGB</Link> · <Link href="/privacy/metadata" style={link}>Stored data / Gespeicherte Daten</Link>
-      </nav>
+      <LegalNav lang="en" />
+      <LegalNav lang="de" />
     </main>
   );
 }

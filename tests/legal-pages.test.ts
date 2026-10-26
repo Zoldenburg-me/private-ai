@@ -72,3 +72,15 @@ describe("legal pages", () => {
     expect(html).toContain("IP addresses");
   });
 });
+
+describe("legal navigation keeps the language", () => {
+  it("the German footer links keep #de, the English one does not", () => {
+    const html = renderToStaticMarkup(createElement(Agb));
+    const de = html.match(/<nav[^>]*lang="de"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+    const en = html.match(/<nav[^>]*lang="en"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+    for (const p of ["/impressum", "/datenschutz", "/agb", "/privacy/metadata"]) {
+      expect(de).toContain(`href="${p}#de"`);
+      expect(en).toContain(`href="${p}"`);
+    }
+  });
+});
