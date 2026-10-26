@@ -1,4 +1,6 @@
 import "./landing.css";
+import { ModeStory } from "@/components/landing/ModeStory";
+import { SealScene } from "@/components/landing/SealScene";
 import { BRAND, Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, SiteFooter, SiteNav, Vault, frontierOn } from "@/components/landing/Sections";
 
 // Always per request: the invite-gate copy (INVITE_CODES) must never be frozen at build time.
@@ -17,7 +19,11 @@ export default async function Landing() {
       <SiteNav />
       <main id="top">
         <Hero />
+        {/* The rest slides up over the hero as one rounded sheet. */}
+        <div className="sheet">
         <PoweredBy />
+        <SealScene />
+        <ModeStory />
         <Vault />
         <HowItWorks />
         <Proof />
@@ -25,6 +31,7 @@ export default async function Landing() {
         <Pricing frontier={frontier} />
         <Faq />
         <Closing />
+        </div>
       </main>
       <SiteFooter />
     </div>

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { NOT_VERIFIED } from "../lib/client/proof";
 import { Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, frontierOn } from "../components/landing/Sections";
 import { SoundToggle } from "../components/landing/SoundToggle";
+import About from "../app/about/page";
 import { FRONTIER_MODELS, PAID_ONLY_MODELS, TIERS } from "../lib/tiers";
 
 const render = (c: () => React.ReactElement | null) => renderToStaticMarkup(createElement(c));
@@ -27,6 +28,15 @@ describe("landing claims follow the invite gate", () => {
     expect(html).toContain("Invite-only beta");
     expect(html).not.toContain("no signup");
     expect(html).not.toContain("No account.");
+  });
+
+  it("about page: no-signup claim only while the gate is off", () => {
+    vi.stubEnv("INVITE_CODES", "");
+    expect(render(About)).toContain("Start chatting without signing up");
+    vi.stubEnv("INVITE_CODES", "test-code-1");
+    const html = render(About);
+    expect(html).not.toContain("without signing up");
+    expect(html).not.toContain("No account by default");
   });
 
   it("frontier models: claimed only when the anonymizing gateway is configured", () => {
@@ -142,7 +152,8 @@ describe("landing sound and storage", () => {
   });
 
   it("plays no audio files and writes no browser storage; motion needs no scroll listener", () => {
-    const files = ["sound.ts", "SoundToggle.tsx", "VaultSeal.tsx", "HeroComposer.tsx", "Sections.tsx", "DotNarwhal.tsx"].map((f) => readFileSync(`components/landing/${f}`, "utf8")).join("\n");
+    // Every landing file, so new components are covered too.
+    const files = readdirSync("components/landing").filter((f) => /\.tsx?$/.test(f)).map((f) => readFileSync(`components/landing/${f}`, "utf8")).join("\n");
     expect(files).not.toMatch(/new Audio\(|\.mp3|\.wav|\.ogg/);
     expect(files).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
     expect(files + readFileSync("app/landing.css", "utf8")).not.toMatch(/addEventListener\(\s*["']scroll/);
