@@ -1,21 +1,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, ArrowsLeftRight, Check, Cpu, Eye, EyeSlash, Key, Minus, Monitor, Plus, ShieldCheck, X,
+  ArrowRight, ArrowsLeftRight, Check, Cpu, Eye, EyeSlash, Key, LockSimple, Minus, Monitor, Plus, ShieldCheck, X,
 } from "@phosphor-icons/react/dist/ssr";
 import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
 import { FRONTIER_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
+import { DotField } from "./DotField";
 import { DotNarwhal } from "./DotNarwhal";
 import { HeroComposer } from "./HeroComposer";
+import { RepelArt } from "./RepelArt";
 import { SoundToggle } from "./SoundToggle";
 import { VaultSeal } from "./VaultSeal";
 
 export const BRAND = "Hiddensee";
 /** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
-const gated = () => inviteCodes().length > 0;
+export const gated = () => inviteCodes().length > 0;
 /** Frontier models are only offered when a gateway is configured (VENICE_API_KEY or LIQUID_API_KEY; an empty <PREFIX>_MODELS turns it off). */
 const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
 /** The same check with admin-panel keys (what the chat uses). If the key store is down, fall back to env keys: claim less, never more. */
@@ -30,18 +32,20 @@ export function Mark({ size = 22 }: { size?: number }) {
 }
 
 const NAV: readonly { href: string; label: string }[] = [
-  { href: "#how", label: "How it works" }, { href: "#proof", label: "Proof" }, { href: "#compare", label: "Compare" },
-  { href: "/models", label: "Models" }, { href: "#pricing", label: "Pricing" }, { href: "#faq", label: "FAQ" },
+  { href: "/#how", label: "How it works" }, { href: "/#proof", label: "Proof" }, { href: "/#compare", label: "Compare" },
+  { href: "/models", label: "Models" }, { href: "/#pricing", label: "Pricing" }, { href: "/#faq", label: "FAQ" }, { href: "/about", label: "About" },
 ];
 
-export function SiteNav() {
+export function SiteNav({ current }: { current?: string } = {}) {
   return (
     <header className="l-nav">
       <div className="l-wrap nav-row">
         <Link href="/" className="wordmark" aria-label={`${BRAND} home`}><Mark />{BRAND}</Link>
-        <nav aria-label="Main">{NAV.map(({ href, label }) => <a key={href} href={href} className="navlink">{label}</a>)}</nav>
+        <nav aria-label="Main">{NAV.map(({ href, label }) => <a key={href} href={href} className="navlink" aria-current={href === current ? "page" : undefined}>{label}</a>)}</nav>
         <div className="nav-end">
           <SoundToggle />
+          {/* Passkey login lives in the chat's settings. */}
+          <Link href="/chat" className="navlink nav-login">Log in</Link>
           <Link href="/chat" className="pill pill-ink">Start chatting</Link>
         </div>
       </div>
@@ -49,18 +53,47 @@ export function SiteNav() {
   );
 }
 
-/** Split hero: headline and a working chat bar on the left, the dot narwhal resolving on the right. */
+/** Centered hero: the dot narwhal resolving above the headline, a working chat bar, and decorative proof tiles on wide screens. */
 export function Hero() {
   return (
     <section className="l-wrap l-hero" aria-labelledby="hero-h">
+      <HeroTiles />
+      <DotNarwhal />
       <div className="hero-copy rise">
-        <h1 id="hero-h">Ask anything.<br /><span>We keep no copy.</span></h1>
+        <h1 id="hero-h">Ask anything.<br /><span>No one else sees it.</span></h1>
         <p className="lead">Open models run in sealed hardware enclaves. Your history stays encrypted in your browser. No email needed.</p>
         <HeroComposer />
         <p><Link href="/chat" className="link-arrow">{start()} <ArrowRight aria-hidden /></Link></p>
       </div>
-      <div className="hero-art"><DotNarwhal /></div>
     </section>
+  );
+}
+
+/** Floating examples of what the app shows (decorative, hidden below 1360px). */
+function HeroTiles() {
+  return (
+    <div aria-hidden>
+      <div className="tile px1 tile-a">
+        <div className="tile-ok"><span />Checked before you chat</div>
+        <div className="tile-mono">TDX quote · GPU report<br />key bound to the model</div>
+      </div>
+      <div className="tile px2 tile-b">
+        <Image src="/brand/narwhal-tee.svg" alt="" width={56} height={56} unoptimized />
+        <div><div className="tile-h">Max Privacy</div><div className="tile-sub">Sealed in hardware</div></div>
+      </div>
+      <div className="tile px2 tile-c">
+        <div className="tile-h"><LockSimple aria-hidden />Saved on this device</div>
+        <div className="tile-mono accent">x9Fq·Lm2v·Q7aK·pT0z·Wc4N·8hRe·sY1u·Jb6D</div>
+        <div className="tile-sub">Encrypted before it is stored</div>
+      </div>
+      <div className="tile px1 tile-d">
+        <div className="tile-pair">
+          <Image src="/brand/narwhal-pixel/narwhal-ink-default.svg" alt="" width={48} height={48} unoptimized />
+          <Image src="/brand/narwhal-pixel/narwhal-classic-default.svg" alt="" width={48} height={48} unoptimized />
+        </div>
+        <div className="tile-sub">Private and Anon modes</div>
+      </div>
+    </div>
   );
 }
 
@@ -126,13 +159,13 @@ export function HowItWorks() {
     <section id="how" className="l-how" aria-labelledby="how-h">
       <div className="l-wrap">
         <h2 id="how-h" className="display">Three stops. Only your browser keeps a copy.</h2>
-        <ol className="stops">
-          <li className="rail" aria-hidden />
+        <ol className="stops" data-repel-area>
+          <li className="rail" aria-hidden><DotField gapX={14} gapY={10} r={3} bleed={24} /></li>
           {STOPS.map(({ icon: Icon, title, body, note }, i) => {
             const last = i === STOPS.length - 1;
             return (
               <li key={title} className={last ? "stop stop-enclave" : "stop"}>
-                {last && <span className="rail-flow" aria-hidden />}
+                {last && <span className="rail-flow" aria-hidden><DotField gapX={14} gapY={10} r={3} bleed={24} className="accent" /></span>}
                 <span className="stop-dot" aria-hidden />
                 <Icon className="stop-icon" weight="light" aria-hidden />
                 <h3>{title}</h3>
@@ -189,7 +222,8 @@ export function Proof() {
             <p>How it works, in two minutes</p>
           </div>
         </div>
-        <div className="l-card ledger dotfield">
+        <div className="l-card ledger">
+          <DotField />
           <h3>What our server sees, and what it never stores.</h3>
           <div className="ledger-col">
             <p className="ledger-h"><Eye aria-hidden />Sees</p>
@@ -353,8 +387,8 @@ export function Faq() {
 
 export function Closing() {
   return (
-    <section className="l-closing" aria-label="Get started">
-      <Image src="/brand/narwhal-dots-blue.svg" alt="" width={1040} height={540} unoptimized className="closing-art" aria-hidden />
+    <section className="l-closing" aria-label="Get started" data-repel-area>
+      <RepelArt src="/brand/narwhal-dots-blue.svg" alt="" cell={1} className="closing-art" />
       <div className="l-wrap closing-in">
         <h2>{gated() ? <>No email.<br />Just an invite.</> : <>No account.<br />No email.</>}</h2>
         <div className="closing-ctas">
@@ -372,7 +406,7 @@ export function SiteFooter() {
       <div className="l-wrap foot-row">
         <span className="wordmark"><Mark size={17} />{BRAND}</span>
         <nav aria-label="Legal">
-          <Link href="/impressum" className="navlink">Legal notice</Link><Link href="/datenschutz" className="navlink">Privacy</Link>
+          <Link href="/about" className="navlink">About</Link><Link href="/impressum" className="navlink">Legal notice</Link><Link href="/datenschutz" className="navlink">Privacy</Link>
           <Link href="/agb" className="navlink">Terms</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
         </nav>
         <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt)</span>
