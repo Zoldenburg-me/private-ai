@@ -37,6 +37,9 @@ export interface AuditEntry { id: number; at: number; adminId: string; action: s
 export type NewAuditEntry = { adminId: string; action: string; accountId?: string | null; target?: string | null; detail?: string | null };
 
 /** Invite code row: only the SHA-256 of the code is stored. */
+/** Credit in micro-euros: bought credit left, and included credit spent in `includedMonth` (UTC, "2026-10"). */
+export interface CreditBalance { purchased: number; includedSpent: number; includedMonth: string }
+
 export interface InviteInfo { id: string; maxUses: number; uses: number; createdAt: number; revokedAt: number | null }
 
 /** Durable account data (Postgres in production). */
@@ -109,8 +112,24 @@ export interface AccountStore {
   releaseInvite(codeHash: string): Promise<void>;
   /** Ledgered like deleteAccount. */
   revokeInvite(id: string): Promise<boolean>;
+  /** Null if the account never had credits. */
+  getCredits(accountId: string): Promise<CreditBalance | null>;
+  /**
+   * Atomically spend `micros`: start a new month's included spending if `month` is later than the stored one, take
+   * what is left of `allowance` this month, then the rest from purchased (which may go below zero by one message;
+   * callers check the balance first).
+   * Never creates the account: a deleted account makes it throw, so a late charge cannot bring it back.
+   */
+  spendCredits(accountId: string, micros: number, month: string, allowance: number): Promise<CreditBalance>;
+  /** Add bought credits once per Stripe session (atomic). False if that session was already credited. */
+  addCredits(accountId: string, micros: number, stripeSessionId: string): Promise<boolean>;
+  /** The account's credited top-ups, newest first (for the data export). */
+  listTopups(accountId: string): Promise<{ stripeSessionId: string; micros: number; createdAt: number }[]>;
   ping(): Promise<void>;
 }
+
+/** UTC month key of `now`, e.g. "2026-10". */
+export const monthKey = (now: number) => new Date(now).toISOString().slice(0, 7);
 
 /** Audit entries older than this are pruned by the retention job. */
 export const AUDIT_LOG_DAYS = 365;
@@ -159,7 +178,7 @@ export interface HitResult { allowed: boolean; count: number; resetAt: number }
 
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 
-export type QuotaScope = "incognito";
+export type QuotaScope = "incognito" | "top";
 /** Suffix of the daily counter after the id: ":<scope>:<day>" or ":<day>". */
 export const dailySuffix = (now: number, scope?: QuotaScope) => `${scope ? `:${scope}` : ""}:${dayKey(now)}`;
 

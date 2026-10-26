@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { NOT_VERIFIED } from "../lib/client/proof";
 import { Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, frontierOn } from "../components/landing/Sections";
 import { SoundToggle } from "../components/landing/SoundToggle";
-import { PAID_ONLY_MODELS, TIERS } from "../lib/tiers";
+import { FRONTIER_MODELS, PAID_ONLY_MODELS, TIERS } from "../lib/tiers";
 
 const render = (c: () => React.ReactElement | null) => renderToStaticMarkup(createElement(c));
 
@@ -113,16 +113,23 @@ describe("landing pricing follows lib/tiers.ts", () => {
   });
 
   it("has no numbers or features TIERS does not define", () => {
-    expect(html).not.toMatch(/credit|images? a day|video|music|yearly|billed/i);
+    expect(html).not.toMatch(/images? a day|video|music|yearly|billed/i);
+    // Frontier credit is a TIERS number: each plan shows exactly its own included amount.
+    for (const t of Object.values(TIERS)) if (t.includedCreditsEur && t.id !== "pro") expect(html).toContain(`€${t.includedCreditsEur} frontier credit a month`);
+    expect(html).toContain(`€${TIERS.pro.includedCreditsEur} of credit included every month`); // Pro is the big card
+    expect(renderToStaticMarkup(Pricing({ frontier: false }))).not.toMatch(/credit/i);
+    expect(html).not.toContain("frontier models pay as you go"); // Free cannot use the paid-only frontier models
     expect(readFileSync("components/landing/Sections.tsx", "utf8")).not.toMatch(/Generate images|€8\b|€80\b|€150\b|€490\b|Choose Plus|"Plus"/);
   });
 
-  it("frontier models only while a gateway is live, and only the paid-only ones TIERS lists", () => {
+  it("frontier models only while a gateway is live, and only the FRONTIER_MODELS TIERS lists", () => {
     expect(renderToStaticMarkup(Pricing({ frontier: false }))).not.toContain("frontier models");
     const shown = [...html.matchAll(/brand\/frontier\/(\w+)\.svg/g)].map((m) => m[1]);
     expect(shown.length).toBeGreaterThan(0);
     const prefix: Record<string, string> = { claude: "claude", gemini: "gemini", chatgpt: "gpt", grok: "grok" };
-    for (const s of shown) expect([...PAID_ONLY_MODELS].some((id) => id.startsWith(prefix[s]))).toBe(true);
+    for (const s of shown) expect([...FRONTIER_MODELS].some((id) => id.startsWith(prefix[s]))).toBe(true);
+    expect(shown).toEqual(["claude", "gemini", "chatgpt", "grok"]);
+    expect(PAID_ONLY_MODELS.has("grok-4-7")).toBe(false); // named on the landing, but open to every plan on credits
   });
 });
 

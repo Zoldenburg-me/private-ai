@@ -1,4 +1,6 @@
-import { appBaseUrl, BillingError, createCheckout, createPortal, handleWebhook, priceId, stripe, type Interval, type Plan } from "./billing";
+import { appBaseUrl, BillingError, createCheckout, createCreditCheckout, createPortal, creditPriceId, handleWebhook, PLANS, priceId, stripe, type Interval, type Plan } from "./billing";
+import { creditsAvailable, TOPUP_EUR } from "./credits";
+import { tierOf } from "./session";
 import { identityFrom, resolveIdentity } from "./session";
 import { consumeStepUp, restoreStepUp } from "./passkey";
 import { stepUpRequired } from "./passkey-routes";
@@ -17,10 +19,11 @@ export const billingStatus = billing(async (req) => {
   // Prefer an entitled subscription, so a recently canceled older one cannot hide Manage.
   const subs = await (await stores()).accounts.listSubscriptionsFor(id);
   const sub = subs.find((x) => (ENTITLED_STATUSES as readonly string[]).includes(x.status)) ?? subs[0];
-  const plans = (["pro", "max"] as Plan[]).flatMap((plan) => (["month", "year"] as Interval[]).map((interval) => ({ plan, interval, available: !!priceId(plan, interval) })));
+  const plans = PLANS.flatMap((plan) => (["month", "year"] as Interval[]).map((interval) => ({ plan, interval, available: !!priceId(plan, interval) })));
   return json({
     configured: !!stripe(), plans,
     subscription: sub ? { tier: sub.tier, status: sub.status, currentPeriodEnd: sub.currentPeriodEnd } : null,
+    credits: await creditsAvailable(id, await tierOf(id)), topups: stripe() && creditPriceId() ? [...TOPUP_EUR] : [],
   });
 });
 
@@ -29,10 +32,21 @@ export const checkout = billing(async (req) => {
   const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
   const b = (await req.json().catch(() => null)) as { plan?: unknown; interval?: unknown } | null;
   const plan = b?.plan; const interval = b?.interval ?? "month";
-  if ((plan !== "pro" && plan !== "max") || (interval !== "month" && interval !== "year")) return fail(400, "plan must be pro|max, interval month|year");
-  if (!(await (await stores()).accounts.listSubscriptionsFor(me.accountId)).length) return json({ url: await createCheckout(me.accountId, plan, interval, appBaseUrl(req)) });
+  if (!PLANS.includes(plan as Plan) || (interval !== "month" && interval !== "year")) return fail(400, "plan must be plus|pro|max, interval month|year");
+  if (!(await (await stores()).accounts.listSubscriptionsFor(me.accountId)).length) return json({ url: await createCheckout(me.accountId, plan as Plan, interval, appBaseUrl(req)) });
   if (!(await consumeStepUp(me))) return stepUpRequired();
-  try { return json({ url: await createCheckout(me.accountId, plan, interval, appBaseUrl(req)) }); } catch (e) { await restoreStepUp(me); throw e; }
+  try { return json({ url: await createCheckout(me.accountId, plan as Plan, interval, appBaseUrl(req)) }); } catch (e) { await restoreStepUp(me); throw e; }
+});
+
+/** A credit top-up reuses the account's Stripe customer like checkout, so it needs step-up the same way. Signed-in accounts only. */
+export const credits = billing(async (req) => {
+  const me = await resolveIdentity(req); if (!me) return fail(401, "missing or invalid session token");
+  if (!me.deviceId) return fail(401, "sign in with a passkey to buy credits");
+  const eur = ((await req.json().catch(() => null)) as { eur?: unknown } | null)?.eur;
+  if (typeof eur !== "number") return fail(400, `eur must be one of ${TOPUP_EUR.join(", ")}`);
+  if (!(await (await stores()).accounts.listSubscriptionsFor(me.accountId)).length) return json({ url: await createCreditCheckout(me.accountId, eur, appBaseUrl(req)) });
+  if (!(await consumeStepUp(me))) return stepUpRequired();
+  try { return json({ url: await createCreditCheckout(me.accountId, eur, appBaseUrl(req)) }); } catch (e) { await restoreStepUp(me); throw e; }
 });
 
 /** The portal shows what the user gave Stripe and can cancel, so it needs step-up like delete. */

@@ -2,15 +2,18 @@ import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { stores, ENTITLED_STATUSES } from "./store";
 import type { TierId } from "./tiers";
+import { MICROS_PER_EUR, TOPUP_EUR } from "./credits";
 
 /**
  * Stripe subscriptions. We never see card data (Stripe Checkout + Customer Portal are hosted by
  * Stripe) and we store only Stripe customer/subscription ids, tier, status and period end, keyed
  * by the opaque account id (passed as client_reference_id and subscription metadata).
  */
-export type Plan = "pro" | "max";
+export type Plan = "plus" | "pro" | "max";
+export const PLANS: Plan[] = ["plus", "pro", "max"];
 export type Interval = "month" | "year";
 const ENV_KEYS: Record<`${Plan}:${Interval}`, string> = {
+  "plus:month": "STRIPE_PRICE_PLUS_MONTHLY", "plus:year": "STRIPE_PRICE_PLUS_YEARLY",
   "pro:month": "STRIPE_PRICE_PRO_MONTHLY", "pro:year": "STRIPE_PRICE_PRO_YEARLY",
   "max:month": "STRIPE_PRICE_MAX_MONTHLY", "max:year": "STRIPE_PRICE_MAX_YEARLY",
 };
@@ -20,7 +23,7 @@ const ENTITLED = new Set<string>(ENTITLED_STATUSES);
 export const GRACE_MS = 3 * 86_400_000;
 /** Window in which repeated checkout requests map to one Stripe session. */
 const CHECKOUT_DEDUP_MS = 5 * 60_000;
-const RANK: Record<TierId, number> = { free: 0, pro: 1, max: 2 };
+const RANK: Record<TierId, number> = { free: 0, plus: 1, pro: 2, max: 3 };
 const ACCOUNT_RE = /^[A-Za-z0-9_-]{10,64}$/;
 
 type Env = Record<string, string | undefined>;
@@ -71,6 +74,43 @@ export async function createCheckout(accountId: string, plan: Plan, interval: In
   const session = await s.checkout.sessions.create(params, { idempotencyKey: `checkout:${accountId}:${plan}:${interval}:${variant}:${Math.floor(now / CHECKOUT_DEDUP_MS)}` });
   if (!session.url) throw new BillingError(502, "checkout unavailable");
   return session.url;
+}
+
+/** Stripe price of €1 of frontier credit, bought in TOPUP_EUR quantities (one-time payment, VAT included). */
+export const creditPriceId = (env: Env = process.env) => env.STRIPE_PRICE_CREDIT_EUR || null;
+
+/** One-time checkout for `eur` euros of credit. The webhook credits the account once the payment is paid. */
+export async function createCreditCheckout(accountId: string, eur: number, baseUrl: string, now = Date.now()): Promise<string> {
+  const s = stripe(); if (!s) throw new BillingError(503, "payments not configured");
+  const price = creditPriceId(); if (!price) throw new BillingError(400, "credits not available");
+  if (!(TOPUP_EUR as readonly number[]).includes(eur)) throw new BillingError(400, `amount must be one of ${TOPUP_EUR.join(", ")}`);
+  const subs = await (await stores()).accounts.listSubscriptionsFor(accountId);
+  const params: Stripe.Checkout.SessionCreateParams = {
+    mode: "payment",
+    line_items: [{ price, quantity: eur }],
+    client_reference_id: accountId,
+    metadata: { pai_account: accountId, pai_credits_eur: String(eur) },
+    ...(subs[0] ? { customer: subs[0].stripeCustomerId } : {}),
+    success_url: `${baseUrl}/?billing=credits`,
+    cancel_url: `${baseUrl}/?billing=cancelled`,
+  };
+  const variant = createHash("sha256").update(JSON.stringify([params.customer ?? null, price, eur, params.success_url])).digest("hex").slice(0, 16);
+  const session = await s.checkout.sessions.create(params, { idempotencyKey: `credits:${accountId}:${variant}:${Math.floor(now / CHECKOUT_DEDUP_MS)}` });
+  if (!session.url) throw new BillingError(502, "checkout unavailable");
+  return session.url;
+}
+
+/** Credit a paid top-up session once. Only our own metadata counts, and only for the euros Stripe says were paid. */
+async function creditTopUp(cs: Stripe.Checkout.Session): Promise<boolean> {
+  const accountId = cs.metadata?.pai_account;
+  const eur = Number(cs.metadata?.pai_credits_eur);
+  if (cs.payment_status !== "paid" || !accountId || !ACCOUNT_RE.test(accountId) || !(TOPUP_EUR as readonly number[]).includes(eur)) return false;
+  // Stripe's total (cents, VAT included) caps the credit, so edited metadata cannot raise it.
+  const paidEur = Math.min(eur, (cs.amount_total ?? 0) / 100);
+  if (paidEur <= 0) return false;
+  const { accounts } = await stores();
+  if (!(await accounts.sessionExists(accountId))) return false; // deleted account: nothing to credit
+  return accounts.addCredits(accountId, Math.round(paidEur * MICROS_PER_EUR), cs.id);
 }
 
 export async function createPortal(accountId: string, baseUrl: string): Promise<string> {
@@ -154,6 +194,7 @@ export async function handleWebhook(rawBody: string, signature: string | null, e
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded": {
       const cs = event.data.object as Stripe.Checkout.Session;
+      if (cs.mode === "payment") return { type: event.type, handled: await creditTopUp(cs) };
       const subId = idOf(cs.subscription as string | { id: string } | null);
       if (cs.mode !== "subscription" || !subId) return { type: event.type, handled: false };
       await syncSubscription(subId, cs.client_reference_id);

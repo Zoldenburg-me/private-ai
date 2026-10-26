@@ -58,14 +58,14 @@ describe.each(backends)("server-side fair-use gate (%s)", (_name, make) => {
   it("incognito has its own daily count but shares the minute window and error budget", async () => {
     const now = Date.UTC(2026, 9, 13, 10);
     for (let i = 0; i < 5; i++) await gate("u", "free", 1, now);
-    const d = await gate("u", "free", 1, now + 1000, true);
+    const d = await gate("u", "free", 1, now + 1000, "incognito");
     expect(d.reason).toBe("rate limit, slow down");
     expect(d.headers["x-usage-quota"]).toBe("incognito");
-    expect((await gate("u", "free", 1, now + 60_000, true)).headers["x-usage-remaining-daily"]).toBe("49");
+    expect((await gate("u", "free", 1, now + 60_000, "incognito")).headers["x-usage-remaining-daily"]).toBe("49");
     expect(await usage("u", "free", now + 60_000)).toMatchObject({ usedToday: 5, dailyLimit: 20 });
-    expect(await usage("u", "free", now + 60_000, true)).toMatchObject({ usedToday: 1, dailyLimit: 50 });
+    expect(await usage("u", "free", now + 60_000, "incognito")).toMatchObject({ usedToday: 1, dailyLimit: 50 });
     for (let i = 0; i < ERROR_BUDGET.failures; i++) await recordFailure("u", now + 61_000);
-    expect((await gate("u", "free", 1, now + 62_000, true)).reason).toMatch(/error budget/);
+    expect((await gate("u", "free", 1, now + 62_000, "incognito")).reason).toMatch(/error budget/);
   });
   it("enforces context by tier without consuming quota", async () => {
     const now = Date.UTC(2026, 9, 13, 10);

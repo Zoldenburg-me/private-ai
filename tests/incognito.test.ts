@@ -62,8 +62,8 @@ describe("incognito quota", () => {
     let now = Date.UTC(2026, 9, 21, 1);
     for (let i = 0; i < TIERS.free.dailyMessages; i++) { await gate("u", "free", 1, now); now += 13_000; }
     expect((await gate("u", "free", 1, now)).reason).toBe("daily limit reached");
-    for (let i = 0; i < 50; i++) { expect((await gate("u", "free", 1, now, true)).allowed).toBe(true); now += 13_000; }
-    const d = await gate("u", "free", 1, now, true);
+    for (let i = 0; i < 50; i++) { expect((await gate("u", "free", 1, now, "incognito")).allowed).toBe(true); now += 13_000; }
+    const d = await gate("u", "free", 1, now, "incognito");
     expect(d.reason).toBe("daily limit reached");
     expect(d.headers["x-usage-limit-daily"]).toBe("50");
   });
@@ -135,7 +135,7 @@ describe("review fixes", () => {
     expect(normaliseModel(venice, { id: "y", model_spec: { name: { evil: 1 } } }).name).toBe("y");
   });
 
-  it("only gateway models are incognito: a zero-retention contract provider keeps the normal quota", async () => {
+  it("only gateway models are incognito, but a zero-retention contract model uses the private and incognito quota", async () => {
     const custom = normaliseModel({ id: "custom", privacy: "zdr-contract" }, { id: "zdr-model" });
     expect(custom).toMatchObject({ privacy: "private", tee: false });
     expect(custom.incognito).toBeUndefined();
@@ -144,8 +144,8 @@ describe("review fixes", () => {
     const d = { ...deps, catalog: async () => [custom], env: { CUSTOM_API_KEY: "k", CUSTOM_BASE_URL: "http://upstream/v1" } };
     const r = await handleChat(new Request("http://app/api/chat", { method: "POST", headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ model: "custom:zdr-model", messages: [{ role: "user", content: "hi" }] }) }), "/api/chat", d);
-    expect(r.headers.get("x-usage-limit-daily")).toBe("20");
-    expect(r.headers.get("x-usage-quota")).toBe("standard");
+    expect(r.headers.get("x-usage-limit-daily")).toBe("50");
+    expect(r.headers.get("x-usage-quota")).toBe("incognito");
   });
 
   it("'tee' in a privacy text counts only as a word", () => {

@@ -1,6 +1,6 @@
 import postgres, { type Sql, type TransactionSql } from "postgres";
 import type { TierId } from "../tiers";
-import type { AccountStore, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import type { AccountStore, CreditBalance, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
 import { dayKey, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 import { migrate } from "./migrate";
 
@@ -77,6 +77,41 @@ export class PgAccountStore implements AccountStore {
     const sql = await this.db();
     return (await sql<{ id_hash: string; deleted_on: string }[]>`SELECT id_hash, to_char(deleted_on, 'YYYY-MM-DD') AS deleted_on FROM erasures ORDER BY deleted_on, id_hash`)
       .map((r) => ({ idHash: r.id_hash, deletedOn: r.deleted_on }));
+  }
+  async getCredits(id: string): Promise<CreditBalance | null> {
+    const sql = await this.db();
+    const [r] = await sql<CreditRow[]>`SELECT purchased_micros, included_spent_micros, included_month FROM credits WHERE account_id = ${id}`;
+    return r ? credit(r) : null;
+  }
+  async spendCredits(id: string, micros: number, month: string, allowance: number) {
+    const sql = await this.db();
+    return sql.begin(async (tx) => {
+      await tx`INSERT INTO credits (account_id, included_month) VALUES (${id}, ${month})
+        ON CONFLICT (account_id) DO UPDATE SET included_spent_micros = 0, included_month = ${month} WHERE credits.included_month < ${month}`; // forward only: a late charge for the old month never resets it again
+      // SET sees the old row on the right-hand side: what is left of the allowance first, the rest from purchased.
+      const [r] = await tx<CreditRow[]>`UPDATE credits SET
+        included_spent_micros = included_spent_micros + LEAST(GREATEST(${allowance}::bigint - included_spent_micros, 0), ${micros}::bigint),
+        purchased_micros = purchased_micros - (${micros}::bigint - LEAST(GREATEST(${allowance}::bigint - included_spent_micros, 0), ${micros}::bigint)),
+        updated_at = now()
+        WHERE account_id = ${id} RETURNING purchased_micros, included_spent_micros, included_month`;
+      return credit(r);
+    });
+  }
+  async addCredits(id: string, micros: number, stripeSessionId: string) {
+    const sql = await this.db();
+    return sql.begin(async (tx) => {
+      const ins = await tx`INSERT INTO credit_topups (stripe_session_id, account_id, micros) VALUES (${stripeSessionId}, ${id}, ${micros}) ON CONFLICT DO NOTHING`;
+      if (ins.count === 0) return false;
+      await tx`INSERT INTO credits (account_id, purchased_micros, included_month) VALUES (${id}, ${micros}, '')
+        ON CONFLICT (account_id) DO UPDATE SET purchased_micros = credits.purchased_micros + ${micros}, updated_at = now()`;
+      return true;
+    });
+  }
+  async listTopups(id: string) {
+    const sql = await this.db();
+    const rows = await sql<{ stripe_session_id: string; micros: string | number; created_at: Date }[]>`
+      SELECT stripe_session_id, micros, created_at FROM credit_topups WHERE account_id = ${id} ORDER BY created_at DESC`;
+    return rows.map((r) => ({ stripeSessionId: r.stripe_session_id, micros: Number(r.micros), createdAt: r.created_at.getTime() }));
   }
   async getEntitlement(id: string): Promise<Entitlement | null> {
     const sql = await this.db();
@@ -195,7 +230,8 @@ export class PgAccountStore implements AccountStore {
     // ON DELETE CASCADE removes entitlements, subscriptions and passkeys of purged accounts.
     const r = await sql`DELETE FROM sessions s WHERE s.last_seen_on < ${dayKey(cutoff)}
       AND NOT EXISTS (SELECT 1 FROM subscriptions x WHERE x.account_id = s.id AND x.status = ANY(${ENTITLED_STATUSES as unknown as string[]})
-        AND (x.current_period_end IS NULL OR x.current_period_end >= ${new Date(cutoff)}))`;
+        AND (x.current_period_end IS NULL OR x.current_period_end >= ${new Date(cutoff)}))
+      AND NOT EXISTS (SELECT 1 FROM credits c WHERE c.account_id = s.id AND c.purchased_micros > 0)`;
     return r.count;
   }
   async listAccounts(q: { prefix: string; limit: number; offset: number }) {
@@ -294,3 +330,7 @@ export class PgAccountStore implements AccountStore {
   async ping() { const sql = await this.db(); await sql`SELECT 1`; }
   async close() { await this.sql.end({ timeout: 2 }); }
 }
+
+interface CreditRow { purchased_micros: string | number; included_spent_micros: string | number; included_month: string }
+/** bigint arrives as a string; balances stay far below 2^53. */
+const credit = (r: CreditRow): CreditBalance => ({ purchased: Number(r.purchased_micros), includedSpent: Number(r.included_spent_micros), includedMonth: r.included_month });
