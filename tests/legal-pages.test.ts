@@ -43,6 +43,14 @@ describe("legal pages", () => {
       for (const n of [t.dailyMessages, t.incognitoDailyMessages, t.agentMaxSteps]) expect(li).toContain(n.toLocaleString("de"));
     }
   });
+  it("agb: says third parties, not we, run the models and enclaves (EN + DE)", () => {
+    const html = render(Agb);
+    expect(html).toContain("we do not run the AI models, the enclaves or the hardware");
+    expect(html).toContain("Wir betreiben weder die KI-Modelle noch die Enklaven");
+    // Attestation exists only for enclave providers (not gateways, ZDR or incognito ones).
+    expect(html).toContain("for providers that run models in an enclave you can check the attestation");
+    expect(html).toContain("bei Anbietern, die Modelle in einer Enklave betreiben, können Sie die Attestierung");
+  });
   it("impressum: email and fax as two contact routes, in both languages", () => {
     const html = render(Impressum);
     expect(html.match(/kontakt@zoldenburg\.com<\/a>/g)!.length).toBe(2);
