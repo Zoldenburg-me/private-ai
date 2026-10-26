@@ -37,9 +37,11 @@ export default function Agb() {
         <p>We provide an AI chat that relays requests to models running in confidential computing environments or at providers that retain no data. Replies are generated automatically.
           We provide the service with reasonable care but do not promise that it is available without interruption or free of errors. We may change, add or remove models, providers and features if this is reasonable for you, in particular to keep the service secure, lawful or working;
           we do not reduce the core of a paid plan during its current term. The service is currently in an invite-only test phase. <Todo>availability commitment / maintenance windows</Todo></p>
+        <p>Third-party providers: we do not run the AI models, the enclaves or the hardware they run on. They are operated by independent providers, which the <a href="/datenschutz">privacy policy</a> names.
+          We select the providers and relay your requests, and for providers that run models in an enclave you can check the attestation in the chat, but we have no control over their infrastructure; their availability and performance are outside our control. <Todo>liability for providers as vicarious agents (§ 278 BGB): lawyer to confirm</Todo></p>
 
         <h2>4. Confidentiality</h2>
-        <p>The service is designed so that we cannot read what you write: we never store chat content, and default models run in hardware-isolated enclaves whose attestation you can check.
+        <p>The service is designed so that we cannot read what you write: we never store chat content, and default models run in hardware-isolated enclaves, operated by the providers above, whose attestation you can check.
           Metadata (such as which model you use, when and how much) does not have the same protection. “Incognito” models do not run in an enclave and are offered only when you pick them.
           We take the measures described in the <a href="/datenschutz">privacy policy</a>, but we cannot guarantee the confidentiality of data under all circumstances.</p>
 
@@ -117,9 +119,11 @@ export default function Agb() {
         <p>Wir stellen einen KI-Chat bereit, der Anfragen an Modelle in vertraulichen Rechenumgebungen oder an Anbieter ohne Datenaufbewahrung weiterleitet. Antworten werden automatisiert erzeugt.
           Wir erbringen den Dienst mit angemessener Sorgfalt, schulden aber keine unterbrechungs- oder fehlerfreie Verfügbarkeit. Wir dürfen Modelle, Anbieter und Funktionen ändern, ergänzen oder entfernen, wenn dies für Sie zumutbar ist, insbesondere um den Dienst sicher, rechtmäßig oder funktionsfähig zu halten;
           den Kern eines bezahlten Tarifs schränken wir während der laufenden Laufzeit nicht ein. Der Dienst befindet sich derzeit in einer Testphase nur mit Einladung. <Todo>Verfügbarkeitszusage / Wartungsfenster festlegen</Todo></p>
+        <p>Drittanbieter: Wir betreiben weder die KI-Modelle noch die Enklaven oder die Hardware, auf der sie laufen. Diese werden von unabhängigen Anbietern betrieben, die in der <a href="/datenschutz">Datenschutzerklärung</a> genannt sind.
+          Wir wählen die Anbieter aus und leiten Ihre Anfragen weiter, und bei Anbietern, die Modelle in einer Enklave betreiben, können Sie die Attestierung im Chat prüfen; auf ihre Infrastruktur haben wir jedoch keinen Einfluss, ihre Verfügbarkeit und Leistung liegen außerhalb unserer Kontrolle. <Todo>Haftung für Anbieter als Erfüllungsgehilfen (§ 278 BGB) anwaltlich prüfen</Todo></p>
 
         <h2>§ 4 Vertraulichkeit</h2>
-        <p>Der Dienst ist so gebaut, dass wir nicht lesen können, was Sie schreiben: Wir speichern keine Chat-Inhalte, und Standardmodelle laufen in hardwareisolierten Enklaven, deren Attestierung Sie prüfen können.
+        <p>Der Dienst ist so gebaut, dass wir nicht lesen können, was Sie schreiben: Wir speichern keine Chat-Inhalte, und Standardmodelle laufen in hardwareisolierten Enklaven der oben genannten Anbieter, deren Attestierung Sie prüfen können.
           Metadaten (etwa welches Modell Sie wann und wie viel nutzen) sind nicht in gleicher Weise geschützt. „Incognito“-Modelle laufen nicht in einer Enklave und werden nur genutzt, wenn Sie sie auswählen.
           Wir treffen die in der <a href="/datenschutz">Datenschutzerklärung</a> beschriebenen Maßnahmen, können die Vertraulichkeit von Daten aber nicht unter allen Umständen garantieren.</p>
 
