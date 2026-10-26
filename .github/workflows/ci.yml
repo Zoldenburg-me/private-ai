@@ -9,7 +9,40 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels that PR's run still in progress; pushes to main always run to the end.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Which of the slower jobs a PR needs. On main every job runs, so each merge is still checked in full.
+  # A skipped job counts as passed for required status checks.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.diff.outputs.image }}
+      proxy: ${{ steps.diff.outputs.proxy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "image=true" >> "$GITHUB_OUTPUT"; echo "proxy=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "$BASE...$HEAD")
+          echo "$files"
+          has() { echo "$files" | grep -Eq "$1" && echo true || echo false; }
+          # The production image: how it is built, what it installs, and what runs at boot (instrumentation.ts boot checks, migrations, stores).
+          echo "image=$(has '^(Dockerfile|\.dockerignore|package(-lock)?\.json|next\.config\.mjs|instrumentation\.ts|middleware\.ts|docker-compose\.yml|migrations/|lib/store/|scripts/smoke-image\.sh|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
+          # The Caddy proxy for a public VPS (deploy/caddy); hiddensee.app itself runs behind the Cloudflare Tunnel.
+          echo "proxy=$(has '^(deploy/caddy/|docker-compose\.yml|\.github/workflows/)')" >> "$GITHUB_OUTPUT"
+
   test:
     runs-on: ubuntu-latest
     services:
@@ -43,8 +76,34 @@ jobs:
       - run: npm run build
       # Uses the package.json defaults (pai:pai@127.0.0.1:5432/pai_test, redis db 1); the store applies migrations/*.sql itself.
       - run: npm run test:integration
+      # The image job runs only when the image changes, so every PR still renders its dynamic pages in the production
+      # server here (the same pages scripts/smoke-image.sh checks), against real Postgres/Redis. Throwaway values only.
+      - name: Production server renders the main pages
+        env:
+          PORT: 3000
+          HOSTNAME: 127.0.0.1
+          DATABASE_URL: postgres://pai:pai@127.0.0.1:5432/pai_test
+          REDIS_URL: redis://127.0.0.1:6379/2
+          INVITE_ONLY: 1
+          WEBAUTHN_RP_ID: localhost
+          WEBAUTHN_ORIGIN: http://localhost:3000
+          APP_URL: http://localhost:3000
+        run: |
+          export SESSION_SECRET=$(openssl rand -hex 32) ADMIN_KEY_KEK=$(openssl rand -base64 32)
+          echo "::add-mask::$SESSION_SECRET"; echo "::add-mask::$ADMIN_KEY_KEK"
+          # Lay out the server the way the Dockerfile does: static assets, public/ and migrations/ next to server.js.
+          cp -r .next/static .next/standalone/.next/static && cp -r public migrations .next/standalone/
+          node .next/standalone/server.js > server.log 2>&1 &
+          for _ in $(seq 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/api/health || { echo "health not ok"; tail -40 server.log; exit 1; }
+          for p in / /chat /models /privacy/metadata; do
+            c=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000$p"); echo "$p $c"
+            [ "$c" = 200 ] || { tail -40 server.log; exit 1; }
+          done
 
   proxy:
+    needs: changes
+    if: needs.changes.outputs.proxy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +128,8 @@ jobs:
 
   # Builds the production app image and boots it against real Postgres/Redis (scripts/smoke-image.sh).
   image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
