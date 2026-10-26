@@ -284,6 +284,7 @@ html:has(.landing) { scroll-padding-top: 80px; }
   .k-full, .k-mid, .k-low, .k-tusk { animation: resolve 1.1s var(--ease) backwards; }
   .w0 { animation-delay: .1s; } .w1 { animation-delay: .22s; } .w2 { animation-delay: .34s; } .w3 { animation-delay: .46s; } .w4 { animation-delay: .58s; }
   .w5 { animation-delay: .7s; } .w6 { animation-delay: .82s; } .w7 { animation-delay: .94s; } .w8 { animation-delay: 1.06s; } .w9 { animation-delay: 1.18s; }
+  .dot { transition: translate .5s var(--ease); }
   .landing .rise { animation: rise .9s var(--ease) backwards; }
   .rail-flow { animation: flow .9s linear 5; } /* about 4.5s, so it stops on its own (WCAG 2.2.2) */
   /* Sections rise as they scroll in, on the compositor (no scroll listeners); browsers without view timelines show them as is. */
