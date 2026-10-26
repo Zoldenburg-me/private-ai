@@ -17,7 +17,7 @@ const pgUrl = process.env.TEST_DATABASE_URL;
 const pg = pgUrl ? new PgAccountStore(postgres(pgUrl, { max: 2, onnotice: () => {} }), false) : null;
 const backends: [string, () => Promise<AccountStore>][] = [["memory", async () => new MemoryAccountStore()]];
 if (pg) backends.push(["postgres", async () => {
-  await pg.sql.unsafe("DROP TABLE IF EXISTS admin_audit, provider_keys, invite_codes, erasures, devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
+  await pg.sql.unsafe("DROP TABLE IF EXISTS credit_topups, credits, admin_audit, provider_keys, invite_codes, erasures, devices, passkey_credentials, subscriptions, entitlements, sessions, schema_migrations CASCADE");
   await migrate(pg.sql); return pg;
 }]);
 afterAll(async () => { await pg?.close(); });
@@ -48,6 +48,20 @@ describe.skipIf(!pg)("postgres passkey removal lock", () => {
 describe.each(backends)("account store contract (%s)", (_name, make) => {
   let s: AccountStore;
   beforeEach(async () => { s = await make(); });
+
+  it("credits: spend included then bought, monthly reset, top-ups once, never recreate a deleted account", async () => {
+    await s.touchSession("acct_credit_1");
+    expect(await s.addCredits("acct_credit_1", 5_000_000, "cs_c1")).toBe(true);
+    expect(await s.addCredits("acct_credit_1", 5_000_000, "cs_c1")).toBe(false);
+    expect(await s.spendCredits("acct_credit_1", 3_000_000, "2026-10", 2_000_000)).toEqual({ purchased: 4_000_000, includedSpent: 2_000_000, includedMonth: "2026-10" });
+    expect(await s.spendCredits("acct_credit_1", 500_000, "2026-11", 2_000_000)).toEqual({ purchased: 4_000_000, includedSpent: 500_000, includedMonth: "2026-11" });
+    expect((await s.spendCredits("acct_credit_1", 100, "2026-10", 2_000_000)).includedMonth).toBe("2026-11");
+    expect((await s.listTopups("acct_credit_1")).map((t) => [t.stripeSessionId, t.micros])).toEqual([["cs_c1", 5_000_000]]);
+    await s.deleteAccount("acct_credit_1");
+    await expect(s.spendCredits("acct_credit_1", 1, "2026-11", 0)).rejects.toThrow();
+    expect(await s.sessionExists("acct_credit_1")).toBe(false);
+    expect(await s.getCredits("acct_credit_1")).toBeNull();
+  });
 
   it("sessions: touch creates, exists", async () => {
     expect(await s.sessionExists("acct_aaaaaaaaaa")).toBe(false);

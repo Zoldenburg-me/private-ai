@@ -37,7 +37,7 @@ export const AGENT_SYSTEM =
 type Env = Record<string, string | undefined>;
 type Msg = Record<string, unknown>;
 interface Call { id: string; name: string; args: string }
-interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string }
+interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string; usage: { prompt: number; completion: number } | null }
 
 /** `imageProvider`: NEAR, resolved with stored keys, for the image tool (whatever provider the chat uses). */
 interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig }
@@ -113,6 +113,11 @@ export interface AgentOpts {
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
   /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
   remaining?: () => string | undefined;
+  /**
+   * After every step, however it ends (a cancelled or failed step too): its usage report's token counts (null if none),
+   * the body it sent and an estimate of the reply tokens it streamed.
+   */
+  onStep?: (u: { prompt: number; completion: number } | null, body: Record<string, unknown>, streamedTokens: number) => Promise<void>;
   /** Upstream failure (counts toward the error budget, like a 5xx on /api/chat). */
   onFailure?: () => Promise<void>;
   env: Env; log: Logger; route: string; fetchImpl?: typeof fetch; headers?: Record<string, string>;
@@ -152,7 +157,8 @@ export function runAgent(o: AgentOpts): Response {
             const body = stepBody(o.body, messages, last, defs);
             if (step > 1) { const denied = await o.beforeStep(body); if (denied) throw new Refusal(denied); }
             steps = step;
-            const text = (content: string, id: string) => { shown += content; send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }); };
+            let stepChars = 0;
+            const text = (content: string, id: string) => { shown += content; stepChars += content.length; send(null, { id, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content } }] }); };
             let r: Step; let toolless = last || inEnclave; // NEAR's tool calls are NEAR's to run, never ours
             // NEAR searches only once the model has finished a round. Each search counts as a message, like our search steps, as
             // soon as the model starts writing its call, so a call past the run's budget or the user's limits cancels the stream
@@ -166,14 +172,23 @@ export function runAgent(o: AgentOpts): Response {
               if (e.status !== "running") o.log({ route: o.route, event: "tool_call", tool: "web_context_search", status: e.status === "done" ? 200 : 502 });
               tool(e);
             } } : undefined;
+            let sent = body;
+            const settle = (u: Step["usage"]) => o.onStep?.(u, sent, Math.ceil(stepChars / 3));
             try {
-              r = await callStep(o.provider, body, step, modelFetch, abort, room, text, near);
+              try {
+                r = await callStep(o.provider, body, step, modelFetch, abort, room, text, near);
+              } catch (e) {
+                // A model without tool calls rejects the first step: answer it without search, still one message.
+                if (step !== 1 || last || !(e instanceof ProviderError && e.status !== undefined && TOOLS_REJECTED.includes(e.status))) throw e;
+                sent = stepBody(o.body, messages, true, []);
+                r = await callStep(o.provider, sent, step, modelFetch, abort, room, text);
+                toolless = true;
+              }
             } catch (e) {
-              // A model without tool calls rejects the first step: answer it without search, still one message.
-              if (step !== 1 || last || !(e instanceof ProviderError && e.status !== undefined && TOOLS_REJECTED.includes(e.status))) throw e;
-              r = await callStep(o.provider, stepBody(o.body, messages, true, []), step, modelFetch, abort, room, text);
-              toolless = true;
+              await settle(null); // a cancelled or failed step is charged too, or stopping early would make it free
+              throw e;
             }
+            await settle(r.usage);
             if (!r.calls.length || toolless) {
               // A provider may still call a tool on the tool-less last step: without text that is no answer.
               if (!r.text.trim()) throw new ProviderError("model did not answer");
@@ -275,6 +290,7 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   if (!res.ok || !res.body) { res.body?.cancel().catch(() => {}); throw new ProviderError(`provider error ${res.status}`, res.status); }
   const hash = createHash("sha256"); const dec = new TextDecoder(); const reader = res.body.getReader();
   const calls: Call[] = []; let buf = ""; let text = ""; let chatId = ""; let finished = false;
+  let usage: Step["usage"] = null;
   // NEAR searches begun (counted), then tool events and text, of the line just read: handled before the next line.
   const events: ToolEvent[] = []; const held: string[] = []; let started = 0;
   const flush = async () => {
@@ -292,6 +308,8 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
     if (!isObj(j)) return;
     const chunk = j as Chunk;
     if (!chatId && typeof chunk.id === "string") chatId = chunk.id;
+    const u = (j as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } }).usage;
+    if (isObj(u) && typeof u.prompt_tokens === "number" && typeof u.completion_tokens === "number") usage = { prompt: u.prompt_tokens, completion: u.completion_tokens };
     const choice = Array.isArray(chunk.choices) && isObj(chunk.choices[0]) ? chunk.choices[0] : undefined;
     // NEAR ends every search iteration with finish_reason "tool_calls"; only its [DONE] ends the answer.
     if (choice?.finish_reason && !near) finished = true;
@@ -334,5 +352,5 @@ async function callStep(provider: ProviderConfig, body: Record<string, unknown>,
   // A stream cut before [DONE] or a finish_reason is a partial answer (or partial tool arguments), not a finished one.
   if (!finished) throw new ProviderError("provider stream ended early");
   // Our own ids: providers may reuse theirs across steps, and the client merges tool events by id.
-  return { text, calls: found.map((c, i) => ({ ...c, id: `call_${step}_${i}` })), chatId, reqSha256: createHash("sha256").update(reqText).digest("hex"), respSha256: hash.digest("hex") };
+  return { text, calls: found.map((c, i) => ({ ...c, id: `call_${step}_${i}` })), chatId, usage, reqSha256: createHash("sha256").update(reqText).digest("hex"), respSha256: hash.digest("hex") };
 }

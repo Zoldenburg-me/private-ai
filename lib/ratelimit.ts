@@ -1,5 +1,6 @@
 import { TIERS, type TierId } from "./tiers";
 import { stores } from "./store";
+import type { QuotaScope } from "./store/types";
 
 /**
  * Fair-use gate. Counts only - no content. Counters live in the CounterStore (Redis in
@@ -12,12 +13,18 @@ export interface GateDecision {
   allowed: boolean; status: number; reason?: string; headers: Record<string, string>;
 }
 
-/** Incognito models have their own daily quota; the per-minute window and error budget are shared with the account. */
-export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now(), incognito = false): Promise<GateDecision> {
+/** The daily quota of a scope: no scope is everyday Max Privacy. */
+export const dailyLimit = (tierId: TierId, scope?: QuotaScope) => {
   const t = TIERS[tierId];
-  const daily = incognito ? t.incognitoDailyMessages : t.dailyMessages;
+  return scope === "incognito" ? t.incognitoDailyMessages : scope === "top" ? t.topDailyMessages : t.dailyMessages;
+};
+
+/** Top and incognito models have their own daily quotas; the per-minute window and error budget are shared with the account. */
+export async function gate(id: string, tierId: TierId, contextTokens: number, now = Date.now(), scope?: QuotaScope): Promise<GateDecision> {
+  const t = TIERS[tierId];
+  const daily = dailyLimit(tierId, scope);
   const { counters } = await stores();
-  const r = await counters.consume(id, { daily, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs, ...(incognito ? { scope: "incognito" } : {}) },
+  const r = await counters.consume(id, { daily, perMinute: t.requestsPerMinute, budgetFailures: ERROR_BUDGET.failures, budgetWindowMs: ERROR_BUDGET.windowMs, ...(scope ? { scope } : {}) },
     contextTokens <= t.maxContextTokens, now);
   const resetMinute = Math.ceil((r.minuteStart + 60_000) / 1000);
   const headers: Record<string, string> = {
@@ -26,7 +33,7 @@ export async function gate(id: string, tierId: TierId, contextTokens: number, no
     "x-ratelimit-reset-requests": String(resetMinute),
     "x-usage-limit-daily": String(daily),
     "x-usage-remaining-daily": String(Math.max(0, daily - r.daily)),
-    "x-usage-quota": incognito ? "incognito" : "standard",
+    "x-usage-quota": scope ?? "standard",
     "x-tier": t.id,
   };
   switch (r.outcome) {
@@ -43,10 +50,10 @@ export async function recordFailure(id: string, now = Date.now()): Promise<void>
   await (await stores()).counters.recordFailure(id, ERROR_BUDGET.windowMs, now);
 }
 
-/** Messages used today (for the usage display); `incognito` reads the incognito quota. */
-export async function usage(id: string, tierId: TierId, now = Date.now(), incognito = false) {
-  const used = await (await stores()).counters.usedToday(id, now, incognito ? "incognito" : undefined);
-  const limit = incognito ? TIERS[tierId].incognitoDailyMessages : TIERS[tierId].dailyMessages;
+/** Messages used today in a quota (for the usage display). */
+export async function usage(id: string, tierId: TierId, now = Date.now(), scope?: QuotaScope) {
+  const used = await (await stores()).counters.usedToday(id, now, scope);
+  const limit = dailyLimit(tierId, scope);
   return { usedToday: used, dailyLimit: limit, remainingToday: Math.max(0, limit - used) };
 }
 

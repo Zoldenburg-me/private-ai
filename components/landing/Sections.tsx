@@ -7,7 +7,7 @@ import { NOT_VERIFIED } from "@/lib/client/proof";
 import { inviteCodes } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
-import { PAID_ONLY_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
+import { FRONTIER_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
 import { DotNarwhal } from "./DotNarwhal";
 import { HeroComposer } from "./HeroComposer";
 import { SoundToggle } from "./SoundToggle";
@@ -249,31 +249,32 @@ export function Compare({ frontier: frontierLive = frontier() }: { frontier?: bo
   );
 }
 
-// Plan copy is derived from lib/tiers.ts only (another branch owns pricing): no number on this page that TIERS lacks.
+// Plan copy is derived from lib/tiers.ts only: no number on this page that TIERS lacks.
 const n = (v: number) => v.toLocaleString("en");
 const ctx = (tokens: number) => (tokens >= 1_000_000 ? `${tokens / 1_000_000}M` : `${Math.round(tokens / 1000)}k`);
 const times = (a: number, b: number) => (b > 0 && a > b ? `${n(Math.round(a / b))} times Free. ` : "");
-/** The top frontier models' logos, from their PAID_ONLY_MODELS ids. */
+/** The top frontier models' logos, from their FRONTIER_MODELS ids. */
 const FRONTIER_LOGO: readonly { prefix: string; name: string }[] = [
   { prefix: "claude", name: "Claude" }, { prefix: "gemini", name: "Gemini" }, { prefix: "gpt", name: "ChatGPT" }, { prefix: "grok", name: "Grok" },
 ];
-const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...PAID_ONLY_MODELS].some((id) => id.startsWith(l.prefix)));
+const frontierLogos = () => FRONTIER_LOGO.filter((l) => [...FRONTIER_MODELS].some((id) => id.startsWith(l.prefix)));
 
 function bigFeatures(t: Tier, frontierLive: boolean) {
   const free = TIERS.free;
   const logos = frontierLogos();
   return [
     { title: `${n(t.dailyMessages)} Max privacy messages a day`, note: `${times(t.dailyMessages, free.dailyMessages)}Sealed in hardware the host machine cannot read.` },
-    { title: `${n(t.incognitoDailyMessages)} incognito messages a day`, note: `${times(t.incognitoDailyMessages, free.incognitoDailyMessages)}For anything that does not need an enclave.` },
-    ...(frontierLive && logos.length ? [{ title: "Top frontier models, anonymously", note: `${logos.map((l) => l.name).join(", ")} through an anonymizing gateway, no extra subscription.`, logos }] : []),
+    ...(t.topDailyMessages ? [{ title: `${n(t.topDailyMessages)} top Max privacy messages a day`, note: "The largest models that run in an enclave, such as Kimi K3." }] : []),
+    { title: `${n(t.incognitoDailyMessages)} private and incognito messages a day`, note: `${times(t.incognitoDailyMessages, free.incognitoDailyMessages)}For anything that does not need an enclave.` },
+    ...(frontierLive && logos.length ? [{ title: "Top frontier models, anonymously", note: `${logos.map((l) => l.name).join(", ")} through an anonymizing gateway. €${t.includedCreditsEur} of credit included every month, then pay as you go.`, logos }] : []),
     { title: `${ctx(t.maxContextTokens)} context`, note: `Paste long contracts or a whole thread, with replies up to ${ctx(t.maxOutputTokens)} tokens.` },
     { title: "Agentic tasks", note: `Hand over a multi-step job and it plans and works through it, up to ${t.agentMaxSteps} steps per run.` },
   ];
 }
-const summary = (t: Tier) => [
-  `${n(t.dailyMessages)} Max privacy and ${n(t.incognitoDailyMessages)} incognito messages a day`,
+const summary = (t: Tier, frontierLive: boolean) => [
+  `${n(t.dailyMessages)} Max privacy${t.topDailyMessages ? `, ${n(t.topDailyMessages)} top` : ""} and ${n(t.incognitoDailyMessages)} private messages a day`,
+  ...(frontierLive && t.includedCreditsEur ? [`€${t.includedCreditsEur} frontier credit a month`] : []), // Free cannot use the top frontier models
   `${ctx(t.maxContextTokens)} context`,
-  t.priceEurMonth > 0 ? "all models" : "basic models",
 ].join(", ") + ".";
 const price = (t: Tier) => `€${t.priceEurMonth}`;
 
@@ -323,7 +324,7 @@ export function Pricing({ frontier: frontierLive = frontier() }: { frontier?: bo
           {small.map((t) => (
             <div key={t.id} className="l-card plan-small">
               <div className="plan-small-top"><h3>{t.name}</h3><p className="plan-price-sm"><span>{price(t)}</span>{t.priceEurMonth > 0 && " / month"}</p></div>
-              <p>{summary(t)}</p>
+              <p>{summary(t, frontierLive)}</p>
               <Link href="/chat" className="pill pill-ghost">{t.priceEurMonth > 0 ? `Choose ${t.name}` : "Start free"}</Link>
             </div>
           ))}
@@ -338,7 +339,7 @@ const FAQ = [
   ["What is an enclave?", "A sealed area of a processor, here Intel TDX with NVIDIA confidential GPUs, whose memory the host machine cannot read. It produces a signed report of what is running, and this app checks that report."],
   ["What if I lose my browser data?", "Your history is gone unless you exported an encrypted backup. Your plan is safe if you saved a passkey: log in with it on any device."],
   ["Why no email?", "We do not need it. Your account is an opaque id, and a passkey links it across devices."],
-  ["Is this GDPR compliant?", "Our server runs in Germany, and we keep only what plans and limits need, and you can download or delete it in one click. The details are in the Datenschutzerklärung."],
+  ["Is this GDPR compliant?", "Our server runs in Germany, and we keep only what plans and limits need, and you can download or delete it in one click. The details are in our privacy policy."],
 ];
 
 export function Faq() {
@@ -371,8 +372,8 @@ export function SiteFooter() {
       <div className="l-wrap foot-row">
         <span className="wordmark"><Mark size={17} />{BRAND}</span>
         <nav aria-label="Legal">
-          <Link href="/impressum" className="navlink">Impressum</Link><Link href="/datenschutz" className="navlink">Datenschutz</Link>
-          <Link href="/agb" className="navlink">AGB</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
+          <Link href="/impressum" className="navlink">Legal notice</Link><Link href="/datenschutz" className="navlink">Privacy</Link>
+          <Link href="/agb" className="navlink">Terms</Link><Link href="/privacy/metadata" className="navlink">What the server stores</Link>
         </nav>
         <span className="copy">© 2026 Zoldenburg UG (haftungsbeschränkt)</span>
       </div>

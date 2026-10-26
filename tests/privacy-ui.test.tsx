@@ -43,7 +43,7 @@ describe("tools menu", () => {
 
 describe("settings: privacy and tools", () => {
   const view = (available: boolean) => renderToStaticMarkup(<SettingsView tier={null} usage={null} billing={null} passkeys={null} ghost={false} account={null} devices={[]}
-    onSignOut={noop} onRemoveDevice={noop} onCheckout={noop} onPortal={noop} onAddPasskey={noop} onLoginPasskey={noop} onRemovePasskey={noop}
+    onSignOut={noop} onRemoveDevice={noop} onCheckout={noop} onPortal={noop} onTopUp={noop} onAddPasskey={noop} onLoginPasskey={noop} onRemovePasskey={noop}
     onExportAccount={noop} onDeleteAccount={noop} onExport={noop} onImport={noop} onWipe={noop}
     tools={{ available, webSearch: true, onWebSearch: noop, pickProvider: false, onPickProvider: noop }} />);
   it("offers web search (saying queries go to Brave) and provider choice", () => {

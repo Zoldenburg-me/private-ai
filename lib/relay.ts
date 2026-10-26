@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ProviderConfig } from "./providers";
 import type { Logger } from "./log";
 import { providerFetch } from "./provider-fetch";
+import { usageIn } from "./credits";
 
 /**
  * Zero-content relay: forwards the body to the provider and pipes the stream back.
@@ -9,7 +10,14 @@ import { providerFetch } from "./provider-fetch";
  * (hashes only) so the client can check provider response signatures, and appends them as a
  * final SSE event `pai_receipt`.
  */
-export interface RelayOpts { provider: ProviderConfig; body: Record<string, unknown>; log: Logger; route: string; fetchImpl?: typeof fetch; extraHeaders?: Record<string, string> }
+/**
+ * `onUsage`: called exactly once however the response ends (finished, failed, or cancelled by the client), with the
+ * token counts of its `usage` report (null if none arrived) and an estimate of the reply tokens already passed on.
+ */
+export interface RelayOpts {
+  provider: ProviderConfig; body: Record<string, unknown>; log: Logger; route: string; fetchImpl?: typeof fetch; extraHeaders?: Record<string, string>;
+  onUsage?: (u: { prompt: number; completion: number } | null, streamedTokens: number) => Promise<void>;
+}
 
 /** Wait for upstream headers. Non-streaming replies only arrive once the whole answer is generated, so they get longer. */
 export const FIRST_BYTE_TIMEOUT_MS = { stream: 30_000, json: 120_000 };
@@ -17,7 +25,10 @@ export const FIRST_BYTE_TIMEOUT_MS = { stream: 30_000, json: 120_000 };
 export const IDLE_TIMEOUT_MS = 30_000;
 export const TOTAL_TIMEOUT_MS = 300_000;
 
-export async function relay({ provider, body, log, route, fetchImpl = providerFetch(provider.id), extraHeaders = {} }: RelayOpts): Promise<Response> {
+/** Text of a streamed delta (answer or reasoning), still JSON-escaped: close enough to count its length. */
+const DELTA_TEXT = /"(?:content|reasoning_content|reasoning)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+
+export async function relay({ provider, body, log, route, fetchImpl = providerFetch(provider.id), extraHeaders = {}, onUsage }: RelayOpts): Promise<Response> {
   const started = Date.now();
   const reqText = JSON.stringify(body);
   const reqSha256 = createHash("sha256").update(reqText).digest("hex");
@@ -59,6 +70,15 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
   // with an `event:` line is dropped, line by line across chunks. OpenAI-style streams send only unnamed `data:` blocks.
   const sse = new TextDecoder();
   let line = ""; let dropping = false; let droppedLogged = false;
+  // The usage report comes last (final chunk, or the end of a JSON reply): only the tail is kept, in memory, never logged.
+  const usageDec = new TextDecoder(); let tail = ""; let replyChars = 0; let settled = false;
+  // A stopped stream is charged too, or a client could close it before the usage report and pay nothing.
+  const settle = async () => {
+    if (!onUsage || settled) return;
+    settled = true;
+    // Reply text, or the whole JSON body (bytes) for a non-streaming reply; estimateTokens counts 3 bytes a token.
+    await onUsage(usageIn(tail + usageDec.decode()), Math.ceil((streaming ? replyChars : bytes) / 3)).catch(() => {});
+  };
   const reader = upstream.body.getReader();
   const out = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
@@ -68,6 +88,7 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
         const timedOut = abort.signal.aborted;
         stopTimers(); abort.abort(); reader.cancel().catch(() => {});
         log({ route, provider: provider.id, event: timedOut ? "upstream_timeout" : "upstream_error", status: timedOut ? 504 : 502, ms: Date.now() - started, outputBytes: bytes });
+        await settle();
         ctrl.error(new Error(timedOut ? "provider timeout" : "provider stream failed"));
         return;
       } finally { clearTimeout(idle); }
@@ -81,10 +102,12 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
           ctrl.enqueue(new TextEncoder().encode(`${dropping ? "" : line}\n\nevent: pai_receipt\ndata: ${JSON.stringify(receipt)}\n\n`));
         }
         log({ route, provider: provider.id, model: String(body.model ?? ""), status: 200, ms: Date.now() - started, outputBytes: bytes });
+        await settle();
         ctrl.close();
         return;
       }
       hash.update(value); bytes += value.length;
+      if (onUsage) tail = (tail + usageDec.decode(value, { stream: true })).slice(-4096);
       if (!chatId && head.length < 4096) {
         head += dec.decode(value, { stream: true });
         const m = /"id"\s*:\s*"([^"]+)"/.exec(head); if (m) chatId = m[1];
@@ -95,6 +118,7 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
       const cr = text.endsWith("\r");
       const lines = (cr ? text.slice(0, -1) : text).split(/\r\n|\r|\n/);
       line = (lines.pop() ?? "") + (cr ? "\r" : "");
+      if (onUsage) for (const l of lines) for (const m of l.matchAll(DELTA_TEXT)) replyChars += m[1].length;
       const kept = lines.filter((l) => {
         const t = l.trim();
         if (t.startsWith("event:")) {
@@ -108,7 +132,7 @@ export async function relay({ provider, body, log, route, fetchImpl = providerFe
       // Enqueued even when empty: a pull that enqueues nothing is not called again.
       ctrl.enqueue(new TextEncoder().encode(kept.length ? kept.join("\n") + "\n" : ""));
     },
-    cancel() { stopTimers(); abort.abort(); reader.cancel().catch(() => {}); },
+    cancel() { stopTimers(); abort.abort(); reader.cancel().catch(() => {}); return settle(); },
   });
   return new Response(out, {
     headers: {

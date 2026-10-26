@@ -420,6 +420,7 @@ export default function Home() {
   const onUsage = useCallback((rem: string | null, limit?: string | null, quota?: string | null) => {
     const remaining = Number(rem); const max = Number(limit);
     if (rem == null || rem.trim() === "" || !Number.isFinite(remaining)) return;
+    if (quota === "top") return; // top Max Privacy has its own small quota, not shown in the sidebar meter
     const incognito = quota === "incognito";
     (incognito ? setIncognitoUsage : setUsage)((u) => ({ remaining, limit: max > 0 ? max : u?.limit, ...(incognito ? { incognito } : {}) }));
   }, []);
@@ -577,6 +578,7 @@ export default function Home() {
             account={account} devices={devices} onSignOut={signOut} onRemoveDevice={removeDevice}
             onCheckout={(plan, interval) => goBilling("/api/billing/checkout", { plan, interval })}
             onPortal={() => goBilling("/api/billing/portal")}
+            onTopUp={(eur) => goBilling("/api/billing/credits", { eur })}
             onAddPasskey={addPasskey} onLoginPasskey={() => void loginPasskey()} onRemovePasskey={removePasskey}
             onExportAccount={downloadAccountData} onDeleteAccount={deleteAccount}
             onExport={exportBackup} onImport={importBackup} onWipe={wipe}

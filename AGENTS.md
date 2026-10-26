@@ -50,7 +50,8 @@ Run `typecheck`, `test` and `build` before every commit. Run `test:integration` 
 - **CSP:** a new external origin (API, iframe, OAuth popup) must be added to `buildCsp()` in
   `middleware.ts`, with a test in `tests/csp.test.ts`.
 - **Legal pages** (`app/impressum`, `app/datenschutz`, `app/agb`) keep their `<Todo>` markers until
-  a lawyer has reviewed them. Never invent company details, addresses or register numbers.
+  a lawyer has reviewed them; `<Todo>` and `<Draft>` render in dev and tests only, never in production.
+  Company details live in `COMPANY` (`components/legal.tsx`). Never invent company details, addresses or register numbers.
 
 ## Where it runs (hiddensee.app)
 

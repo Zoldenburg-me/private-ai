@@ -17,7 +17,7 @@ describe("models page rows", () => {
     const rows = toRows(catalog);
     expect(rows.map((r) => r.key)).toEqual(["near:glm", "venice:gpt-6-astra"]);
     expect(rows[0]).toMatchObject({ name: "GLM 4.6", maker: "Zhipu", providerName: "NEAR AI Cloud", plan: "free", incognito: false, ctx: 128_000 });
-    expect(rows[1]).toMatchObject({ providerName: "Venice", plan: "pro", incognito: true });
+    expect(rows[1]).toMatchObject({ providerName: "Venice", plan: "plus", incognito: true });
     expect(rows[1].maker).toBeUndefined();
     expect(toRows([m({ id: "x", provider: "near" })])[0].ctx).toBeUndefined();
   });
@@ -34,6 +34,7 @@ describe("models page rows", () => {
   it("filters by privacy, provider, plan and search; skip ignores one filter", () => {
     const [glm, gpt] = toRows(catalog);
     expect(passes(gpt, { ...NO_FILTERS, plan: "free" })).toBe(false);
+    expect(passes(gpt, { ...NO_FILTERS, plan: "plus" })).toBe(true); // paid-only models start at Plus
     expect(passes(gpt, { ...NO_FILTERS, plan: "pro" })).toBe(true);
     expect(passes(glm, { ...NO_FILTERS, privacy: ["anonymized"] })).toBe(false);
     expect(passes(glm, { ...NO_FILTERS, privacy: ["anonymized"] }, "privacy")).toBe(true);
