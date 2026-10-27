@@ -118,7 +118,7 @@ Redis 7; run that script yourself before a release if you change the image.
 | `NEAR_AI_API_KEY` etc., `DEFAULT_PROVIDER` | at least one provider | Inference providers (`.env.example` lists all). |
 | `STRIPE_*` | for payments | Secret key, webhook secret, price ids. |
 | `DOMAIN` | only with Caddy (VPS) | Public host name for TLS. |
-| `PAI_AUTO_MIGRATE`, `PAI_RETENTION_JOB`, `PAI_LOG`, `PAI_LIMIT_*` | no | Defaults are fine (see `.env.example`). |
+| `PAI_AUTO_MIGRATE`, `PAI_RETENTION_JOB`, `PAI_COLLATERAL_PREFETCH`, `PAI_LOG`, `PAI_LIMIT_*` | no | Defaults are fine (see `.env.example`). |
 
 - **Boot checks:** the server exits with code 1 and a one-line `boot check failed: …` message (the setting's name,
   never its value) if `SESSION_SECRET` is missing or short, `ADMIN_KEY_KEK` is set but not 32 bytes, or

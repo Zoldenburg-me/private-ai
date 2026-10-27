@@ -69,7 +69,9 @@ Checks, in order. A failure on any of them means no E2E chat (fail closed, no pl
    refuse `OutOfDate`/`Revoked` TCB levels; collateral may come via the relay, but its signature and `nextUpdate`
    are checked in the browser, plus a maximum age set in the bundle (TCB info issued within a fixed number of days),
    so the relay cannot keep serving old collateral up to `nextUpdate`. Collateral that is missing, unreachable or
-   too old fails closed with its own error text. Not done today.
+   too old fails closed with its own error text. N1b does this in `lib/client/e2e/dcap.ts` (maximum age 3 days,
+   clock tolerance 10 minutes; `ConfigurationNeeded` and `SWHardeningNeeded` levels pass and their advisory ids are
+   returned); not wired into the chat yet.
 4. **Debug off.** Already done.
 5. **Which code runs (measurements).** Without this, any TDX machine passes, including one we could rent ourselves
    and use to read the traffic. The browser must compare MRTD and RTMR0–2 (the CVM's firmware, kernel and OS
@@ -102,7 +104,9 @@ Web Crypto does P-256, and `@noble/curves` (already a dependency) does too. NEAR
 `dcap-qvl` (Rust, with a Node binding) **[confirmed]**. N1a chose our own TypeScript parser over a Wasm build:
 `lib/client/e2e/dcap.ts` (quote and QE report signatures, PCK chain to the pinned root, on `@noble/curves`), so no
 `'wasm-unsafe-eval'` in the CSP; it is tested against dcap-qvl's sample quotes and not wired into the chat yet. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
-either way it is Intel-signed, so the relay may also fetch and cache it. Tested against fixed quotes and collateral.
+either way it is Intel-signed, so the relay may also fetch and cache it. N1b's relay route
+`/api/attestation/collateral?fmspc=…&ca=…` (`lib/collateral.ts`) fetches it from Intel PCS server-side, so no new
+CSP origin. Tested against dcap-qvl's sample quotes and collateral, plus re-signed fixtures for revoked and old collateral.
 
 ### Rules the client enforces
 
