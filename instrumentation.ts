@@ -24,4 +24,7 @@ export async function register() {
     const { startRetentionJob } = await import("./lib/retention");
     startRetentionJob();
   }
+  if (process.env.NEXT_RUNTIME === "nodejs" && process.env.PAI_COLLATERAL_PREFETCH !== "0") {
+    (await import("./lib/collateral")).startCollateralCache();
+  }
 }
