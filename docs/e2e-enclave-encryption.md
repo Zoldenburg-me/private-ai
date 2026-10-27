@@ -165,7 +165,8 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
   decryption accepts plaintext too. The client seals every field itself; the relay also checks that every `content`
   (and, with tools, every tool field) is a hex string at least 56 bytes long, as a bug catcher, not as the defence.
 - **No associated data [confirmed]:** roles, order, sampling parameters and `finish_reason` are outside the seal, so
-  only the reply signature (below) shows that the relay changed them.
+  only the reply signature (§7) shows that the relay changed them: the browser compares the signed request hash
+  with the hash of the exact bytes it sent, so any change to a plaintext field fails the check.
 - **Where it is decrypted [confirmed]:** in the model's CVM (inference-proxy). NEAR's cloud-api gateway, itself a TDX
   enclave, forwards ciphertext and sees what our relay sees.
 - **Web search [confirmed]:** `web_context_search` runs in the model CVM; only the query leaves it, to Brave, over
@@ -204,7 +205,8 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
 - **Our side:** today `lib/tinfoil.ts` runs the SDK on the server. E2E moves `SecureClient` into the browser and the
   relay becomes the documented proxy. The verifier also fetches from `kds-proxy.tinfoil.sh` and
   `github-proxy.tinfoil.sh` (AMD and Sigstore data, signed); we route those through the relay too, so CSP stays
-  `'self'`. `user_cache_secret` moves into the sealed body: the relay hands the browser its per-account value.
+  `'self'`. `user_cache_secret` moves into the sealed body as a random value (128 bits from `crypto.getRandomValues`) the browser makes per chat and keeps in
+  memory, so no server-derived account secret reaches the tab; the cache is then shared only within one chat.
 - **Gaps to close in T1:** the Sigstore bundle arrives through the relay, which could serve an older, validly signed
   release, so the bundle pins the config repo and a minimum release. Whether Tinfoil's router decrypts and re-seals
   between hops, so E2E would end at the router rather than the model enclave, is **[inferred] open** and gates the
@@ -252,9 +254,9 @@ The relay keeps every job that does not need the text.
 | `auto:` routing | relay picks the provider after parsing | the browser asks for the route first (`GET /api/route?model=auto:X`), checks the answer against its own E2E list, then attests that provider; the relay rejects a body whose plaintext `model` differs from the route |
 | Persona system prompt | relay prepends it (`lib/extensions.ts`) | the browser prepends it before sealing |
 | Body validation (roles, message count, images only in user messages) | relay parses messages (`lib/extensions.ts`) | not possible on ciphertext; the enclave rejects malformed bodies. The relay keeps the byte cap (`MAX_BODY_BYTES`) |
-| Quota estimate before the call | `estimateBodyTokens` on plaintext | on the ciphertext size minus the protocol's fixed overhead, divided by its expansion factor (hex doubles size); an image counts by its sealed size |
+| Quota estimate before the call | `estimateBodyTokens` on plaintext | the client declares the image count and plaintext text length in a header; the relay estimates as today (text bytes, plus the flat `IMAGE_TOKENS` per image), so an image is not counted by its bytes. The daily quota uses that estimate; the **credit** pre-check uses the hard upper bound from the sealed body size, so under-declaring cannot pass a balance check it would fail. The charge uses NEAR's plaintext `usage` |
 | Output cap (`max_tokens`), `stream_options.include_usage`, Liquid/Tinfoil extras | relay rewrites the body | the relay must not touch the body (NEAR signs its exact bytes; EHBP seals all of it). The browser sets these from the limits the relay already returns, and the relay **checks** them: NEAR's are plaintext fields; Tinfoil's cap is checked after the fact from `X-Tinfoil-Usage-Metrics` |
-| Credit billing | `usage` from the stream tail, else `replyChars/3` | NEAR: `usage` is plaintext, unchanged. Tinfoil: the usage header/trailer. Privatemode: estimate from sealed reply bytes until tested. A missing `usage` is logged as today (`usage_missing`) |
+| Credit billing | `usage` from the stream tail, else `replyChars/3` | NEAR: `usage` is plaintext, unchanged. Tinfoil: the usage header/trailer. Privatemode: estimate from sealed reply bytes until tested. A missing `usage` is never billed as zero: it is logged (`usage_missing`) and charged from the sealed body bound plus the sealed reply bytes |
 | `pai_receipt` hashes | relay hashes upstream bytes | NEAR signs the ciphertext hashes, so the relay's hashes still match, but the browser hashes what it sent and received and uses its own; the relay's receipt becomes a hint |
 | Reply text count (`DELTA_TEXT`) | regex over plaintext deltas | a raw byte count of the reply, enough for the stop-early charge (NEAR's `usage` is plaintext) |
 | Upstream `event:` filter, appended `pai_receipt` | relay drops named events and appends its receipt to the stream | E2E mode passes the upstream stream through unmodified, so the browser hashes exactly the bytes the enclave signed; no receipt in the stream (the browser uses its own hashes). The browser, not the relay, ignores events it does not know |
@@ -278,7 +280,8 @@ Forwarding byte for byte is new work: `relay()` takes the body as an object and 
   the image model with its own sealed request.
 - **Receipts and reply signatures**: NEAR signs `sha256(request):sha256(response)` over the ciphertext **[confirmed]**.
   The browser computes both hashes itself over the exact bytes it sent and received, then checks the signature from
-  `/api/signature` against **its own** hashes and the attested key (Ed25519 for the E2E report). Stronger than today:
+  `/api/signature` against **its own** hashes (the signed request hash must equal the hash of the bytes it sent, so a
+  relay that changed any field fails) and the attested key (Ed25519 for the E2E report). Stronger than today:
   the relay can no longer feed matching hashes. This check is mandatory for the E2E badge, since it is the only thing
   that catches dropped, reordered or truncated fields (§2). The 3-part `model:req:resp` form is accepted by
   `verifySignedResponse` once PR #76 merges (open at the time of writing); the E2E step adds the Ed25519 path.
@@ -331,8 +334,8 @@ after N2 (N2's claim states the GPU gap).
 | N1b | medium | TCB info, QE identity, CRLs, maximum collateral age; collateral through a cached relay route (process memory) | fixtures incl. revoked and too-old collateral fail closed with their own text |
 | N2a | medium | Per-model NEAR allowlist (measurements, compose hash, image digests, expiry, release link), RTMR3 replay, report entry chosen by the browser; Ed25519 report (`lib/evidence.ts` `signing_algo`, `lib/attestation.ts` `verifyReport` key binding); update procedure in this doc | a quote from an unknown image, or a genuine report for another model, fails in the browser |
 | N2b | medium | `lib/client/e2e/near.ts`: per-request Ed25519 key, seal request fields (image parts as one string, tool fields), open streamed fields; mock speaks the scheme, with a test-only trust root (`lib/mock-tee.ts`) | round-trip tests, one fixed vector from NEAR's Python verifier, a build test that the test root is not in the prod bundle |
-| N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), size-based quota (`lib/tiers.ts`), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
-| N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt and `user_cache_secret` moved to the browser (`lib/extensions.ts`) | tests for both |
+| N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), declared-count quota (`lib/tiers.ts`); `/api/agent` for an E2E NEAR chat no longer needs Brave configured (`handleAgent` returns 503 without it today), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
+| N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt moved to the browser, per-chat random `user_cache_secret` (`lib/extensions.ts`) | tests for both |
 | N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
 | N2e | small | Behind a flag, then on for NEAR; `/datenschutz`, `/privacy/metadata`, `app/agb` and the homepage get the §10 N2 claim | flag on in prod; pages match the claim |
 | N3 | medium, optional | NVIDIA evidence: relay submits to NRAS, browser checks the token (NVIDIA JWKS), nonce, evidence hash and binding to the CVM quote | "GPU evidence" passes for real; claim drops the GPU sentence |
