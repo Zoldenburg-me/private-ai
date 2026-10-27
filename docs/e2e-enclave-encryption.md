@@ -168,7 +168,8 @@ How the UI hides it:
    send. The result is keyed by model id and never reused for another model; switching models drops the pending
    check. Verify-ahead calls go through `proxyEvidence`, so they share `LIMITS.evidence` (30 a minute per account,
    with per-reply signature fetches) and `LIMITS.evidenceAll` (600 a minute for everyone). Only the selected model is
-   checked, once per tab, and N2f checks that the global cap holds at launch traffic.
+   checked ahead, once per tab; with the background re-checks (item 4) and the re-attest after a decrypt or signature
+   failure (§3: once, then fail closed, so forced failures cannot loop), N2f sizes the global cap for launch traffic.
 2. **Optimistic message.** The thread already shows the user's message at once (`useLocalRuntime` in
    `components/app/ChatThread.tsx`); keep it that way, and mark it "not sent yet" until it is
    sealed and sent; the send button never waits on verification. Sending happens only after every check passed, so
@@ -185,7 +186,10 @@ How the UI hides it:
 
 Speed target, measured in the browser (Playwright, throttled Fast 4G profile, against the mock), so no new logged
 field is needed: for a message sent within 2 s of opening the page, the extra time to first token over today's
-plaintext path is at most 300 ms at p75 and 1 s at p95; later messages are no slower.
+plaintext path is at most 300 ms at p75 and 1 s at p95; later messages are no slower. The mock cannot show NEAR's
+report and collateral latency, so the target counts as met only after the same measurement against live NEAR, run
+from a local script with our key read from the environment (as in N0; never committed, logged or put in a
+browser or trace), also passes.
 
 ## 5. Providers
 
@@ -384,7 +388,7 @@ after N2 (N2's claim states the GPU gap).
 | N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), declared-count quota (`lib/tiers.ts`); `/api/agent` for an E2E NEAR chat no longer needs Brave configured (`handleAgent` returns 503 without it today), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
 | N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt moved to the browser, per-chat random `user_cache_secret` (`lib/extensions.ts`) | tests for both |
 | N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; verify ahead (page open, model pick, composer focus) and the optimistic "not sent yet" message; fast inline failure with retry (§4); in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
-| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset | the §4 speed target met in the Playwright measurement; `LIMITS.evidenceAll` sized for launch traffic |
+| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
 | N2e | small | Behind a flag, then on for NEAR; `/datenschutz`, `/privacy/metadata`, `app/agb` and the homepage get the §10 N2 claim | flag on in prod; pages match the claim |
 | N3 | medium, optional | NVIDIA evidence: relay submits to NRAS, browser checks the token (NVIDIA JWKS), nonce, evidence hash and binding to the CVM quote | "GPU evidence" passes for real; claim drops the GPU sentence |
 | T1 | medium | Tinfoil in the browser: `SecureClient` with `baseURL`/`attestationBundleURL` = relay; relay as the documented proxy (enclave-URL allowlist, `Ehbp-*` passthrough, `/attestation`, KDS and Sigstore data); pinned minimum release; usage from `X-Tinfoil-Usage-Metrics`; per-model SEV-SNP check; router-hop question answered | Tinfoil chats sealed; `lib/tinfoil.ts` server SDK only for the API route |
