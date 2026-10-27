@@ -145,6 +145,52 @@ relay:
 We do not invent a wire format. Each provider's own E2E protocol is used as published (§5), so the enclave code that
 decrypts is theirs and already attested.
 
+### Speed and the first message
+
+The first message decides whether a new user stays, so verification must not feel like waiting.
+
+What it costs (estimates; N0 measures them against NEAR's real reports):
+
+- Verification runs once per model per tab, not per message. The checks themselves are a few signature
+  verifications, estimated at tens of milliseconds.
+- Intel's collateral is cached on the relay (it is Intel-signed, so the cache cannot fake it). The relay fills the
+  cache at startup and refreshes it before it expires, so the first user after a restart does not wait for PCCS.
+- The verifier code (about 1 MB if `dcap-qvl` Wasm, [inferred]) is a content-hashed, `immutable` static asset,
+  prefetched on the landing and sign-up pages and compiled with `WebAssembly.compileStreaming`, so it is usually in the
+  HTTP cache before the chat page opens. No service worker: stale security code is the wrong risk to take for speed.
+- Only the first E2E message to a model in a new tab can wait: fetching NEAR's report plus the checks, estimated at a
+  few hundred milliseconds. Every later message reuses the key from memory.
+
+How the UI hides it:
+
+1. **Verify ahead.** For models on the bundle's E2E list, attest the selected model when the chat page opens, again
+   when the user picks a model, and when the composer gets focus. Usually the check is done before the user presses
+   send. The result is keyed by model id and never reused for another model; switching models drops the pending
+   check. Verify-ahead calls go through `proxyEvidence`, so they share `LIMITS.evidence` (30 a minute per account,
+   with per-reply signature fetches) and `LIMITS.evidenceAll` (600 a minute for everyone). Only the selected model is
+   checked ahead, once per tab; with the background re-checks (item 4) and the re-attest after a decrypt or signature
+   failure (§3: once, then fail closed, so forced failures cannot loop), N2f sizes the global cap for launch traffic.
+2. **Optimistic message.** The thread already shows the user's message at once (`useLocalRuntime` in
+   `components/app/ChatThread.tsx`); keep it that way, and mark it "not sent yet" until it is
+   sealed and sent; the send button never waits on verification. Sending happens only after every check passed, so
+   stopping before then sends and charges nothing.
+3. **Skeleton with steps.** The reply placeholder is a skeleton with one short status line that moves on as each
+   step ends: "Checking the enclave" → "Encrypting" → "Waiting for the model". The step names double as a trust
+   signal instead of a bare spinner.
+4. **Re-check in the background.** A verified key is used only while all of these hold: its collateral is inside the
+   bundle's maximum age, its allowlist entry has not expired, and its own lifetime has not ended. Before the earliest
+   of these, a background attestation runs the full §3 checks with a fresh nonce; its key replaces the old one only if
+   it passes, and a failed re-check drops the old key at once. This is a speed rule, not an exception to §3.
+5. **Fast, plain failure.** A failed check shows inline under the message with the reason and a retry button, never
+   an endless skeleton.
+
+Speed target, measured in the browser (Playwright, throttled Fast 4G profile, against the mock), so no new logged
+field is needed: for a message sent within 2 s of opening the page, the extra time to first token over today's
+plaintext path is at most 300 ms at p75 and 1 s at p95; later messages are no slower. The mock cannot show NEAR's
+report and collateral latency, so the target counts as met only after the same measurement against live NEAR, run
+from a local script with our key read from the environment (as in N0; never committed, logged or put in a
+browser or trace), also passes.
+
 ## 5. Providers
 
 Sources read: nearai/cloud-api@85f8600, nearai/inference-proxy@5faff1b, nearai/nearai-cloud-verifier@9455472,
@@ -327,7 +373,7 @@ The public claim must say this (§10).
 
 Board-sized steps, NEAR first. Each is one PR unless marked as a spike. Order: C2 and C1a first (cheap, honest
 today); N0; then N1a and N2b in parallel; N1b after N1a; N2a after N1b; N2c1 after N0; N2c2 any time before N2d;
-N2d after all of those; C1a before N2e. T1 reuses N2c1's passthrough mode, so it starts after N2c1. N3 is optional
+N2d after all of those; N2f after N2d; C1a and N2f before N2e. T1 reuses N2c1's passthrough mode, so it starts after N2c1. N3 is optional
 after N2 (N2's claim states the GPU gap).
 
 | Step | Size | What (files) | Done when |
@@ -336,12 +382,13 @@ after N2 (N2's claim states the GPU gap).
 | C1a | small | Cloudflare response-rewriting features (Rocket Loader, Zaraz, email obfuscation, Auto Minify) off and pinned in config | checked on the zone; noted in AGENTS.md |
 | N0 | spike | Live probe of NEAR E2EE v2 with our key from a script (no product code): field coverage incl. an image, `usage` plaintext, signature form on the Ed25519 path, `web_context_search` under E2E, several backends per model, how GPU evidence binds to the CVM, whether every streamed chunk keeps one `id` and the stream ends with `usage` and `[DONE]` under E2EE (needed by the in-stream checks, §3), whether a third party holding only `X-Client-Pub-Key` can forge reply fields that decrypt; pick `dcap-qvl` Wasm or our own parser | a note in the shared folder; §5 updated where it differs |
 | N1a | medium | Browser DCAP: quote signature, QE report, PCK chain to the Intel root pinned in the bundle; CSP `'wasm-unsafe-eval'` if Wasm (`middleware.ts`, `tests/csp.test.ts`) | `dcap-chain` passes or fails for real; fixtures incl. a forged quote |
-| N1b | medium | TCB info, QE identity, CRLs, maximum collateral age; collateral through a cached relay route (process memory) | fixtures incl. revoked and too-old collateral fail closed with their own text |
+| N1b | medium | TCB info, QE identity, CRLs, maximum collateral age; collateral through a cached relay route (process memory), filled at startup and refreshed before expiry | fixtures incl. revoked and too-old collateral fail closed with their own text |
 | N2a | medium | Per-model NEAR allowlist (measurements, compose hash, image digests, expiry, release link), RTMR3 replay, report entry chosen by the browser; Ed25519 report (`lib/evidence.ts` `signing_algo`, `lib/attestation.ts` `verifyReport` key binding); update procedure in this doc | a quote from an unknown image, or a genuine report for another model, fails in the browser |
 | N2b | medium | `lib/client/e2e/near.ts`: per-request Ed25519 key, seal request fields (image parts as one string, tool fields), open streamed fields; mock speaks the scheme, with a test-only trust root (`lib/mock-tee.ts`) | round-trip tests, one fixed vector from NEAR's Python verifier, a build test that the test root is not in the prod bundle |
 | N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), declared-count quota (`lib/tiers.ts`); `/api/agent` for an E2E NEAR chat no longer needs Brave configured (`handleAgent` returns 503 without it today), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
 | N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt moved to the browser, per-chat random `user_cache_secret` (`lib/extensions.ts`) | tests for both |
-| N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
+| N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; verify ahead (page open, model pick, composer focus) and the optimistic "not sent yet" message; fast inline failure with retry (§4); in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
+| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
 | N2e | small | Behind a flag, then on for NEAR; `/datenschutz`, `/privacy/metadata`, `app/agb` and the homepage get the §10 N2 claim | flag on in prod; pages match the claim |
 | N3 | medium, optional | NVIDIA evidence: relay submits to NRAS, browser checks the token (NVIDIA JWKS), nonce, evidence hash and binding to the CVM quote | "GPU evidence" passes for real; claim drops the GPU sentence |
 | T1 | medium | Tinfoil in the browser: `SecureClient` with `baseURL`/`attestationBundleURL` = relay; relay as the documented proxy (enclave-URL allowlist, `Ehbp-*` passthrough, `/attestation`, KDS and Sigstore data); pinned minimum release; usage from `X-Tinfoil-Usage-Metrics`; per-model SEV-SNP check; router-hop question answered | Tinfoil chats sealed; `lib/tinfoil.ts` server SDK only for the API route |
