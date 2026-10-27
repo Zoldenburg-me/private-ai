@@ -276,7 +276,7 @@ export default function Home() {
     if (!a || a.level === "failed" || a.level === "unavailable" || a.level === "gateway-checked" || !a.signingAddress || !receipt.chat_id) return a ? unsignedReason(a.level) : "n/a";
     const r = await fetch(`/api/signature?model=${encodeURIComponent(ref)}&chat_id=${encodeURIComponent(receipt.chat_id)}`);
     if (!r.ok) return "n/a";
-    return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256 }).ok);
+    return signatureLevel(a, verifySignedResponse(await r.json(), a.signingAddress, { reqSha256: receipt.req_sha256, respSha256: receipt.resp_sha256, model: receipt.model }).ok);
   }, [proofs, checkProof]);
 
   const onSaved = useCallback((c: Chat, wasGhost: boolean, isCurrent: boolean) => {
