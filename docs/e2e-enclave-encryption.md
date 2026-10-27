@@ -99,8 +99,9 @@ Checks, in order. A failure on any of them means no E2E chat (fail closed, no pl
 
 Checks 2, 3 and 5 are the work. DCAP verification in the browser needs ECDSA-P256 and X.509 parsing:
 Web Crypto does P-256, and `@noble/curves` (already a dependency) does too. NEAR's verifier uses Phala's
-`dcap-qvl` (Rust, with a Node binding) **[confirmed]**; a Wasm build of it in the browser is the [inferred] fastest
-path, our own parser the fallback (decided in N0). A Wasm build needs `'wasm-unsafe-eval'` in `script-src`. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
+`dcap-qvl` (Rust, with a Node binding) **[confirmed]**. N1a chose our own TypeScript parser over a Wasm build:
+`lib/client/e2e/dcap.ts` (quote and QE report signatures, PCK chain to the pinned root, on `@noble/curves`), so no
+`'wasm-unsafe-eval'` in the CSP; it is tested against dcap-qvl's sample quotes and not wired into the chat yet. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
 either way it is Intel-signed, so the relay may also fetch and cache it. Tested against fixed quotes and collateral.
 
 ### Rules the client enforces
