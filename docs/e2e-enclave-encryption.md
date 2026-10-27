@@ -121,6 +121,11 @@ relay:
   a wrong backend cannot decrypt, so the chat fails rather than leaks.
 - **Unverified until signed.** A NEAR reply shows as "unverified" while it streams and until its signature checks
   out; on failure the message is marked failed and the badge drops.
+- **Cheap checks while streaming.** Before the signature arrives, the browser stops the stream and marks the reply
+  failed at once if: a sealed field does not decrypt; an `ephemeral_pub ‖ nonce` pair or a whole ciphertext repeats
+  within the reply (replay or duplicate); the chunk `id` or `model` changes mid-stream; data follows the final chunk;
+  or the stream ends without `finish_reason`, `usage` and `[DONE]` (truncation). These catch duplicates and cuts
+  early. They do not catch injected or reordered fields, which only the signature check catches.
 - **Clock.** The collateral age check uses the browser clock, so it allows a small tolerance and reports a skewed
   clock as its own error.
 
@@ -329,7 +334,7 @@ after N2 (N2's claim states the GPU gap).
 |---|---|---|---|
 | C2 | small | Every non-E2E route says so in the model picker and proof drawer ("Our server passes this chat on in plaintext") (`lib/client/proof.ts`, `components/app/ProofDrawer.tsx`, `lib/client/levels.ts`) | no route claims more than it does |
 | C1a | small | Cloudflare response-rewriting features (Rocket Loader, Zaraz, email obfuscation, Auto Minify) off and pinned in config | checked on the zone; noted in AGENTS.md |
-| N0 | spike | Live probe of NEAR E2EE v2 with our key from a script (no product code): field coverage incl. an image, `usage` plaintext, signature form on the Ed25519 path, `web_context_search` under E2E, several backends per model, how GPU evidence binds to the CVM; pick `dcap-qvl` Wasm or our own parser | a note in the shared folder; §5 updated where it differs |
+| N0 | spike | Live probe of NEAR E2EE v2 with our key from a script (no product code): field coverage incl. an image, `usage` plaintext, signature form on the Ed25519 path, `web_context_search` under E2E, several backends per model, how GPU evidence binds to the CVM, whether every streamed chunk keeps one `id` and the stream ends with `usage` and `[DONE]` under E2EE (needed by the in-stream checks, §3), whether a third party holding only `X-Client-Pub-Key` can forge reply fields that decrypt; pick `dcap-qvl` Wasm or our own parser | a note in the shared folder; §5 updated where it differs |
 | N1a | medium | Browser DCAP: quote signature, QE report, PCK chain to the Intel root pinned in the bundle; CSP `'wasm-unsafe-eval'` if Wasm (`middleware.ts`, `tests/csp.test.ts`) | `dcap-chain` passes or fails for real; fixtures incl. a forged quote |
 | N1b | medium | TCB info, QE identity, CRLs, maximum collateral age; collateral through a cached relay route (process memory) | fixtures incl. revoked and too-old collateral fail closed with their own text |
 | N2a | medium | Per-model NEAR allowlist (measurements, compose hash, image digests, expiry, release link), RTMR3 replay, report entry chosen by the browser; Ed25519 report (`lib/evidence.ts` `signing_algo`, `lib/attestation.ts` `verifyReport` key binding); update procedure in this doc | a quote from an unknown image, or a genuine report for another model, fails in the browser |
