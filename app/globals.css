@@ -213,7 +213,6 @@ details summary { cursor: pointer; color: var(--text); }
 .proof-badge:hover { background: color-mix(in srgb, currentColor 16%, transparent) !important; }
 .proof-badge > svg { font-size: 18px; flex: none; }
 .proof-badge.tone-warn { color: var(--accent); } .proof-badge.tone-ok { color: var(--ok); } .proof-badge.tone-muted { color: var(--muted); } .proof-badge.tone-bad { color: var(--bad); }
-.chain-pill { font-size: 13px; color: var(--muted); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -419,12 +418,11 @@ details summary { cursor: pointer; color: var(--text); }
 }
 @media (max-width: 480px) {
   /* Phones (as in the design): the proof button and picker keep their icons; the text stays in their accessible names. */
-  .proof-badge .pb-label, .proof-badge .chain-pill { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .proof-badge .pb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .composer .tool-toggle { padding: 0 6px; }
   .composer { padding-left: 15px; padding-right: 10px; }
   .composer .tool-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .picker-name { max-width: 30vw; }
-  .proof-badge[data-level="checks-passed"] .pb-label:has(+ .chain-pill) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* shield + "unverified" on phones */
   .signup-btn { width: 34px; padding: 0; }
   .signup-ico { display: block; }
   .signup-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

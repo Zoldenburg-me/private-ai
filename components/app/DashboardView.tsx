@@ -38,7 +38,7 @@ const fine = (s: string) => s.replace(/ \(.*\)$/, "");
 
 /** The design's short status per enclave row; never "Verified" unless the chain is. */
 const STATUS: Record<Proof["level"], string> = {
-  verified: "Verified", "checks-passed": "Checks passed", "server-checked": "Server-checked", "gateway-checked": "Gateway checked",
+  verified: "Verified", "checks-passed": "Partly verified", "server-checked": "Server-checked", "gateway-checked": "Gateway checked",
   failed: "Check failed", unavailable: "Unavailable", pending: "Checking", "no-enclave": "No enclave",
 };
 

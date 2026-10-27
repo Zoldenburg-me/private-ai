@@ -40,6 +40,24 @@ describe("signed responses", () => {
     expect(verifySignedResponse({ text, signature: mockSign(text) }, mockAddress(), { reqSha256: "aa", respSha256: "cc" }).ok).toBe(false);
     expect(verifySignedResponse({ text, signature: mockSign(text) }, "0x" + "22".repeat(20)).ok).toBe(false);
   });
+  // NEAR has signed `model:req:resp` since 2026-03-04 (nearai/inference-proxy #50); the legacy form is `req:resp`.
+  const exp = { reqSha256: "aa", respSha256: "bb", model: "deepseek-ai/DeepSeek-V3.1" };
+  const signed = (t: string) => verifySignedResponse({ text: t, signature: mockSign(t) }, mockAddress(), exp);
+  it("accepts the legacy 2-part signed text", () => expect(signed("aa:bb").ok).toBe(true));
+  it("accepts the 3-part signed text naming the model we called", () => expect(signed("deepseek-ai/DeepSeek-V3.1:aa:bb").ok).toBe(true));
+  it("accepts a model id that itself contains a colon", () => {
+    const t = "org/m:fp8:aa:bb";
+    expect(verifySignedResponse({ text: t, signature: mockSign(t) }, mockAddress(), { ...exp, model: "org/m:fp8" }).ok).toBe(true);
+  });
+  it("rejects a 3-part signed text for another model", () => expect(signed("other/model:aa:bb").ok).toBe(false));
+  it("rejects a 3-part signed text when we don't know the model", () => {
+    const t = "deepseek-ai/DeepSeek-V3.1:aa:bb";
+    expect(verifySignedResponse({ text: t, signature: mockSign(t) }, mockAddress(), { reqSha256: "aa", respSha256: "bb" }).ok).toBe(false);
+  });
+  it("rejects a tampered hash in either form", () => {
+    expect(signed("deepseek-ai/DeepSeek-V3.1:aa:cc").ok).toBe(false);
+    expect(signed("aa:cc").ok).toBe(false);
+  });
 });
 
 describe("verifyReport on a report without key or quote", () => {

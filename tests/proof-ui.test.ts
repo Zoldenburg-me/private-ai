@@ -12,7 +12,7 @@ describe("proof model (honest badge)", () => {
     expect(p.level).toBe("checks-passed");
     expect(p.chainVerified).toBe(false);
     expect(p.label).not.toMatch(/^Verified/);
-    expect(p.label).toMatch(/chain not verified/);
+    expect(p.label).toMatch(/^Partly verified · hardware chain and other checks not run$/);
     expect(p.notVerified.length).toBeGreaterThan(0);
     const dcap = p.reports[0].items.find((i) => i.id === "dcap-chain");
     expect(dcap?.state).toBe("not-checked");

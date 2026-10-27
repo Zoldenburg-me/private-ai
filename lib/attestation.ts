@@ -84,13 +84,24 @@ export function recoverAddress(text: string, signatureHex: string): string {
 
 export interface SignedResponse { text: string; signature: string; signing_address?: string }
 
+/**
+ * NEAR's proxy signs `model:reqSha256:respSha256` since 2026-03-04 (nearai/inference-proxy #50); older replies sign
+ * `reqSha256:respSha256`. Both are accepted; the 3-part form must name the model we called.
+ */
+export function signedTextMatches(text: string, expected: { reqSha256: string; respSha256: string; model?: string }): boolean {
+  const hashes = `${expected.reqSha256}:${expected.respSha256}`;
+  if (text === hashes) return true;
+  // Whole-string compare: a model id may itself contain ":".
+  return !!expected.model && text === `${expected.model}:${hashes}`;
+}
+
 /** Verify a provider response signature: signer must be the attested address and the signed text must match our hashes. */
-export function verifySignedResponse(sig: SignedResponse, attestedAddress: string, expected?: { reqSha256: string; respSha256: string }): VerifyResult {
+export function verifySignedResponse(sig: SignedResponse, attestedAddress: string, expected?: { reqSha256: string; respSha256: string; model?: string }): VerifyResult {
   const checks: Check[] = [];
   let recovered = "";
   try { recovered = recoverAddress(sig.text, sig.signature); checks.push({ name: "signature recovers", ok: true }); }
   catch (e) { checks.push({ name: "signature recovers", ok: false, detail: (e as Error).message }); }
   checks.push({ name: "signer is attested enclave", ok: !!recovered && recovered.toLowerCase() === attestedAddress.toLowerCase() });
-  if (expected) checks.push({ name: "signed hashes match relay hashes", ok: sig.text === `${expected.reqSha256}:${expected.respSha256}` });
+  if (expected) checks.push({ name: "signed hashes match relay hashes", ok: signedTextMatches(sig.text, expected) });
   return { ok: checks.every((c) => c.ok), checks, signingAddress: recovered, chainVerified: false };
 }

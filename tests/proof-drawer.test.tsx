@@ -7,8 +7,8 @@ import { ProofBadge } from "@/components/app/ProofBadge";
 import { ProofDrawer } from "@/components/app/ProofDrawer";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ");
-// "not verified" / "unverified" are honest; a bare "verified" is a claim.
-const claimsVerified = (s: string) => /verified/i.test(s.replace(/(not( yet)?\s+|un)verified/gi, ""));
+// "not verified" / "unverified" / "partly verified" are honest; a bare "verified" is a claim.
+const claimsVerified = (s: string) => /verified/i.test(s.replace(/(not( yet)?\s+|un|partly\s+)verified/gi, ""));
 
 function passing(): Proof {
   const n = newNonce();
@@ -24,7 +24,8 @@ describe("proof badge (short, honest)", () => {
     const html = badge(p);
     expect(html).toContain(`aria-label="${p.label}"`);
     expect(html).toContain('data-testid="chain-status"');
-    expect(text(html)).toMatch(/unverified/); // the caveat is visible, not only a dot or tooltip
+    expect(text(html)).toMatch(/Partly verified/); // the caveat is visible, not only a dot or tooltip
+    expect(text(html) + p.label).not.toMatch(/passed/i); // no "passed" claim while checks are missing
     expect(text(html)).not.toContain("✓");
     expect(text(html).replace(/\s+/g, " ").trim().length).toBeLessThanOrEqual(20);
     expect(claimsVerified(text(html))).toBe(false);
@@ -53,13 +54,21 @@ describe("proof drawer (summary first)", () => {
   it("leads with a plain status line, model, time and a check count", () => {
     const html = drawer(passing());
     const summary = html.slice(0, html.indexOf("<details"));
-    expect(summary).toContain("Enclave checks passed");
-    expect(summary).toContain("The hardware certificate chain is not checked yet");
+    expect(summary).toContain("Partly verified");
+    expect(summary).not.toMatch(/checks passed</); // no bare "passed" status line while checks are missing
+    expect(summary).toContain("not a full proof");
     expect(summary).not.toMatch(/sealed|running in/i); // an unverified quote cannot prove where it runs
     expect(summary).toContain("mock:mock-tee-small");
     expect(summary).toContain("Checked");
-    expect(text(summary)).toMatch(/14 of 14 checks passed/);
+    expect(text(summary)).toMatch(/14 of 14 checks run passed · 6 not run yet/);
     expect(claimsVerified(text(summary))).toBe(false);
+  });
+
+  it("lists every check that did not run before the collapsed Technical details", () => {
+    const html = drawer(passing());
+    const before = text(html.slice(0, html.indexOf("<details")));
+    expect(before).toContain("Not checked yet");
+    for (const gap of [/DCAP certificate chain and TCB/, /NRAS/, /RTMR3/, /Image provenance/, /TLS binding/]) expect(before).toMatch(gap);
   });
 
   it("puts the key, the explanation and every check behind a collapsed Technical details", () => {

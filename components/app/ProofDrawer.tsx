@@ -29,7 +29,7 @@ const sdkName = (proof: Proof) => PROVIDER_LABEL[proof.modelRef.split(":")[0]] ?
 
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
-  "checks-passed": "Enclave checks passed",
+  "checks-passed": "Partly verified",
   "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
   "server-checked": "Our server checked this enclave's attestation with the provider's SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
@@ -40,7 +40,7 @@ const STATUS: Record<Proof["level"], string> = {
 
 // The design's note under the status line.
 const NOTE: Partial<Record<Proof["level"], string>> = {
-  "checks-passed": "The hardware certificate chain is not checked yet, so this is not a full proof.",
+  "checks-passed": "The checks below passed, but the ones listed under \"Not checked yet\" did not run, so this is not a full proof.",
 };
 
 /** The design's five key checks, read from the model enclave's report: label, and what a pass means. */
@@ -70,7 +70,7 @@ function KeyChecks({ items }: { items: ProofItem[] }) {
 function checkCount(items: ProofItem[]): string {
   const run = items.filter((i) => i.state !== "not-checked");
   const open = items.length - run.length;
-  return `${run.filter((i) => i.state === "pass").length} of ${run.length} checks passed${open ? ` · ${open} not checked yet` : ""}`;
+  return `${run.filter((i) => i.state === "pass").length} of ${run.length} checks run passed${open ? ` · ${open} not run yet` : ""}`;
 }
 
 function SummaryIcon({ level }: { level: Proof["level"] }) {
@@ -138,6 +138,13 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
 
           <KeyChecks items={proof.reports.find((rp) => rp.role === "model")?.items ?? items} />
 
+          {proof.notVerified.length > 0 && (
+            <section className="report" data-testid="not-verified">
+              <h3>{proof.level === "server-checked" ? "Not checked in this browser" : "Not checked yet"}</h3>
+              <ul className="not-verified">{proof.notVerified.map((n) => <li key={n}><Circle aria-hidden />{n}</li>)}</ul>
+            </section>
+          )}
+
           {failed.length > 0 && (
             <section className="report" data-testid="failed-checks">
               <h3>Failed</h3>
@@ -178,13 +185,6 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
                 )}
               </section>
             ))}
-
-            {proof.notVerified.length > 0 && (
-              <section className="report" data-testid="not-verified">
-                <h3>Not verified by this app (yet)</h3>
-                <ul className="not-verified">{proof.notVerified.map((n) => <li key={n}><Circle aria-hidden />{n}</li>)}</ul>
-              </section>
-            )}
 
             <section className="report">
               <h3>Per message</h3>
