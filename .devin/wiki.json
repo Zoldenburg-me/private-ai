@@ -1,0 +1,303 @@
+{
+  "repo_notes": [
+    {
+      "content": ""
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "What this app (Hiddensee ) is: a privacy-first, TEE-backed AI chat app on Next.js 15. Core invariants (no chat content on server, metadata-only, fail-closed), repo layout, and links to child pages.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Getting Started & Configuration",
+      "purpose": "Local dev setup, npm scripts (dev/build/test/test:integration/e2e), environment variables (.env.example), Docker/docker-compose, Next/Vitest/TS config.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Privacy Model & Design Invariants",
+      "purpose": "Ghost chat gate, metadata-only storage, fail-closed, no-logging rules, data inventory, agent/contributor rules from AGENTS.md and CLAUDE.md.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Design Docs & Research Specs",
+      "purpose": "Summarize docs/: spec-from-observation, venice/lumo studies, code-study-summary, e2e-enclave-encryption, backup-restore runbook.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Frontend Application",
+      "purpose": "Overview of the Next.js App Router client: root layout, landing site, chat UI, legal pages, component library. Links to children.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Chat UI & Client Orchestration",
+      "purpose": "app/chat/page.tsx Home orchestration, ChatThread, Sidebar, SettingsView, DashboardView, UsageMeter, ModelPicker/ToolsMenu, chat-stream SSE client, ChatScope concurrency, attachments.",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Client-Side Storage, Vault, Personas & Backups",
+      "purpose": "lib/storage.ts, lib/persist.ts ghost gate, lib/client/vault.ts encrypted vault, personas, PBKDF2/AES-GCM backup export/import, UI prefs, guest mode, and their tests.",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Rendering & Legal Pages",
+      "purpose": "SafeMarkdown sanitization in components/markdown.tsx, components/legal.tsx shell (LegalPage/Lang/Todo), and the agb/datenschutz/impressum/privacy-metadata routes.",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Landing Site, Models Page & Brand Assets",
+      "purpose": "Public marketing surface: app/page.tsx Landing composition, components/landing/* sections, SealScene/DotNarwhal/VaultSeal animations, sound, invite-gate and frontier feature copy gates, /models browser, and public/brand assets.",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Proof & Privacy-Mode UI",
+      "purpose": "ProofBadge/ProofDrawer enclave proof visualization, lib/client/proof.ts proof levels, lib/client/levels.ts privacy levels, PrivacyModes explainer, provider labels.",
+      "parent": "Frontend Application",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "API Layer",
+      "purpose": "Overview of app/api route structure, the thin-route + lib/*-routes.ts handler pattern, middleware/CSP, and health endpoint. Links to children.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Chat & Inference Endpoints",
+      "purpose": "POST /api/chat, OpenAI-compatible /api/v1/chat/completions, prepareChat/handleChat in lib/handler.ts, pai_options extensions, tier bounds, non-logging relay and pai_receipt SSE.",
+      "parent": "API Layer",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Model Catalog & Routing",
+      "purpose": "lib/catalog.ts normalisation of provider models, catalog cache, /api/models and /api/v1/models, lib/routing.ts auto-routing and cheapest-route selection, incognito/anon model gates, privacy badges.",
+      "parent": "API Layer",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Account Data Export & Deletion",
+      "purpose": "GDPR export/delete endpoints, device listing/signout, and lib/account-routes.ts cascading deletion behavior plus the erasure ledger.",
+      "parent": "API Layer",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Agent Loop, Tools & Web Search",
+      "purpose": "POST /api/agent, runAgent tool-orchestration loop in lib/agent.ts, TOOLS registry (web_search, generate_image, web_context_search), lib/web-search.ts and near-search, image generation, SSE tool events, agent evals.",
+      "parent": "API Layer",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Admin Panel & Operator APIs",
+      "purpose": "/admin UI and /api/admin endpoints: account listing, entitlement overrides, provider key management (ADMIN_KEY_KEK), invite codes, audit log; access control via ADMIN_ACCOUNT_IDS.",
+      "parent": "API Layer",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Identity, Sessions & Access Control",
+      "purpose": "Overview of anonymous sessions, passkeys, tiers, invite gating and rate limiting. Links to children.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Session Tokens & Entitlements",
+      "purpose": "HMAC token issue/verify, pai_session cookie, lazy account rows, tierOf precedence, /api/session route, guest mode.",
+      "parent": "Identity, Sessions & Access Control",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "WebAuthn Passkeys & Step-Up Auth",
+      "purpose": "Registration/login options+verify routes, lib/passkey.ts, passkey-routes, Redis challenges, step-up requirement, device management, test soft authenticator.",
+      "parent": "Identity, Sessions & Access Control",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Rate Limiting, Tiers & Abuse Limits",
+      "purpose": "lib/ratelimit.ts gate/recordFailure/usage, tier definitions and quotas, error budget, lib/limits.ts abuse counters, Caddy rate-limit keying, response headers.",
+      "parent": "Identity, Sessions & Access Control",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Invite Gate & Signup Admission",
+      "purpose": "lib/invite.ts invite codes, inviteGateOn, pending-admission flow in Redis, admin-managed invites, how the gate changes landing copy and passkey registration.",
+      "parent": "Identity, Sessions & Access Control",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "TEE, Attestation & Provider Relay",
+      "purpose": "Overview of upstream provider abstraction, enclave attestation, signature verification and mocks. Links to children.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Provider Abstraction & Streaming Relay",
+      "purpose": "lib/providers.ts upstream OpenAI-compatible providers (tinfoil, phala, near, venice, liquid, privatemode, redpill), provider-fetch, lib/relay.ts non-logging byte relay, SSE parsing, pai_receipt hashes.",
+      "parent": "TEE, Attestation & Provider Relay",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Attestation & Signature Verification",
+      "purpose": "lib/attestation.ts nonce/TDX debug-bit/report_data checks, EIP-191 recovery, lib/evidence.ts, provider-specific evidence (tinfoil, privatemode), /api/attestation and /api/signature routes.",
+      "parent": "TEE, Attestation & Provider Relay",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Mock Provider & Mock TEE",
+      "purpose": "lib/mock-server.ts, lib/mock-tee.ts and /api/mock/v1/* routes (chat, models, images, search, attestation, signature) used for MOCK_PROVIDER=1 local and e2e runs.",
+      "parent": "TEE, Attestation & Provider Relay",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "End-to-End Enclave Encryption & DCAP",
+      "purpose": "docs/e2e-enclave-encryption.md design, lib/client/e2e/dcap.ts TDX quote v4/v5 parsing, fixture-driven tests, and how browser-side verification complements server checks.",
+      "parent": "TEE, Attestation & Provider Relay",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Persistence & Billing",
+      "purpose": "Overview of server-side metadata storage backends, migrations, Stripe billing and credits. Links to children.",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Store Layer: AccountStore & CounterStore",
+      "purpose": "lib/store/ types, memory/postgres/redis implementations, fail-closed selection in index.ts, contract tests, erasure ledger.",
+      "parent": "Persistence & Billing",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Migrations, Backups & Startup Instrumentation",
+      "purpose": "migrations/NNN_*.sql, lib/store/migrate.ts advisory-lock runner, instrumentation.ts boot hooks and boot-config checks, scripts/backup-db.sh + restore-db.sh + reerase.sql runbook.",
+      "parent": "Persistence & Billing",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Stripe Billing & Subscriptions",
+      "purpose": "lib/billing.ts, lib/billing-routes.ts, checkout/portal/webhook routes, tier entitlement updates from webhooks.",
+      "parent": "Persistence & Billing",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    }
+  ]
+}
