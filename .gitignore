@@ -7,3 +7,6 @@ next-env.d.ts
 
 # Claude Code session worktrees
 .claude/worktrees/
+
+# Pentest software-passkey key files (never commit)
+.private/
