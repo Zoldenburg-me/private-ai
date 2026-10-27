@@ -98,7 +98,7 @@ export function startCollateralCache(fetchImpl: typeof fetch = fetch): () => Pro
 
 const fail = (status: number, message: string) => Response.json({ error: { message } }, { status, headers: { "Cache-Control": "no-store" } });
 
-/** GET ?fmspc=<12 hex>&ca=platform|processor → dcap-qvl QuoteCollateralV3 fields. Needs a session; a wait for Intel counts as an evidence fetch. */
+/** GET ?fmspc=<12 hex>&ca=platform|processor → dcap-qvl QuoteCollateralV3 fields. Needs a session; a wait for Intel counts as an evidence fetch (per account and overall). */
 export const collateralRoute = (fetchImpl: typeof fetch = fetch) => withStores(async (req: Request): Promise<Response> => {
   const id = await identityFrom(req); if (!id) return fail(401, "missing or invalid session token");
   const url = new URL(req.url);
@@ -106,7 +106,9 @@ export const collateralRoute = (fetchImpl: typeof fetch = fetch) => withStores(a
   const ca = url.searchParams.get("ca");
   if (!/^[0-9A-F]{12}$/.test(fmspc) || (ca !== "platform" && ca !== "processor")) return fail(400, "fmspc=<12 hex> and ca=platform|processor required");
   const keys = ["root", `pck:${ca}`, "qe", `tcb:${fmspc}`];
-  if (!keys.every((k) => age(k) < STALE_MAX_MS)) { const limited = await overLimit(LIMITS.evidenceAll, "evidence-all"); if (limited) return limited; }
+  if (!keys.every((k) => age(k) < STALE_MAX_MS)) {
+    const limited = await overLimit(LIMITS.evidence, `evidence:${id}`) ?? await overLimit(LIMITS.evidenceAll, "evidence-all"); if (limited) return limited;
+  }
   try {
     return Response.json(Object.assign({}, ...(await Promise.all(keys.map((k) => part(k, fetchImpl))))), { headers: { "Cache-Control": "no-store" } });
   } catch {

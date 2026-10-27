@@ -90,6 +90,19 @@ describe("collateral relay (N1b): Intel's collateral from a process-memory cache
     expect(upstream.slice(n)).toEqual([expect.stringContaining("fmspc=000000000000")]); // the shared parts came from memory
   });
 
+  it("counts fetches that wait for Intel against the per-account evidence limit, cache hits not", async () => {
+    vi.stubEnv("PAI_LIMIT_EVIDENCE_PER_MIN", "2");
+    try {
+      const token = await session();
+      expect((await get(req(Q, token))).status).toBe(200); // cold: counted
+      expect((await get(req(Q, token))).status).toBe(200); // from memory: free
+      expect((await get(req("fmspc=000000000001&ca=platform", token))).status).toBe(502); // counted
+      const r = await get(req("fmspc=000000000002&ca=platform", token));
+      expect(r.status).toBe(429);
+      expect(upstream.some((u) => u.includes("000000000002"))).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("is filled at startup and refreshed before entries go stale", async () => {
     const run = startCollateralCache(intel);
     await run(); // the startup fill already ran; await one more pass to settle it
