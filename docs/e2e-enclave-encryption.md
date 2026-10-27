@@ -204,6 +204,9 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
   Ed25519 keys on both sides, converted to X25519 for ECDH; HKDF-SHA256, no salt, info `ed25519_encryption`;
   XChaCha20-Poly1305, no AAD. Each encrypted field is hex of `ephemeral_pub(32) ‖ nonce(24) ‖ ciphertext+tag`, in
   both directions. The server key is the model's attested Ed25519 `signing_public_key`.
+  N2b implements it in `lib/client/e2e/near.ts` (fresh client key per request, field sealing and opening),
+  checked against a fixed vector from NEAR's Python verifier; the mock enclave (`lib/mock-tee.ts`) speaks it with a
+  test-only DCAP root that `npm run build` keeps out of the browser bundle. Not wired into the chat yet.
 - **Headers [confirmed]:** `X-Signing-Algo: ed25519`, `X-Client-Pub-Key`, `X-Encryption-Version: 2`,
   `X-Encrypt-All-Fields: true`, `X-Model-Pub-Key` (pins the backend; the gateway strips it). Without the version
   header the server falls back to v1, which the verifier flags as broken: the client always sends `2`.
@@ -219,6 +222,9 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
 - **No associated data [confirmed]:** roles, order, sampling parameters and `finish_reason` are outside the seal, so
   only the reply signature (§7) shows that the relay changed them: the browser compares the signed request hash
   with the hash of the exact bytes it sent, so any change to a plaintext field fails the check.
+  `X-Client-Pub-Key` is outside the seal too: a relay can swap it for its own key, read the reply and re-seal it to
+  the browser's key. The signature check catches that only after the relay has read the reply **[inferred]: N0 to
+  check whether NEAR's signed text binds the client key**.
 - **Where it is decrypted [confirmed]:** in the model's CVM (inference-proxy). NEAR's cloud-api gateway, itself a TDX
   enclave, forwards ciphertext and sees what our relay sees.
 - **Web search [confirmed]:** `web_context_search` runs in the model CVM; only the query leaves it, to Brave, over
