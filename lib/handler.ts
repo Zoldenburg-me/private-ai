@@ -56,7 +56,8 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
       return g.allowed ? null : g.reason!;
     };
     const onStep = p.price ? (u: { prompt: number; completion: number } | null, body: Record<string, unknown>, streamed: number) => charge(p, u, streamed, body) : undefined;
-    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
+    const credits = { available: async () => (await creditsAvailable(p.id, p.tier)).total, charge: (micros: number) => chargeCredits(p.id, p.tier, micros) };
+    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, credits, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }

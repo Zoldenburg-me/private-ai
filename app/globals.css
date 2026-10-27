@@ -307,7 +307,7 @@ details summary { cursor: pointer; color: var(--text); }
 .tool-steps ul { margin: 4px 0 0; padding-left: 18px; }
 .tool-steps a { color: var(--accent); overflow-wrap: anywhere; }
 .gen-images figure { margin: 0 0 10px; }
-.gen-images img { display: block; max-width: min(100%, 512px); height: auto; border-radius: 8px; }
+.gen-images img, .gen-images video { display: block; max-width: min(100%, 512px); height: auto; border-radius: 8px; }
 .gen-images figcaption { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 .gen-images a { color: var(--accent); }
 .gen-images .gen-failed { margin: 0; font-size: 12.5px; color: var(--muted); }

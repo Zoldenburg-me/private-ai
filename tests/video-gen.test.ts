@@ -1,0 +1,124 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { TOOL_HEARTBEAT_MS, runAgent } from "../lib/agent";
+import { VIDEO_COST_MICROS, generateVideo, isMp4 } from "../lib/video-gen";
+import { parseSseChunk } from "../lib/sse";
+import type { TierId } from "../lib/tiers";
+
+const enc = new TextEncoder();
+const sse = (events: unknown[]) => new Response(new ReadableStream({ start(c) {
+  for (const e of events) c.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+  c.enqueue(enc.encode("data: [DONE]\n\n")); c.close();
+} }));
+const callStream = () => sse([{ id: "c1", choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "generate_video", arguments: `{"prompt":"a red cat"}` } }] }, finish_reason: "tool_calls" }] }]);
+const answerStream = () => sse([{ id: "c2", choices: [{ delta: { content: "Here it is." } }] }, { id: "c2", choices: [{ delta: {}, finish_reason: "stop" }] }]);
+const anon = { id: "venice", name: "Venice", privacy: "anon-gateway" as const, baseUrl: "http://upstream/v1", apiKey: "k", defaultModel: "" };
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2")]);
+const BFL_ENV = { BFL_API_KEY: "bfl-key" };
+
+/** BFL: submit, one Pending poll, Ready, then the clip; `over` replaces any step's response. */
+function bfl(over: { poll?: string; sample?: string; status?: string; clip?: Buffer } = {}) {
+  const calls: { url: string; key: string | null }[] = []; let polls = 0;
+  const fetchImpl = (async (url: string, init: RequestInit = {}) => {
+    calls.push({ url, key: new Headers(init.headers).get("x-key") });
+    if (url.endsWith("/flux-3-video")) return Response.json({ id: "j1", polling_url: over.poll ?? "https://api.eu.bfl.ai/v1/get_result?id=j1" });
+    if (url.includes("get_result")) return Response.json(polls++ === 0 ? { status: "Pending" } : { status: over.status ?? "Ready", result: { sample: over.sample ?? "https://delivery.eu.bfl.ai/x.mp4?sig=1" } });
+    return new Response(new Uint8Array(over.clip ?? MP4));
+  }) as unknown as typeof fetch;
+  return { fetchImpl, calls };
+}
+
+afterEach(() => { vi.useRealTimers(); });
+
+async function run(o: { tier?: TierId; provider?: typeof anon; credit?: number }) {
+  const bodies: Record<string, unknown>[] = []; const b = bfl(); const charged: number[] = [];
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    if (!url.startsWith("http://upstream")) return b.fetchImpl(url, init);
+    bodies.push(JSON.parse(String(init.body)));
+    return bodies.length === 1 ? callStream() : answerStream();
+  }) as unknown as typeof fetch;
+  const res = runAgent({ provider: o.provider ?? anon, body: { model: "m", messages: [{ role: "user", content: "film a cat" }] }, maxSteps: 3, tier: o.tier,
+    credits: { available: async () => o.credit ?? 10_000_000, charge: async (m) => { charged.push(m); } },
+    beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const text = res.text(); await vi.runAllTimersAsync();
+  const out = parseSseChunk((await text) + "\n");
+  const names = ((bodies[0].tools ?? []) as { function?: { name: string } }[]).map((t) => t.function?.name);
+  return { out, names, charged, bflCalls: b.calls.length };
+}
+
+describe("generate_video tool", () => {
+  it("is offered on paid Anon chats only", async () => {
+    expect((await run({ tier: "pro" })).names).toContain("generate_video");
+    expect((await run({ tier: "free" })).names).not.toContain("generate_video");
+    expect((await run({ tier: "pro", provider: { ...anon, id: "phala", privacy: "tee-attested" as never } })).names).not.toContain("generate_video");
+  });
+
+  it("sends the clip to the browser and charges its credit once it exists", async () => {
+    const r = await run({ tier: "pro" });
+    const done = r.out.tools.find((t) => t.status === "done")!;
+    expect(done).toMatchObject({ name: "generate_video", query: "a red cat" });
+    expect(done.video).toMatch(/^data:video\/mp4;base64,/);
+    expect(r.charged).toEqual([VIDEO_COST_MICROS]);
+    expect(r.out.deltas.join("")).toBe("Here it is.");
+  });
+
+  it("keeps the stream alive while a clip renders", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    const b = bfl(); let release!: () => void; const slow = new Promise<void>((r) => { release = r; });
+    let n = 0;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      if (!url.startsWith("http://upstream")) { if (url.includes("get_result")) await slow; return b.fetchImpl(url, init); }
+      return n++ === 0 ? callStream() : answerStream();
+    }) as unknown as typeof fetch;
+    const res = runAgent({ provider: anon, body: { model: "m", messages: [{ role: "user", content: "film" }] }, maxSteps: 3, tier: "pro",
+      credits: { available: async () => 10_000_000, charge: async () => {} }, beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl });
+    const text = res.text();
+    await vi.advanceTimersByTimeAsync(TOOL_HEARTBEAT_MS * 3 + 1);
+    release(); await vi.advanceTimersByTimeAsync(10_000);
+    const statuses = parseSseChunk((await text) + "\n").tools.map((t) => t.status);
+    expect(statuses.filter((s) => s === "running").length).toBeGreaterThanOrEqual(4);
+    expect(statuses.at(-1)).toBe("done");
+  });
+
+  it("makes no paid call without enough credit", async () => {
+    const r = await run({ tier: "pro", credit: VIDEO_COST_MICROS - 1 });
+    expect(r.bflCalls).toBe(0);
+    expect(r.charged).toEqual([]);
+    expect(r.out.tools.map((t) => t.status)).toEqual(["running", "error"]);
+  });
+});
+
+describe("generateVideo", () => {
+  const gen = async (over: Parameters<typeof bfl>[0]) => {
+    const b = bfl(over); vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const p = generateVideo("a cat", BFL_ENV, b.fetchImpl).then((v) => v, (e: { status: number }) => e.status);
+    await vi.runAllTimersAsync();
+    return { result: await p, calls: b.calls };
+  };
+
+  it("sends the key to BFL only, never to the delivery URL", async () => {
+    const { result, calls } = await gen({});
+    expect(result).toMatch(/^data:video\/mp4;base64,/);
+    expect(calls[0]).toEqual({ url: "https://api.eu.bfl.ai/v1/flux-3-video", key: "bfl-key" });
+    expect(calls.at(-1)).toEqual({ url: "https://delivery.eu.bfl.ai/x.mp4?sig=1", key: null });
+  });
+
+  it("refuses polling or sample URLs off BFL's hosts", async () => {
+    expect((await gen({ poll: "https://evil.example/get_result" })).result).toBe(502);
+    expect((await gen({ poll: "https://bfl.ai.evil.example/x" })).result).toBe(502);
+    expect((await gen({ sample: "http://169.254.169.254/latest" })).result).toBe(502);
+  });
+
+  it("treats moderation and non-MP4 bodies as refusals", async () => {
+    expect((await gen({ status: "Content Moderated" })).result).toBe(422);
+    expect((await gen({ status: "Task not found" })).result).toBe(422);
+    expect((await gen({ clip: Buffer.from("<html>") })).result).toBe(422);
+  });
+
+  it("the client keeps only inline MP4 data URLs", () => {
+    const ev = (video: string) => `event: agent_tool\ndata: ${JSON.stringify({ id: "1", name: "generate_video", status: "done", video })}\n\n`;
+    expect(parseSseChunk(ev("data:video/mp4;base64,AAAA")).tools[0].video).toBe("data:video/mp4;base64,AAAA");
+    expect(parseSseChunk(ev("https://delivery.eu.bfl.ai/x.mp4")).tools[0].video).toBeUndefined();
+    expect(isMp4(MP4)).toBe(true);
+  });
+});

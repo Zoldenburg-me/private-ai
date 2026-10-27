@@ -99,16 +99,21 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
   );
 }
 
-/** Generated images above a reply. They are shown live only: history keeps the answer text, so the caption offers a download. */
+/** Generated images and videos above a reply. They are shown live only: history keeps the answer text, so the caption offers a download. */
 function GeneratedImages({ tools }: { tools: ToolEvent[] }) {
   return (
     <div className="gen-images" data-testid="gen-images">
       {tools.map((t) => (
         <figure key={t.id} data-status={t.status}>
-          {t.image
+          {t.video
+            ? <video src={t.video} controls playsInline aria-label={t.query ? `Generated video: ${t.query.slice(0, 120)}` : "Generated video"} />
+            : t.image
             // eslint-disable-next-line @next/next/no-img-element -- an inline data URL: nothing for next/image to fetch or optimise
             ? <img src={t.image} alt={t.query ? `Generated image: ${t.query.slice(0, 120)}` : "Generated image"} />
+            : t.name === "generate_video"
+            ? <p role="status" className={t.status === "running" ? "writing" : "gen-failed"}>{t.status === "running" ? "Generating video… this takes a minute or two" : "No video: generation failed or you have too little credit"}</p>
             : <p role="status" className={t.status === "running" ? "writing" : "gen-failed"}>{t.status === "running" ? "Generating image…" : "No image: generation failed or your plan's limit was reached"}</p>}
+          {t.video && <figcaption><a href={t.video} download="hiddensee-video.mp4">Download</a> · not saved in your chat history</figcaption>}
           {t.image && <figcaption><a href={t.image} download={`hiddensee-image.${t.image.slice(11, t.image.indexOf(";")).replace("jpeg", "jpg")}`}>Download</a> · not saved in your chat history</figcaption>}
         </figure>
       ))}
@@ -184,8 +189,9 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
   const view = replyView(content, running, isLast);
   // A reloaded chat has no attachments, only their names and text inside the stored message.
   const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
-  const images = tools?.filter((t) => t.name === "generate_image") ?? [];
-  const searches = tools?.filter((t) => t.name !== "generate_image") ?? [];
+  const isMedia = (t: ToolEvent) => t.name === "generate_image" || t.name === "generate_video";
+  const images = tools?.filter(isMedia) ?? [];
+  const searches = tools?.filter((t) => !isMedia(t)) ?? [];
   const replyLevel = replyLevelOf(incognito, signed);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>

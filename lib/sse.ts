@@ -1,15 +1,16 @@
 export interface Receipt { chat_id: string; provider: string; model: string; req_sha256: string; resp_sha256: string }
 /** One agent tool step, as /api/agent streams it in `event: agent_tool` (same id: running, then done or error). */
-export interface ToolEvent { id: string; name: string; status: "running" | "done" | "error"; query?: string; results?: { title: string; url: string }[]; image?: string }
+export interface ToolEvent { id: string; name: string; status: "running" | "done" | "error"; query?: string; results?: { title: string; url: string }[]; image?: string; video?: string }
 
 const isToolEvent = (v: unknown): v is ToolEvent => typeof v === "object" && v !== null &&
   typeof (v as ToolEvent).id === "string" && typeof (v as ToolEvent).name === "string" && ["running", "done", "error"].includes((v as ToolEvent).status);
 
-/** Keeps a tool event's image only as an inline PNG, JPEG or WebP data URL: nothing that loads from elsewhere or runs. */
+/** Keeps a tool event's image only as an inline PNG, JPEG or WebP data URL and its video only as an inline MP4: nothing that loads from elsewhere or runs. */
 const IMAGE_URL = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+const VIDEO_URL = /^data:video\/mp4;base64,[A-Za-z0-9+/]+={0,2}$/;
 const safeImage = (t: ToolEvent): ToolEvent => {
-  if (t.image === undefined || (typeof t.image === "string" && IMAGE_URL.test(t.image))) return t;
-  const { image: _drop, ...rest } = t; void _drop; return rest;
+  const { image, video, ...rest } = t;
+  return { ...rest, ...(typeof image === "string" && IMAGE_URL.test(image) ? { image } : {}), ...(typeof video === "string" && VIDEO_URL.test(video) ? { video } : {}) };
 };
 
 /**
