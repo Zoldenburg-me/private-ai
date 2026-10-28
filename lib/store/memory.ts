@@ -1,4 +1,4 @@
-import type { AccountStore, CreditBalance, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, QuotaScope, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import type { AccountStore, CreditBalance, CreditSplit, AuditEntry, ConsumeLimits, ConsumeResult, CounterStore, QuotaScope, Device, Entitlement, EntitlementSource, HitResult, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
 import { dailySuffix, dayKey, minuteStartOf, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 
 /** In-memory stores for tests and local dev. Same semantics as the Postgres/Redis ones. */
@@ -54,6 +54,22 @@ export class MemoryAccountStore implements AccountStore {
     c.includedSpent += fromIncluded; c.purchased -= micros - fromIncluded;
     this.credits.set(id, c);
     return { ...c };
+  }
+  async reserveCredits(id: string, micros: number, month: string, allowance: number) {
+    if (!this.sessions.has(id)) throw new Error("no such account"); // foreign key in Postgres
+    const c = this.credits.get(id) ?? { purchased: 0, includedSpent: 0, includedMonth: month };
+    if (c.includedMonth < month) { c.includedSpent = 0; c.includedMonth = month; }
+    const included = Math.min(Math.max(allowance - c.includedSpent, 0), micros);
+    if (included + c.purchased < micros) return null;
+    c.includedSpent += included; c.purchased -= micros - included;
+    this.credits.set(id, c);
+    return { included, purchased: micros - included };
+  }
+  async refundCredits(id: string, taken: CreditSplit, month: string) {
+    const c = this.credits.get(id);
+    if (!c) return; // the account was deleted meanwhile
+    if (c.includedMonth === month) c.includedSpent = Math.max(c.includedSpent - taken.included, 0);
+    c.purchased += taken.purchased;
   }
   async addCredits(id: string, micros: number, stripeSessionId: string) {
     if (!this.sessions.has(id)) throw new Error("no such account"); // foreign key in Postgres

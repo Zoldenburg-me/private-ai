@@ -44,7 +44,7 @@ interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string; usage: { prompt: number; completion: number } | null }
 
 /** `imageProvider`: NEAR, resolved with stored keys, for the image tool (whatever provider the chat uses). */
-interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig }
+interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig; webSearch?: boolean; video?: boolean }
 /**
  * `charge` counts one more message against the user's limits, like a step, and returns the refusal reason or null;
  * `remaining` is the user's daily messages left at the last check (undefined when unknown).
@@ -69,7 +69,7 @@ export type AgentTool = EnclaveTool | LocalTool;
 export const TOOLS = new Map<string, AgentTool>([
   ["web_search", {
     def: WEB_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN,
-    available: ({ provider, env }) => !searchesInEnclave(provider) && searchConfigured(env),
+    available: ({ provider, env, webSearch }) => webSearch !== false && !searchesInEnclave(provider) && searchConfigured(env),
     shown: (args) => { const query = queryOf(args); return query ? { query } : null; },
     run: async (args, ctx) => {
       const results = await webSearch(queryOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
@@ -97,14 +97,16 @@ export const TOOLS = new Map<string, AgentTool>([
   }],
   ["generate_video", {
     def: VIDEO_TOOL, maxPerRun: MAX_VIDEOS_PER_RUN,
-    // Anon mode only: BFL is reached under our account like the anonymized gateways, not in an enclave.
-    available: ({ provider, env, tier }) => provider.privacy === "anon-gateway" && videoConfigured(env) && !!tier && tier !== "free",
+    // Anon mode only: BFL is reached under our account like the anonymized gateways, not in an enclave. And only when the
+    // user asked for a clip in this message: the model alone must never send chat content to another provider.
+    available: ({ provider, env, tier, video }) => !!video && provider.privacy === "anon-gateway" && videoConfigured(env) && !!tier && tier !== "free",
     shown: (args) => { const query = promptOf(args); return query ? { query } : null; },
     run: async (args, ctx) => {
-      // Credit first, the charge only once the clip exists: a failed or refused clip costs nothing.
-      if (!ctx.credits || (await ctx.credits.available()) < VIDEO_COST_MICROS) throw Object.assign(new Error("not enough credits"), { status: 402 });
-      const video = await generateVideo(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
-      await ctx.credits.charge(VIDEO_COST_MICROS);
+      // Reserved before the call, atomically, so parallel chats cannot spend the same credit twice; a failed or refused clip is refunded.
+      const refund = await ctx.credits?.reserve(VIDEO_COST_MICROS);
+      if (!refund) throw Object.assign(new Error("not enough credits"), { status: 402 });
+      let video: string;
+      try { video = await generateVideo(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal); } catch (e) { await refund(); throw e; }
       return { forModel: "video generated and already shown to the user above your reply; do not add a link for it", event: { video } };
     },
     errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: video limit for this answer reached",
@@ -128,8 +130,12 @@ export interface AgentOpts {
   tier?: TierId;
   /** NEAR with stored keys applied, for the image tool. */
   imageProvider?: ProviderConfig;
-  /** The user's spendable credit in micro-euros and a charge against it, for the video tool. */
-  credits?: { available: () => Promise<number>; charge: (micros: number) => Promise<void> };
+  /** For the video tool: takes micro-euros from the user's credit if it covers them; returns their refund, or null. */
+  credits?: { reserve: (micros: number) => Promise<(() => Promise<void>) | null> };
+  /** The user switched on video for this message (`pai_options.video`): only then is the video tool offered. */
+  video?: boolean;
+  /** false: the user has web search off and sent only for a video clip (`pai_options.web_search` unset). */
+  webSearch?: boolean;
   /** Rate-limit check before every step after the first; returns the refusal reason or null. */
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
   /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
@@ -153,7 +159,7 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier, imageProvider: o.imageProvider });
+  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier, imageProvider: o.imageProvider, webSearch: o.webSearch, video: o.video });
   const defs = [...tools.values()].map((t) => t.def);
   const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
   const inEnclave = enclave !== undefined;

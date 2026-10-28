@@ -6,9 +6,13 @@ import { LIMITS, overLimit } from "@/lib/limits";
 import { TIERS } from "@/lib/tiers";
 import { inviteGateOn } from "@/lib/invite";
 import { searchConfigured } from "@/lib/web-search";
+import { videoConfigured } from "@/lib/video-gen";
 
-/** Agent mode (web search) needs a search key, and under the invite gate an account (see handler.ts). */
-const features = (signedIn: boolean) => ({ webSearch: searchConfigured(process.env) && (signedIn || !inviteGateOn()) });
+/** Agent mode (web search) needs a search key, and under the invite gate an account (see handler.ts); a video clip goes through agent mode. */
+const features = (signedIn: boolean) => {
+  const webSearch = searchConfigured(process.env) && (signedIn || !inviteGateOn());
+  return { webSearch, video: webSearch && videoConfigured(process.env) };
+};
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

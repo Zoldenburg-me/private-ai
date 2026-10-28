@@ -2,7 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { TOOL_HEARTBEAT_MS, runAgent } from "../lib/agent";
 import { VIDEO_COST_MICROS, generateVideo, isMp4 } from "../lib/video-gen";
 import { parseSseChunk } from "../lib/sse";
-import type { TierId } from "../lib/tiers";
+import { TIERS, type TierId } from "../lib/tiers";
+import { creditsAvailable, reserveCredits } from "../lib/credits";
+import { issueToken, setTier } from "../lib/session";
+import { stores } from "../lib/store";
 
 const enc = new TextEncoder();
 const sse = (events: unknown[]) => new Response(new ReadableStream({ start(c) {
@@ -29,21 +32,30 @@ function bfl(over: { poll?: string; sample?: string; status?: string; clip?: Buf
 
 afterEach(() => { vi.useRealTimers(); });
 
-async function run(o: { tier?: TierId; provider?: typeof anon; credit?: number }) {
-  const bodies: Record<string, unknown>[] = []; const b = bfl(); const charged: number[] = [];
+/** A balance the video tool reserves from like the store does: all or nothing, refundable. */
+function ledger(balance: number) {
+  const l = { balance, refunds: 0, reserve: async (m: number) => {
+    if (l.balance < m) return null;
+    l.balance -= m; return async () => { l.balance += m; l.refunds++; };
+  } };
+  return l;
+}
+
+async function run(o: { tier?: TierId; provider?: typeof anon; credit?: number; video?: boolean; over?: Parameters<typeof bfl>[0] }) {
+  const bodies: Record<string, unknown>[] = []; const b = bfl(o.over); const credits = ledger(o.credit ?? 10_000_000); const start = credits.balance;
   const fetchImpl = (async (url: string, init: RequestInit) => {
     if (!url.startsWith("http://upstream")) return b.fetchImpl(url, init);
     bodies.push(JSON.parse(String(init.body)));
     return bodies.length === 1 ? callStream() : answerStream();
   }) as unknown as typeof fetch;
   const res = runAgent({ provider: o.provider ?? anon, body: { model: "m", messages: [{ role: "user", content: "film a cat" }] }, maxSteps: 3, tier: o.tier,
-    credits: { available: async () => o.credit ?? 10_000_000, charge: async (m) => { charged.push(m); } },
+    credits, video: o.video ?? true,
     beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl });
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const text = res.text(); await vi.runAllTimersAsync();
   const out = parseSseChunk((await text) + "\n");
   const names = ((bodies[0].tools ?? []) as { function?: { name: string } }[]).map((t) => t.function?.name);
-  return { out, names, charged, bflCalls: b.calls.length };
+  return { out, names, spent: start - credits.balance, refunds: credits.refunds, bflCalls: b.calls.length };
 }
 
 describe("generate_video tool", () => {
@@ -53,13 +65,29 @@ describe("generate_video tool", () => {
     expect((await run({ tier: "pro", provider: { ...anon, id: "phala", privacy: "tee-attested" as never } })).names).not.toContain("generate_video");
   });
 
+  it("is offered only when the user switched video on for this message, so the model alone never reaches BFL", async () => {
+    const r = await run({ tier: "pro", video: false });
+    expect(r.names).not.toContain("generate_video");
+    expect(r.bflCalls).toBe(0);
+    expect(r.out.tools.find((t) => t.name === "generate_video")?.status).not.toBe("done");
+  });
+
   it("sends the clip to the browser and charges its credit once it exists", async () => {
     const r = await run({ tier: "pro" });
     const done = r.out.tools.find((t) => t.status === "done")!;
     expect(done).toMatchObject({ name: "generate_video", query: "a red cat" });
     expect(done.video).toMatch(/^data:video\/mp4;base64,/);
-    expect(r.charged).toEqual([VIDEO_COST_MICROS]);
+    expect(r.spent).toBe(VIDEO_COST_MICROS);
+    expect(r.refunds).toBe(0);
     expect(r.out.deltas.join("")).toBe("Here it is.");
+  });
+
+  it("refunds the reserved credit when the clip is refused", async () => {
+    const r = await run({ tier: "pro", over: { status: "Content Moderated" } });
+    expect(r.bflCalls).toBeGreaterThan(0);
+    expect(r.spent).toBe(0);
+    expect(r.refunds).toBe(1);
+    expect(r.out.tools.map((t) => t.status)).toEqual(["running", "error"]);
   });
 
   it("keeps the stream alive while a clip renders", async () => {
@@ -71,7 +99,7 @@ describe("generate_video tool", () => {
       return n++ === 0 ? callStream() : answerStream();
     }) as unknown as typeof fetch;
     const res = runAgent({ provider: anon, body: { model: "m", messages: [{ role: "user", content: "film" }] }, maxSteps: 3, tier: "pro",
-      credits: { available: async () => 10_000_000, charge: async () => {} }, beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl });
+      credits: ledger(10_000_000), video: true, beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl });
     const text = res.text();
     await vi.advanceTimersByTimeAsync(TOOL_HEARTBEAT_MS * 3 + 1);
     release(); await vi.advanceTimersByTimeAsync(10_000);
@@ -83,8 +111,33 @@ describe("generate_video tool", () => {
   it("makes no paid call without enough credit", async () => {
     const r = await run({ tier: "pro", credit: VIDEO_COST_MICROS - 1 });
     expect(r.bflCalls).toBe(0);
-    expect(r.charged).toEqual([]);
+    expect(r.spent).toBe(0);
     expect(r.out.tools.map((t) => t.status)).toEqual(["running", "error"]);
+  });
+
+  it("two chats rendering at once cannot spend the same credit twice", async () => {
+    const { id } = issueToken();
+    await setTier(id, "pro");
+    const { accounts } = await stores();
+    const allowance = TIERS.pro.includedCreditsEur * 1e6;
+    await accounts.spendCredits(id, allowance, new Date().toISOString().slice(0, 7), allowance); // this month's included credit used up
+    await accounts.addCredits(id, VIDEO_COST_MICROS + VIDEO_COST_MICROS / 2, "cs_video_race"); // one and a half clips
+    let bflSubmits = 0;
+    const one = () => {
+      const b = bfl(); let n = 0;
+      const fetchImpl = (async (url: string, init: RequestInit) => {
+        if (!url.startsWith("http://upstream")) { if (url.endsWith("/flux-3-video")) bflSubmits++; return b.fetchImpl(url, init); }
+        return n++ === 0 ? callStream() : answerStream();
+      }) as unknown as typeof fetch;
+      return runAgent({ provider: anon, body: { model: "m", messages: [{ role: "user", content: "film" }] }, maxSteps: 3, tier: "pro", video: true,
+        credits: { reserve: (m) => reserveCredits(id, "pro", m) }, beforeStep: async () => null, env: BFL_ENV, log: () => {}, route: "/api/agent", fetchImpl }).text();
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const both = Promise.all([one(), one()]); await vi.runAllTimersAsync();
+    const done = (await both).map((t) => parseSseChunk(t + "\n").tools.filter((e) => e.status === "done").length);
+    expect(done.sort()).toEqual([0, 1]);
+    expect(bflSubmits).toBe(1);
+    expect((await creditsAvailable(id, "pro")).purchased).toBe(VIDEO_COST_MICROS / 2);
   });
 });
 

@@ -57,6 +57,9 @@ export interface ThreadProps {
   incognito?: Incognito;
   /** Send through /api/agent: the model may search the web. A standing line under the composer says so. */
   webSearch?: boolean;
+  /** The user switched on a video clip for the next message (ToolsMenu); used once, then `onVideoSent` switches it off. */
+  video?: boolean;
+  onVideoSent?: () => void;
   /** The selected model reads images (its input modalities include image); otherwise only documents can be attached. */
   images?: boolean;
   /** The selected privacy level: picks the narwhal on the welcome screen. */
@@ -244,7 +247,9 @@ export function ChatThread(props: ThreadProps) {
       const history = toChatMessages(messages as never, { images: !!p.images });
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
-      const agent = !!p.webSearch; // the model decides per message whether to search
+      const video = !!p.video; // this message only: the server offers the video tool only when it is set
+      if (video) p.onVideoSent?.();
+      const agent = !!p.webSearch || video; // the model decides per message whether to search
       const incognito = p.incognito; // the route this turn is sent to, kept with the reply
       // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
@@ -264,7 +269,7 @@ export function ChatThread(props: ThreadProps) {
           return;
         }
         try {
-          for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent })) {
+          for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent, video })) {
             text = u.text; tools = u.tools; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining, u.limit, u.quota);
             yield { content: [{ type: "text", text }], metadata: { custom: { tools, incognito } } };
           }

@@ -97,6 +97,8 @@ export default function Home() {
   const [ghost, setGhost] = useState(false);
   const [ghostSearch, setGhostSearch] = useState(false); // ghost chat only, memory only
   const [searchAvailable, setSearchAvailable] = useState(false); // /api/session features.webSearch
+  const [videoAvailable, setVideoAvailable] = useState(false); // /api/session features.video
+  const [videoNext, setVideoNext] = useState(false); // a video clip for the next message only, memory only
   const [billing, setBilling] = useState<Billing | null>(null);
   const [sessionReady, setSessionReady] = useState(false); // evidence needs the session cookie
   const [scope] = useState(() => new ChatScope());
@@ -160,7 +162,7 @@ export default function Home() {
     fetch("/api/session").then((r) => r.json()).then((s) => {
       if (!s.error) setSessionReady(true); // a 429/503 sets no cookie, so evidence would only 401
       else setNotice("Could not reach your session: plan, usage and sign-in status are unknown. Reload to try again.");
-      setTier(s.tier); setAccount(s.account ?? null); setSearchAvailable(s.features?.webSearch === true);
+      setTier(s.tier); setAccount(s.account ?? null); setSearchAvailable(s.features?.webSearch === true); setVideoAvailable(s.features?.video === true);
       if (s.usage) setUsage({ remaining: s.usage.remainingToday, limit: s.usage.dailyLimit });
       setIncognitoUsage(s.incognitoUsage ? { remaining: s.incognitoUsage.remainingToday, limit: s.incognitoUsage.dailyLimit, incognito: true } : null);
       fetch("/api/billing").then((r) => r.json()).then(setBilling).catch(() => {});
@@ -559,9 +561,10 @@ export default function Home() {
                 incognito={selectedPrivacy === "private" || selectedPrivacy === "anonymized" ? selectedPrivacy : undefined}
                 ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
                   <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
-                webSearch={webSearch}
+                webSearch={webSearch} video={videoAvailable && videoNext} onVideoSent={() => setVideoNext(false)}
                 images={imagesFor(models, modelRef, sendRef)} level={mode.level}
-                toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))} />}
+                toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))}
+                  video={videoAvailable ? { on: videoNext, onChange: setVideoNext } : undefined} />}
                 modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} signedIn={account ? account.signedIn : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
                   privacy={{ level: mode.level, onLevel: switchLevel, auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
             : vaultError ? <div className="loading bad">{vaultError}</div> : <div className="loading muted">Unlocking encrypted history…</div>

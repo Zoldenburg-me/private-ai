@@ -12,13 +12,13 @@ const answerStream = () => sse([{ id: "c2", choices: [{ delta: { content: "Done"
 const provider = { id: "mock", name: "Mock", privacy: "tee-attested" as const, baseUrl: "http://upstream/v1", apiKey: "k", defaultModel: "" };
 
 /** Runs the agent against a model that calls `name` once, then answers; returns the model bodies and the client events. */
-async function run(name: string) {
+async function run(name: string, webSearch?: boolean) {
   const bodies: Record<string, unknown>[] = [];
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     bodies.push(JSON.parse(String(init.body)));
     return bodies.length === 1 ? callStream(name) : answerStream();
   }) as unknown as typeof fetch;
-  const res = runAgent({ provider, body: { model: "m", messages: [{ role: "user", content: "q" }] }, maxSteps: 3, beforeStep: async () => null,
+  const res = runAgent({ provider, body: { model: "m", messages: [{ role: "user", content: "q" }] }, maxSteps: 3, beforeStep: async () => null, webSearch,
     env: { MOCK_PROVIDER: "1" }, log: () => {}, route: "/api/agent", fetchImpl });
   const out = parseSseChunk((await res.text()) + "\n");
   const toolMsg = (bodies[1].messages as { role: string; content: string }[]).at(-1)!;
@@ -28,6 +28,12 @@ async function run(name: string) {
 afterEach(() => { TOOLS.delete("echo"); });
 
 describe("agent tool map", () => {
+  it("web search is not offered when the user sent only for a video clip (web_search unset)", async () => {
+    const names = (b: Record<string, unknown>) => ((b.tools ?? []) as { function: { name: string } }[]).map((t) => t.function.name);
+    expect(names((await run("no_such_tool")).bodies[0])).toContain("web_search");
+    expect(names((await run("no_such_tool", false)).bodies[0])).not.toContain("web_search");
+  });
+
   it("an unknown tool name gets the fixed error", async () => {
     const { out, toolMsg } = await run("no_such_tool");
     expect(toolMsg).toMatchObject({ role: "tool", content: "error: unknown tool no_such_tool" });

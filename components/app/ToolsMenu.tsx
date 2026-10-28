@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Lightbulb, MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { Check, FilmStrip, Lightbulb, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 
-/** The composer's "+" menu: tools the model may call. Web search is the only live one; Think longer is marked "coming soon". Files go through the paperclip. */
-export function ToolsMenu({ available, webSearch, onWebSearch, ghost }: { available: boolean; webSearch: boolean; onWebSearch: (on: boolean) => void; ghost?: boolean }) {
+/** The composer's "+" menu: tools the model may call. Web search, and a video clip for the next message where the server offers it; Think longer is marked "coming soon". Files go through the paperclip. */
+export function ToolsMenu({ available, webSearch, onWebSearch, ghost, video }: { available: boolean; webSearch: boolean; onWebSearch: (on: boolean) => void; ghost?: boolean;
+  video?: { on: boolean; onChange: (on: boolean) => void } }) {
   const [open, setOpen] = useState(false);
   const [tipOff, setTipOff] = useState(false); // Escape hides the hover/focus hint (WCAG 1.4.13: it can cover the draft)
   const uid = useId();
@@ -38,6 +39,13 @@ export function ToolsMenu({ available, webSearch, onWebSearch, ghost }: { availa
               <span className="pi-desc">{!available ? "Not available on this server" : `${ghost ? "Off by default in ghost chat" : "When needed"}; queries go to Brave, without your identity. Each search counts as a message.`}</span></span>
             <Check weight="bold" aria-hidden className="pi-check" style={{ visibility: on ? "visible" : "hidden" }} />
           </button>
+          {video && (
+            <button type="button" aria-pressed={video.on} className="picker-item" data-testid="tool-video" onClick={() => video.onChange(!video.on)}>
+              <span className="pi-text"><span className="pi-name"><FilmStrip weight="duotone" aria-hidden /> Video clip</span>
+                <span className="pi-desc">Next message only, Anon mode on a paid plan. Its prompt goes to Black Forest Labs, without your identity. About 1.25 EUR of credit per clip.</span></span>
+              <Check weight="bold" aria-hidden className="pi-check" style={{ visibility: video.on ? "visible" : "hidden" }} />
+            </button>
+          )}
           <button type="button" aria-disabled="true" className="picker-item">
             <span className="pi-text"><span className="pi-name"><Lightbulb weight="duotone" aria-hidden /> Think longer</span><span className="pi-desc">Coming soon</span></span>
           </button>
