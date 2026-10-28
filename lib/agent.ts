@@ -112,7 +112,7 @@ export const TOOLS = new Map<string, AgentTool>([
     errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: video limit for this answer reached",
       failed: "error: no video: generation failed, was refused, or the user has too little credit (about 1.25 EUR per clip); tell the user" },
   }],
-  ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider }) => searchesInEnclave(provider), inEnclave: true }],
+  ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider, webSearch }) => webSearch !== false && searchesInEnclave(provider), inEnclave: true }],
 ]);
 
 /** The tools a run offers: those available for its provider, env and tier. */

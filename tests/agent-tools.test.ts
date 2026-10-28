@@ -32,6 +32,10 @@ describe("agent tool map", () => {
     const names = (b: Record<string, unknown>) => ((b.tools ?? []) as { function: { name: string } }[]).map((t) => t.function.name);
     expect(names((await run("no_such_tool")).bodies[0])).toContain("web_search");
     expect(names((await run("no_such_tool", false)).bodies[0])).not.toContain("web_search");
+    const near = { ...provider, id: "near" };
+    const tools = (webSearch?: boolean) => ((firstStepBody({ model: "m", messages: [] }, 3, { provider: near, env: {}, webSearch }).tools ?? []) as { type: string }[]).map((t) => t.type);
+    expect(tools()).toContain("web_context_search"); // NEAR searches in its enclave: same switch
+    expect(tools(false)).not.toContain("web_context_search");
   });
 
   it("an unknown tool name gets the fixed error", async () => {

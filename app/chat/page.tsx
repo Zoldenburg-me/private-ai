@@ -416,6 +416,9 @@ export default function Home() {
     ?? (autoOn && !modelRef && signInUnlocks(models, usable, mode.level) ? "Sign in to use the models on this level." : undefined);
   // Web search: on by default (Settings can turn it off); in ghost chat off until switched on in the "+" menu, never saved.
   const searchPref = ghost ? ghostSearch : mode.webSearch;
+  // The server offers the video tool on paid plans through an Anon gateway only (lib/agent.ts); the option shows only there.
+  const videoOffered = videoAvailable && !!tier && tier.id !== "free" && models.find((m) => `${m.provider}:${m.id}` === sendRef)?.privacy === "anonymized";
+  useEffect(() => { if (!videoOffered) setVideoNext(false); }, [videoOffered]);
   const webSearch = searchAvailable && searchPref;
   const filtered = useMemo(() => chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase())), [chats, query]);
   // Incognito models have their own quota, so the limit comes from the same response as the remaining count.
@@ -561,10 +564,10 @@ export default function Home() {
                 incognito={selectedPrivacy === "private" || selectedPrivacy === "anonymized" ? selectedPrivacy : undefined}
                 ghostToggle={<button type="button" className={`tool-toggle ${ghost ? "on" : ""}`} data-testid="ghost-toggle" aria-pressed={ghost} title="Ghost chat: never saved" onClick={toggleGhost}>
                   <Ghost weight={ghost ? "fill" : "duotone"} aria-hidden /><span className="tool-toggle-label">{ghost ? "Ghost on" : "Ghost"}</span></button>}
-                webSearch={webSearch} video={videoAvailable && videoNext} onVideoSent={() => setVideoNext(false)}
+                webSearch={webSearch} video={videoOffered && videoNext} onVideoSent={() => setVideoNext(false)}
                 images={imagesFor(models, modelRef, sendRef)} level={mode.level}
                 toolsSlot={<ToolsMenu available={searchAvailable} webSearch={searchPref} ghost={ghost} onWebSearch={(on) => (ghost ? setGhostSearch(on) : updateMode({ webSearch: on }))}
-                  video={videoAvailable ? { on: videoNext, onChange: setVideoNext } : undefined} />}
+                  video={videoOffered ? { on: videoNext, onChange: setVideoNext } : undefined} />}
                 modelSlot={<ModelPicker models={levelModels(models, mode.level, mode.pickProvider)} value={modelRef} onChange={pick} paidPlan={tier ? tier.id !== "free" : undefined} signedIn={account ? account.signedIn : undefined} onExplain={() => setModes(true)} level={proof?.level} loadFailed={modelsFailed}
                   privacy={{ level: mode.level, onLevel: switchLevel, auto: autoOn, onAuto: () => pick(AUTO), note: routeNote }} />} />
             : vaultError ? <div className="loading bad">{vaultError}</div> : <div className="loading muted">Unlocking encrypted history…</div>
