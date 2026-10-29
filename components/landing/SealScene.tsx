@@ -82,7 +82,7 @@ export function SealScene() {
   return (
     <section ref={ref} className={`l-seal${STEP_CLASS[step]}`} aria-labelledby="seal-h">
       <h2 id="seal-h">Your question ends up sealed in the chip.</h2>
-      <p className="lead">Max Privacy chats run inside one hardware enclave. Our relay passes your message on without storing it, and the host machine and the cloud only see ciphertext.</p>
+      <p className="lead">Max Privacy models run inside attested hardware enclaves whose memory the host machine cannot read. Our relay passes your message on in memory without storing or logging it.</p>
       <div className="seal-stage">
         <div className="seal-q" aria-hidden>
           <p>{text || <span className="muted">Ask anything, privately</span>}<span className="seal-caret" /></p>

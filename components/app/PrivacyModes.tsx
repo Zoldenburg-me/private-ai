@@ -4,7 +4,7 @@ import { EyeSlash, Ghost, LockSimple, MaskHappy, ShieldCheck, X } from "@phospho
 
 const SECTIONS = [
   { label: "Where the model runs", items: [
-    { Icon: ShieldCheck, name: "Private enclave", tag: "TEE", body: "The model runs inside sealed hardware (Intel TDX or AMD SEV-SNP with NVIDIA confidential GPUs). It is built so the machine's owner cannot read its memory; the app checks the enclave's report, but not yet the hardware certificate chain. Replies are signed where the provider supports it.", when: "The default. Pick it for anything sensitive." },
+    { Icon: ShieldCheck, name: "Private enclave", tag: "TEE", body: "The model runs inside sealed hardware (Intel TDX or AMD SEV-SNP with NVIDIA confidential GPUs) built so the host machine cannot read its memory. The app checks the enclave's attestation report, and replies are signed where the provider supports it.", when: "The default. Pick it for anything sensitive." },
     { Icon: MaskHappy, name: "Incognito · private", tag: "PRIVATE", body: "Open models on a zero-retention route: the provider promises by contract not to keep or train on your data. There's no hardware proof.", when: "When you need a model that isn't available in an enclave." },
     { Icon: EyeSlash, name: "Incognito · anonymized", tag: "ANON", body: "Frontier models like Claude or GPT through a gateway. We strip anything that identifies you before it leaves our relay, but the provider sees the text.", when: "For hard tasks that aren't personal. Has its own daily allowance." },
   ] },

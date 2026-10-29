@@ -16,22 +16,29 @@ describe("landing claims follow the invite gate", () => {
 
   it("gate off: no-signup copy", () => {
     vi.stubEnv("INVITE_CODES", "");
+    vi.stubEnv("INVITE_ONLY", "");
     expect(render(Hero)).toContain("Start chatting, no signup");
     expect(render(Closing)).toContain("No account.");
-    expect(render(Compare)).not.toContain("Invite-only beta");
+    expect(render(Compare)).not.toContain("Invite required");
   });
 
-  it("gate on: never claims no signup or no account", () => {
+  it("gate on: never claims no signup or no account (INVITE_CODES or INVITE_ONLY=1)", () => {
     vi.stubEnv("INVITE_CODES", "test-code-1");
     const html = render(Hero) + render(Closing) + render(Compare);
     expect(html).toContain("Start chatting with an invite");
-    expect(html).toContain("Invite-only beta");
+    expect(html).toContain("Invite required");
     expect(html).not.toContain("no signup");
     expect(html).not.toContain("No account.");
+    vi.stubEnv("INVITE_CODES", "");
+    vi.stubEnv("INVITE_ONLY", "1");
+    const html2 = render(Hero) + render(Closing) + render(Compare);
+    expect(html2).toContain("Start chatting with an invite");
+    expect(html2).toContain("Invite required");
   });
 
   it("about page: no-signup claim only while the gate is off", () => {
     vi.stubEnv("INVITE_CODES", "");
+    vi.stubEnv("INVITE_ONLY", "");
     expect(render(About)).toContain("Start chatting without signing up");
     vi.stubEnv("INVITE_CODES", "test-code-1");
     const html = render(About);
@@ -103,13 +110,14 @@ describe("landing claims follow the invite gate", () => {
     expect(html).toContain("Technical details");
     expect(html).toContain("Not verified yet");
     expect(html).toContain("Example reply."); // the demo is labelled as an example
-    expect(html).toContain("chain not verified yet"); // and claims no more than the app shows today
-    expect(html).not.toMatch(/signed in (the )?enclave/i); // with the chain unverified the app says "signature matches", not "signed by"
+    expect(html).toContain("Enclave attested");
+    expect(html).toContain("Signed by enclave key");
+    expect(html).not.toMatch(/signed in (the )?enclave/i); // with the chain unverified the app says "Signed by enclave key", not "Signed in the enclave"
     for (const n of NOT_VERIFIED) expect(html).toContain(n.replace(/&/g, "&amp;"));
   });
 });
 
-// Pricing belongs to lib/tiers.ts (another branch reworks it): the page shows what TIERS has and nothing it lacks.
+// Pricing belongs to lib/tiers.ts: the page shows what TIERS has and nothing it lacks.
 describe("landing pricing follows lib/tiers.ts", () => {
   const html = renderToStaticMarkup(Pricing({ frontier: true }));
 

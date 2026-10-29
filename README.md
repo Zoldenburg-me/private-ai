@@ -1,6 +1,6 @@
-# private-ai (working title)
+# Hiddensee
 
-Clean-room private AI chat by Zoldenburg UG. Feature goals are drawn from public descriptions of private-AI chat products. **.** All code is original (MIT-compatible deps only; see Licenses).
+Clean-room private AI chat by Zoldenburg UG. Feature goals are drawn from public descriptions of private-AI chat products. All code is original (MIT-compatible deps only; see Licenses).
 
 ## Architecture
 ```
@@ -37,18 +37,19 @@ Stripe Checkout / Portal ──webhook──► /api/billing/webhook ──► e
 
 Configure in `.env.local` (copy `.env.example`). Never commit keys.
 
-## Tiers (PROPOSAL placeholders, lib/tiers.ts)
-| Tier | €/mo | Msgs/day | Context | Models |
-|---|---|---|---|---|
-| Free | 0 | 20 | 8k | basic |
-| Pro | 15 | 1,000 | 128k | all |
-| Max | 49 | unlimited (fair use) | 1M | all |
+## Tiers (lib/tiers.ts)
+| Tier | €/mo | Max Privacy/day | Top Max/day | Private & Incognito/day | Frontier credit/mo | Context | Agent steps |
+|---|---|---|---|---|---|---|---|
+| Free | 0 | 20 | 0 | 50 | €0 | 8k | 3 |
+| Plus | 8 | 300 | 10 | 300 | €1 | 32k | 5 |
+| Pro | 15 | 1,000 | 25 | 1,000 | €2 | 128k | 8 |
+| Max | 49 | 5,000 | 100 | 5,000 | €8 | 1M | 15 |
 
-## Implemented (clean-room, see docs/venice-docs-study.md §6)
+## Implemented
 - **Model catalog** (`/api/models`, `/api/v1/models`): every model gets a privacy badge (TEE / PRIVATE / ANONYMIZED, plus E2EE). Policy: TEE and zero-retention models can be selected, plus anonymized frontier models (GPT, Claude, Gemini) through the Venice gateway (`VENICE_*`), which are never the default and show "No enclave" instead of an enclave proof. Any other model is blocked, and the server enforces it with a 403.
 - **Relay** (`lib/relay.ts`): never logs or stores content. The only logger is `lib/log.ts`, which accepts metadata fields only. The relay sends hashes of the upstream request and response as a `pai_receipt` SSE event.
 - **Server-side tiers and fair use** (`lib/session.ts`, `lib/ratelimit.ts`): anonymous HMAC-signed session tokens, entitlements stored on the server, daily, per-minute and context limits, `x-ratelimit-*` and `x-usage-*` headers, and a budget of 20 errors per 30 s.
-- **Enclave proof** (`lib/attestation.ts`): the client creates a nonce, then checks the echoed nonce, that the TDX debug bit is off, that `report_data` binds the signer and the nonce, and the GPU evidence nonce. It also checks the provider's response signature (EIP-191 recover → attested address, and the signed text must be our receipt's `req:resp` hashes, or NEAR's `model:req:resp` naming the model we called). UI: "Partly verified", with the checks that did not run listed in the proof drawer, and, per reply, "signature matches the enclave's reported key · chain not verified". "Verified" and "signed by enclave" are shown only once the Intel/NVIDIA certificate chain is verified, which the app does not do yet.
+- **Enclave proof** (`lib/attestation.ts`): the client creates a nonce, then checks the echoed nonce, that the TDX debug bit is off, that `report_data` binds the signer and the nonce, and the GPU evidence nonce. It also checks the provider's response signature (EIP-191 recover → attested address, and the signed text must be our receipt's `req:resp` hashes, or NEAR's `model:req:resp` naming the model we called). UI: "Enclave attested", with the checks that did not run listed in the proof drawer, and, per reply, "Signed by enclave key". "Verified" and "Signed in the enclave" are shown only once the Intel/NVIDIA certificate chain is verified, which the app does not do yet.
   - **Not yet:** Intel DCAP certificate chain and TCB checks (dcap-qvl) and NVIDIA NRAS. Results carry `chainVerified: false`.
 - **Encrypted backup** (`lib/backup.ts`): PBKDF2-SHA256 (310k) → AES-256-GCM in the browser; each export is decrypted once to check it before download.
 - **Personas** (`lib/personas.ts`): stored in the browser, private by default.
@@ -204,12 +205,10 @@ Export, `account.id`) to `ENTITLEMENTS='{"<account id>":"pro"}'` and restart.
 - [ ] Payments via crypto (x402 / Zold) as an accountless alternative
 - [ ] DCAP quote chain + NVIDIA NRAS verification (dcap-qvl wasm)
 - [ ] Model picker from provider /models, image gen, doc upload
-- [ ] Zero-access encrypted sync (P3 in docs/venice-lumo-integration-plan.md), now that persistence exists
+- [ ] Zero-access encrypted sync, now that persistence exists
 - [x] CI job running the integration tests against Postgres/Redis services
 - [ ] Brand
 
 ## Licenses
-Dependencies: next (MIT), react/react-dom (MIT), postgres (Unlicense, public-domain dedication), ioredis (MIT), @simplewebauthn/server + /browser (MIT), stripe (MIT), react-markdown (MIT), remark-gfm (MIT), @noble/* (MIT); dev: typescript (Apache-2.0), vitest (MIT). Next itself pulls in sharp/libvips (LGPL-3.0, optional image optimisation, dynamically linked) and caniuse-lite (CC-BY-4.0). No third-party UI code copied; nothing from Proton Lumo (GPLv3) or Venice.
+Dependencies: next (MIT), react/react-dom (MIT), postgres (Unlicense, public-domain dedication), ioredis (MIT), @simplewebauthn/server + /browser (MIT), stripe (MIT), react-markdown (MIT), remark-gfm (MIT), @noble/* (MIT); dev: typescript (Apache-2.0), vitest (MIT). Next itself pulls in sharp/libvips (LGPL-3.0, optional image optimisation, dynamically linked) and caniuse-lite (CC-BY-4.0). All code is original.
 
-## Clean-room observation and REA
-`docs/lumo-docs-study.md` (Proton Lumo) and `docs/venice-lumo-integration-plan.md` (prioritised work items from both studies) follow the same public-docs method. `docs/code-study-summary.md` summarises the architecture of Lumo's GPLv3 web client and Venice's MIT repos. It is written in our own words and copies no code; Venice's closed web app was not touched. `docs/spec-from-observation.md` is the feature spec, built only from public pages and docs. [REA](https://github.com/morluto/rea) (MIT) is a reverse-engineering MCP and CLI. Its bundle, decompile and traffic tools must **not** be used on third-party products here. We use it only as a browser-scenario harness against our own app (`tests/e2e/rea-own-app-scenario.json`). No REA code is vendored.

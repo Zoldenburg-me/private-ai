@@ -3,7 +3,7 @@ import { ModeStory } from "@/components/landing/ModeStory";
 import { SealScene } from "@/components/landing/SealScene";
 import { BRAND, Closing, Compare, Faq, Hero, HowItWorks, PoweredBy, Pricing, Proof, SiteFooter, SiteNav, Vault, frontierOn } from "@/components/landing/Sections";
 
-// Always per request: the invite-gate copy (INVITE_CODES) must never be frozen at build time.
+// Always per request: the invite-gate copy (INVITE_CODES or INVITE_ONLY=1) must never be frozen at build time.
 export const dynamic = "force-dynamic";
 
 export const metadata = {

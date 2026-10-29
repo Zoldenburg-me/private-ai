@@ -4,7 +4,7 @@ import {
   ArrowRight, ArrowsLeftRight, Check, Cpu, Eye, EyeSlash, Key, LockSimple, Minus, Monitor, Plus, ShieldCheck, X,
 } from "@phosphor-icons/react/dist/ssr";
 import { NOT_VERIFIED } from "@/lib/client/proof";
-import { inviteCodes } from "@/lib/invite";
+import { inviteGateOn } from "@/lib/invite";
 import { DEFS, loadProviders } from "@/lib/providers";
 import { liveProviders } from "@/lib/provider-keys";
 import { FRONTIER_MODELS, TIERS, type Tier, type TierId } from "@/lib/tiers";
@@ -16,8 +16,8 @@ import { SoundToggle } from "./SoundToggle";
 import { VaultSeal } from "./VaultSeal";
 
 export const BRAND = "Hiddensee";
-/** The page's "no signup" claims are only true while the invite gate (INVITE_CODES) is off. */
-export const gated = () => inviteCodes().length > 0;
+/** The page's "no signup" claims are only true while the invite gate (INVITE_CODES or INVITE_ONLY=1) is off. */
+export const gated = () => inviteGateOn();
 /** Frontier models are only offered when a gateway is configured (VENICE_API_KEY or LIQUID_API_KEY; an empty <PREFIX>_MODELS turns it off). */
 const frontier = () => loadProviders().some((p) => p.privacy === "anon-gateway");
 /** The same check with admin-panel keys (what the chat uses). If the key store is down, fall back to env keys: claim less, never more. */
@@ -197,10 +197,10 @@ export function Proof() {
             <div className="demo-top">
               <span className="demo-model">GLM 5.3</span>
               <span className="demo-route">NEAR AI enclave</span>
-              <span className="demo-status"><ShieldCheck weight="bold" aria-hidden />Enclave checks passed</span>
+              <span className="demo-status"><ShieldCheck weight="bold" aria-hidden />Enclave attested</span>
             </div>
             <p className="demo-reply">Narwhals are toothed whales that live year-round in the Arctic. The long tusk is an elongated canine tooth, packed with nerve endings.</p>
-            <figcaption><span>TDX quote checked</span><span>signature matches the enclave&rsquo;s key</span><span>chain not verified yet</span></figcaption>
+            <figcaption><span>TDX quote checked</span><span>Signed by enclave key</span></figcaption>
           </figure>
           <p className="fine">Example reply. In the app these checks run before you chat, and the proof panel shows the result.</p>
           <details className="l-tech">
@@ -247,7 +247,7 @@ type Row = { label: string; cells: readonly [us: Cell, chatgpt: Cell, lumo: Cell
 const RIVALS = [BRAND, "ChatGPT", "Lumo", "Duck.ai"] as const;
 // Competitor facts from each provider's public privacy pages; re-check before each release.
 const compareRows = (frontierLive: boolean): readonly Row[] => [
-  { label: "Use it without an account", cells: [gated() ? ["part", "Invite-only beta"] : ["yes", "No signup"], ["part", "Limited"], ["part", "Limited"], ["yes", "No signup"]] },
+  { label: "Use it without an account", cells: [gated() ? ["part", "Invite required"] : ["yes", "No signup"], ["part", "Limited"], ["part", "Limited"], ["yes", "No signup"]] },
   { label: "Chat history kept off their servers", cells: [["yes", "Only in your browser"], ["no", "Saved to your account"], ["part", "Saved, encrypted"], ["yes", "On your device"]] },
   { label: "Your chats never train models", cells: [["yes", "Never"], ["part", "Opt-out needed"], ["yes", "Never"], ["yes", "Never"]] },
   { label: "Shows what ran your chat", cells: [["part", "Enclave proof per model, replies signed where supported"], ["no", "No"], ["no", "No"], ["no", "No"]] },

@@ -5,7 +5,7 @@ import { COMPANY } from "@/components/legal";
 import { DotField } from "@/components/landing/DotField";
 import { RepelArt } from "@/components/landing/RepelArt";
 
-// Always per request: the invite-gate copy (INVITE_CODES) must never be frozen at build time.
+// Always per request: the invite-gate copy (INVITE_CODES or INVITE_ONLY=1) must never be frozen at build time.
 export const dynamic = "force-dynamic";
 
 export const metadata = {
@@ -17,7 +17,7 @@ const rules = () => [
   { title: "Prove it, do not promise it", body: "Max Privacy runs in hardware enclaves whose attestation the app checks before you chat. You can read the proof yourself." },
   { title: "Keep nothing we do not need", body: "The server holds an opaque id, your plan, timestamps and counters. No prompts, no replies, no IP addresses, no emails." },
   gated()
-    ? { title: "No email, ever", body: "During the beta you start with an invite, not an email address. Add a passkey if you want your plan on more than one device." }
+    ? { title: "No email, ever", body: "You start with an invite code, not an email address. Add a passkey if you want your plan on more than one device." }
     : { title: "No account by default", body: "Start chatting without signing up. Add a passkey later if you want your plan on more than one device." },
   { title: "Say what we cannot check", body: "We verify the enclave, not what the model writes. Zero retention in Private mode is a contract, and we label it that way." },
 ];

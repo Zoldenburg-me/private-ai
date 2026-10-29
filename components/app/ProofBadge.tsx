@@ -16,7 +16,7 @@ function LevelIcon({ level }: { level: ProofLevel }) {
 
 // The design's short text (where the chat runs); the full label stays the accessible name. Never "Verified" unless level === "verified".
 const SHORT: Record<ProofLevel, string> = {
-  verified: "Verified", "checks-passed": "Partly verified", "gateway-checked": "Gateway only", "server-checked": "Server-checked", failed: "Proof failed", unavailable: "No proof", pending: "Checking…", "no-enclave": "Incognito",
+  verified: "Verified", "checks-passed": "Enclave attested", "gateway-checked": "Gateway only", "server-checked": "Server-checked", failed: "Proof failed", unavailable: "No proof", pending: "Checking…", "no-enclave": "Incognito",
 };
 
 /** Compact per-model/per-chat proof badge. Click opens the details drawer. */

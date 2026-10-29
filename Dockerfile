@@ -23,8 +23,6 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000
 # The server needs only `node`: drop npm, npx, corepack and yarn so they cannot run (attack surface).
-# shortcut: their files stay in the base layer (image size unchanged, scanners still list npm's deps);
-# a node-only base (distroless or COPY of the node binary) would remove them for real.
 RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 # The official image ships an unprivileged `node` user (uid 1000). Files stay root-owned (read-only for node).

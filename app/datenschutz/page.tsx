@@ -1,4 +1,4 @@
-import { LegalPage, Lang, Todo, COMPANY as C } from "@/components/legal";
+import { LegalPage, Lang, Todo, Draft, COMPANY as C } from "@/components/legal";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { AUDIT_LOG_DAYS } from "@/lib/store/types";
 
@@ -15,7 +15,7 @@ export default function Datenschutz() {
 
         <h2>1. Controller and contact</h2>
         <p>{C.name}, {C.street}, {C.city}, Germany. Email: <a href={`mailto:${C.email}`}>{C.email}</a>, fax: <a href={C.faxHref}>{C.fax}</a>. Further details in the <a href="/impressum">legal notice</a>.</p>
-        <p>Data protection officer: {C.director}, reachable at the same email address. <Todo>check whether a designation is required (Art. 37 GDPR, § 38 BDSG) and confirm it</Todo></p>
+        <p>Privacy and data protection contact: <a href={`mailto:${C.email}`}>{C.email}</a>. <Todo>check whether a DPO designation is required (Art. 37 GDPR, § 38 BDSG) and confirm it</Todo></p>
 
         <h2>2. In short</h2>
         <ul>
@@ -46,25 +46,16 @@ export default function Datenschutz() {
         </ul>
         <p>These services receive the content of your message and the reply, and we cannot technically prove what they do with it. Do not enter details that identify you in these chats.</p>
         <h3>Web search</h3>
-        <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries. Where the search runs depends on the provider.
-          For models on NEAR AI Cloud, NEAR runs the search inside the model’s enclave: only the query leaves the enclave, from there to the Brave Search API<Todo>Brave as NEAR’s sub-processor: confirm in the DPA with NEAR</Todo>.
-          The query and the results reach you through our server like the reply; we neither store nor log them.
-          For all other models, our server sends the query to the Brave Search API
-         <Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>. This applies at every privacy level, including enclave models (Max):
-          the search query then leaves the enclave. Only the query text is sent, not your chat history,
-          account id, IP address or session token. The query can still repeat parts of your message. We neither store nor log it.
-          Switch web search off under Settings → Account → “Privacy &amp; tools” or in the chat bar’s “+” menu; in ghost chat it is off until you turn it on there.
-          We keep this setting only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
+        <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries.
+          For models on NEAR AI Cloud, NEAR runs the search inside the model’s enclave and sends only the query to the Brave Search API<Todo>Brave as NEAR’s sub-processor: confirm in the DPA with NEAR</Todo>.
+          For all other models (including enclave models), our server sends the query to the Brave Search API<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>, so the search query leaves the enclave.
+          Only the query text is sent, not your chat history, account id, IP address or session token, though the query may repeat parts of your message. We neither store nor log queries or results, and keep your web-search preference only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
         <h3>Image generation</h3>
-        <p>Image generation (Pro and Max, only with web search on, not for models on NEAR AI Cloud): when you ask for an image, the model may write an image description. Our server sends that description to an image model
-          on NEAR AI Cloud that runs in an attested enclave, even when you picked another provider for the chat. Only the description is sent, not your chat history,
-          account id, IP address or session token; the description can still repeat parts of your message. The image reaches you through our server;
-          we neither store nor log the description or the image, and your browser does not keep the image in your chat history either. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
+        <p>Image generation (Pro and Max, only with web search on, not for models on NEAR AI Cloud): when you ask for an image, the model writes an image description that our server sends to an attested enclave image model on NEAR AI Cloud, even when you picked another provider for the chat.
+          Only the description is sent, not your chat history, account id, IP address or session token. Neither our server nor your browser’s chat history stores the description or the image. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
         <h3>Attachments</h3>
-        <p>Attaching files (optional): images, PDFs and text files you attach to a message are read in your browser (images scaled down, PDFs turned into text) and sent to the
-          selected provider as part of the message, just like typed text; documents go with their file name. Scaling images down drops their metadata (such as EXIF location).
-          With web search on, the model may also put content from attached files into search queries. We neither store nor log attachments. Your chat history in the browser
-          (and your encrypted backups) keeps the text and file names of attached documents, and only the file name of images.
+        <p>Attaching files (optional): images, PDFs and text files you attach are processed in your browser (images scaled down without EXIF metadata, PDFs converted to text) and sent to the selected provider as part of your message.
+          We neither store nor log attachments on our server; your browser’s local history and encrypted backups keep document text and file names.
           <Todo>Confirm the legal basis for attachments, including special categories (Art. 9 GDPR) and third parties&apos; data in images and documents</Todo></p>
         <p>We do not use your messages, replies or attachments to train or improve AI models, and we do not allow the providers above to do so. <Todo>confirm no-training commitments in each provider&apos;s DPA</Todo></p>
 
@@ -75,9 +66,9 @@ export default function Datenschutz() {
         <p>Paid plans are processed by Stripe<Todo>Stripe Payments Europe, Ltd., Ireland – confirm role as controller or processor</Todo>. You enter payment and contact details directly with Stripe; we never receive card data.
           We store only Stripe customer and subscription ids, plan, status and period end. Events sent by Stripe can contain further details (e.g. email); we neither store nor log them.
           Legal basis: Art. 6(1)(b) and (c) GDPR. Stripe&apos;s privacy notice: <a href="https://stripe.com/privacy" rel="noopener noreferrer">stripe.com/privacy</a>.</p>
-        <p>Crypto payments are not available yet. Once we offer them, they will run through Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), a service of {C.name}, and we will update this section before they start. To match a payment to your plan we then plan to keep the transaction id, amount, asset, network and the plan it pays for, linked to your account id; we do not ask for your name or email.
-          Note that public blockchains record every transaction, including the sending address, permanently and visibly to anyone; neither we nor anyone else can delete it. Monero, which we may support in the future, hides sender, recipient and amount on its blockchain.
-          Legal basis: Art. 6(1)(b) and (c) GDPR. <Todo>crypto: stored fields into lib/data-inventory.ts once built; Monerium as recipient for euro payouts; retention (§ 147 AO); AML/MiCA duties</Todo></p>
+        <Draft><p>Crypto payments run through Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), a service of {C.name}. To match a payment to your plan we keep the transaction id, amount, asset, network and the plan it pays for, linked to your account id; we do not ask for your name or email.
+          Public blockchains record every transaction, including the sending address, permanently and visibly to anyone; neither we nor anyone else can delete it.
+          Legal basis: Art. 6(1)(b) and (c) GDPR. <Todo>crypto: stored fields into lib/data-inventory.ts once built; Monerium as recipient for euro payouts; retention (§ 147 AO); AML/MiCA duties</Todo></p></Draft>
 
         <h2>7. Hosting, network and server logs</h2>
         <p>Hosting: we run our own server in Germany; no hosting provider processes data for us. <Todo>confirm server location and physical security measures</Todo> Our application logs metadata only (route, model, status, duration, sizes as numbers), never content or IP addresses.</p>
@@ -124,7 +115,7 @@ export default function Datenschutz() {
 
         <h2>1. Verantwortlicher und Kontakt</h2>
         <p>{C.name}, {C.street}, {C.city}, Deutschland. E-Mail: <a href={`mailto:${C.email}`}>{C.email}</a>, Fax: <a href={C.faxHref}>{C.fax}</a>. Weitere Angaben im <a href="/impressum">Impressum</a>.</p>
-        <p>Datenschutzbeauftragter: {C.director}, erreichbar unter derselben E-Mail-Adresse. <Todo>Prüfen, ob eine Benennungspflicht besteht (Art. 37 DSGVO, § 38 BDSG), und die Benennung bestätigen</Todo></p>
+        <p>Datenschutzkontakt: <a href={`mailto:${C.email}`}>{C.email}</a>. <Todo>Prüfen, ob eine Benennungspflicht besteht (Art. 37 DSGVO, § 38 BDSG), und die Benennung bestätigen</Todo></p>
 
         <h2>2. Das Wichtigste in Kürze</h2>
         <ul>
@@ -157,25 +148,16 @@ export default function Datenschutz() {
         </ul>
         <p>Diese Dienste erhalten den Inhalt Ihrer Nachricht und der Antwort, und wir können technisch nicht nachweisen, was sie damit tun. Geben Sie in diesen Chats keine Angaben ein, die Sie identifizieren.</p>
         <h3>Websuche</h3>
-        <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren. Wo die Suche läuft, hängt vom Anbieter ab.
-          Bei Modellen auf NEAR AI Cloud führt NEAR die Suche in der Enklave des Modells aus: Nur die Suchanfrage verlässt die Enklave, von dort an die Brave Search API<Todo>Brave als Unterauftragsverarbeiter von NEAR: in der AVV mit NEAR prüfen</Todo>.
-          Suchanfrage und Treffer kommen wie die Antwort durch unseren Server zu Ihnen; wir speichern und protokollieren sie nicht.
-          Bei allen anderen Modellen sendet unser Server die Suchanfrage an die Brave Search API
-         <Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>. Das gilt auf jeder Datenschutzstufe, auch für Modelle in einer Enklave (Max):
-          Die Suchanfrage verlässt dann die Enklave. Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf,
-          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Die Suchanfrage kann aber Inhalte Ihrer Nachricht wiedergeben. Wir speichern und protokollieren sie nicht.
-          Sie schalten die Websuche unter Einstellungen → Account → „Privacy &amp; tools“ oder im „+“-Menü der Chatleiste aus; im Ghost-Chat ist sie aus, bis Sie sie dort einschalten.
-          Diese Einstellung speichern wir nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
+        <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren.
+          Bei Modellen auf NEAR AI Cloud führt NEAR die Suche in der Enklave des Modells aus und sendet nur die Suchanfrage an die Brave Search API<Todo>Brave als Unterauftragsverarbeiter von NEAR: in der AVV mit NEAR prüfen</Todo>.
+          Bei allen anderen Modellen (auch Modellen in einer Enklave) sendet unser Server die Suchanfrage an die Brave Search API<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>; die Suchanfrage verlässt dann die Enklave.
+          Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token, wobei die Suchanfrage Inhalte Ihrer Nachricht wiedergeben kann. Wir speichern und protokollieren weder Suchanfragen noch Treffer und halten Ihre Einstellung nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
         <h3>Bilderzeugung</h3>
-        <p>Bilderzeugung (Pro und Max, nur bei eingeschalteter Websuche, nicht bei Modellen auf NEAR AI Cloud): Bitten Sie um ein Bild, darf das Modell eine Bildbeschreibung formulieren. Unser Server sendet diese Beschreibung an ein Bildmodell
-          von NEAR AI Cloud, das in einer attestierten Enklave läuft, auch wenn Sie für den Chat einen anderen Anbieter gewählt haben. Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf,
-          Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token; die Beschreibung kann aber Inhalte Ihrer Nachricht wiedergeben. Das Bild kommt durch unseren Server zu Ihnen;
-          wir speichern und protokollieren weder Beschreibung noch Bild, und auch Ihr Browser speichert das Bild nicht im Chatverlauf. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
+        <p>Bilderzeugung (Pro und Max, nur bei eingeschalteter Websuche, nicht bei Modellen auf NEAR AI Cloud): Bitten Sie um ein Bild, formuliert das Modell eine Bildbeschreibung, die unser Server an ein Bildmodell von NEAR AI Cloud in einer attestierten Enklave sendet, auch wenn Sie für den Chat einen anderen Anbieter gewählt haben.
+          Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Weder unser Server noch Ihr Chatverlauf im Browser speichert Beschreibung oder Bild. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
         <h3>Dateianhänge</h3>
-        <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien, die Sie an eine Nachricht anhängen, werden in Ihrem Browser gelesen (Bilder verkleinert, PDFs in Text umgewandelt)
-          und als Teil der Nachricht an den gewählten Anbieter gesendet, genau wie getippter Text, bei Dokumenten mit dem Dateinamen. Beim Verkleinern entfallen die Metadaten der Bilder
-          (z. B. EXIF-Standortangaben). Ist die Websuche an, kann das Modell auch Inhalte angehängter Dateien in Suchanfragen übernehmen. Wir speichern und protokollieren Anhänge nicht.
-          In Ihrem Chatverlauf im Browser (und in Ihren verschlüsselten Backups) bleiben der Text angehängter Dokumente und die Dateinamen, von Bildern nur der Dateiname.
+        <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien werden in Ihrem Browser verarbeitet (Bilder ohne EXIF-Metadaten verkleinert, PDFs in Text umgewandelt) und als Teil Ihrer Nachricht an den gewählten Anbieter gesendet.
+          Wir speichern und protokollieren Anhänge nicht auf unserem Server; Ihr lokaler Verlauf und verschlüsselte Backups enthalten Dokumententext und Dateinamen.
           <Todo>Rechtsgrundlage für Anhänge prüfen, auch für besondere Kategorien (Art. 9 DSGVO) und Daten Dritter in Bildern und Dokumenten</Todo></p>
         <p>Wir nutzen Ihre Nachrichten, Antworten und Anhänge nicht, um KI-Modelle zu trainieren oder zu verbessern, und gestatten dies auch den oben genannten Anbietern nicht. <Todo>Trainingsverzicht in den AVV der Anbieter bestätigen</Todo></p>
 
@@ -188,9 +170,9 @@ export default function Datenschutz() {
           Zahlungs- und Kontaktdaten geben Sie direkt bei Stripe ein; wir erhalten keine Kartendaten. Wir speichern nur Stripe-Kunden- und Abo-ID, Tarif, Status und Laufzeitende.
           Von Stripe gesendete Ereignisse können weitere Angaben (z. B. E-Mail) enthalten; diese werden weder gespeichert noch protokolliert.
           Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO. Datenschutzhinweise von Stripe: <a href="https://stripe.com/de/privacy" rel="noopener noreferrer">stripe.com/de/privacy</a>.</p>
-        <p>Kryptozahlungen sind noch nicht verfügbar. Sobald wir sie anbieten, laufen sie über Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), einen Dienst der {C.name}; diesen Abschnitt aktualisieren wir vor dem Start. Um eine Zahlung Ihrem Tarif zuzuordnen, wollen wir dann Transaktions-ID, Betrag, Kryptowert, Netzwerk und den bezahlten Tarif zu Ihrer Konto-ID speichern; Namen oder E-Mail-Adresse fragen wir nicht ab.
-          Beachten Sie: Öffentliche Blockchains verzeichnen jede Transaktion einschließlich der Absenderadresse dauerhaft und für jeden einsehbar; weder wir noch sonst jemand können sie löschen. Monero, das wir künftig unterstützen könnten, verbirgt Absender, Empfänger und Betrag auf seiner Blockchain.
-          Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO. <Todo>Krypto: gespeicherte Felder nach Umsetzung in lib/data-inventory.ts; Monerium als Empfänger bei Euro-Auszahlung; Aufbewahrung (§ 147 AO); GwG/MiCA-Pflichten</Todo></p>
+        <Draft><p>Kryptozahlungen laufen über Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), einen Dienst der {C.name}. Um eine Zahlung Ihrem Tarif zuzuordnen, speichern wir Transaktions-ID, Betrag, Kryptowert, Netzwerk und den bezahlten Tarif zu Ihrer Konto-ID; Namen oder E-Mail-Adresse fragen wir nicht ab.
+          Öffentliche Blockchains verzeichnen jede Transaktion einschließlich der Absenderadresse dauerhaft und für jeden einsehbar; weder wir noch sonst jemand können sie löschen.
+          Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO. <Todo>Krypto: gespeicherte Felder nach Umsetzung in lib/data-inventory.ts; Monerium als Empfänger bei Euro-Auszahlung; Aufbewahrung (§ 147 AO); GwG/MiCA-Pflichten</Todo></p></Draft>
 
         <h2>7. Hosting, Netzwerk und Server-Logs</h2>
         <p>Hosting: Wir betreiben einen eigenen Server in Deutschland; kein Hosting-Anbieter verarbeitet Daten in unserem Auftrag. <Todo>Serverstandort und physische Sicherungsmaßnahmen bestätigen</Todo> Unsere Anwendung protokolliert nur Metadaten (Route, Modell, Status, Dauer, Längen als Zahlen), nie Inhalte oder IP-Adressen.</p>

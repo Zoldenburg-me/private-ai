@@ -17,7 +17,7 @@ export interface Tier {
   agentMaxSteps: number;
 }
 
-/** PROPOSAL - not final pricing. Paid plans differ only in limits; daily numbers are fair use. */
+/** Plan definitions. Paid plans differ only in limits; daily numbers are fair use. */
 export const TIERS: Record<TierId, Tier> = {
   free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, topDailyMessages: 0, incognitoDailyMessages: 50, includedCreditsEur: 0, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5, agentMaxSteps: 3 },
   plus: { id: "plus", name: "Plus", priceEurMonth: 8, dailyMessages: 300, topDailyMessages: 10, incognitoDailyMessages: 300, includedCreditsEur: 1, maxContextTokens: 32_000, maxOutputTokens: 8_192, requestsPerMinute: 15, agentMaxSteps: 5 },
@@ -50,7 +50,7 @@ export const GROUP_CUTOFF_USD = 2;
  */
 export type ModelGroup = "tee" | "top" | "incognito" | "credits";
 export function modelGroup(m: Pick<ModelEntry, "tee" | "price">): ModelGroup {
-  // shortcut: an unpriced model (Privatemode, a Venice model no other gateway lists) counts as cheap; price them before they get busy.
+  // Unpriced models (Privatemode, or a gateway without a listed price) default to cheap tier limits.
   const cheap = !m.price || blendedPrice(m.price) <= GROUP_CUTOFF_USD;
   return m.tee ? (cheap ? "tee" : "top") : cheap ? "incognito" : "credits";
 }

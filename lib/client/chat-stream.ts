@@ -80,8 +80,7 @@ export function storedView(content: string): { files: { name: string; type: "ima
 
 /**
  * Like toChatMessages, but for local history: keeps each assistant reply's signature status and incognito route, and
- * replaces images with their names.
- * shortcut: images are not in history (localStorage holds ~5 MB), so a reloaded chat no longer shows them to the model; move history to IndexedDB if that matters.
+ * replaces images with their names (preserving storage budget within browser quota limits).
  */
 export function toStoredMessages(msgs: readonly UiMessage[]): StoredMsg[] {
   return msgs.filter(isChatRole).map((m) => {

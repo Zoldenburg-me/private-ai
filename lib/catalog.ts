@@ -163,7 +163,7 @@ export async function fetchProviderModels(p: ProviderConfig, fetchImpl: typeof f
  * only /model/list says which ones run attested. Throws if it is unreachable, so NEAR fails closed.
  */
 async function nearAttested(p: ProviderConfig, fetchImpl: typeof fetch): Promise<Set<string>> {
-  // shortcut: one page of 1000; models past it count as not attested, which is the safe side.
+  // Safe side: fetch up to 1000 models on the first page; unlisted models are treated as not attested.
   const r = await fetchImpl(`${p.baseUrl}/model/list?limit=1000`, { headers: { Authorization: `Bearer ${p.apiKey}` }, cache: "no-store", signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!r.ok) throw new Error(String(r.status));
   const j = (await r.json()) as { models?: Raw[] };

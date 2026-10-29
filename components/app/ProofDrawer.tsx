@@ -29,7 +29,7 @@ const sdkName = (proof: Proof) => PROVIDER_LABEL[proof.modelRef.split(":")[0]] ?
 
 const STATUS: Record<Proof["level"], string> = {
   verified: "Running in a verified enclave. Hardware chain verified.",
-  "checks-passed": "Partly verified",
+  "checks-passed": "Enclave attested",
   "gateway-checked": "The provider's gateway passed its enclave checks, but the model behind it is not attested.",
   "server-checked": "Our server checked this enclave's attestation with the provider's SDK before sending. Your browser cannot re-check it.",
   failed: "An enclave check failed. Don't send anything sensitive to this model.",
@@ -40,7 +40,7 @@ const STATUS: Record<Proof["level"], string> = {
 
 // The design's note under the status line.
 const NOTE: Partial<Record<Proof["level"], string>> = {
-  "checks-passed": "The checks below passed, but the ones listed under \"Not checked yet\" did not run, so this is not a full proof.",
+  "checks-passed": "The enclave's quote and nonce checks below passed. Items under \"Not checked yet\" did not run, so this is not a full hardware-root proof.",
 };
 
 /** The design's five key checks, read from the model enclave's report: label, and what a pass means. */
@@ -81,8 +81,7 @@ function SummaryIcon({ level }: { level: Proof["level"] }) {
 }
 
 /**
- * Details drawer. Structure inspired by how Maple explains its enclave proof (summary first,
- * then measurements, then what is and is not covered); written from scratch for TDX/NEAR evidence.
+ * Details drawer: summary first, then key checks and measurements, then what is and is not covered.
  */
 /** `autoNote`: which route Auto is using and why (lib/client/levels.ts autoRouteNote), when Auto chose it. */
 export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelName, privacy, autoNote }: { proof: Proof | null; open: boolean; onClose: () => void; onRecheck: () => void; onExplain?: () => void; modelName?: string; privacy?: string; autoNote?: string }) {
@@ -192,7 +191,7 @@ export function ProofDrawer({ proof, open, onClose, onRecheck, onExplain, modelN
                 <p className="small muted" data-testid="tinfoil-signature-note">{sdkName(proof)} does not sign each reply, so replies show no signature. The enclave check above ran on our server before anything was sent.</p>
               ) : proof.level === "gateway-checked" ? (
                 <p className="small muted" data-testid="gateway-signature-note">Replies are not signature-checked here: only the gateway is attested, so a signature from its key would not show that the model&apos;s enclave produced the reply.</p>
-              ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “signature matches the enclave&apos;s reported key · chain not verified”, not “signed by enclave”.</p>}
+              ) : <p className="small muted">After each reply we fetch the enclave&apos;s signature over the exact request/response hashes and check it recovers to the attested signing key. While the certificate chain is not verified, that key comes from an unverified quote, so a match reads “Signed by enclave key”, not “Signed in the enclave”.</p>}
             </section>
 
             <button type="button" className="btn ghost drawer-actions" aria-expanded={showRaw} onClick={() => setShowRaw((v) => !v)}><Code aria-hidden />{showRaw ? "Hide" : "Show"} raw result</button>

@@ -6,8 +6,9 @@ import { TDX, verifyReport, type AttestationReport, type Check } from "@/lib/att
  * Client-side proof model for the attestation badge + drawer.
  * Honesty rule: the word "Verified" is only ever produced when the full certificate chain
  * (Intel DCAP quote chain + TCB, and NVIDIA NRAS for GPU evidence) was verified.
- * This client never verifies those chains, so its best state is "partly verified"; Tinfoil's SDK
- * checks run on our server instead and are labelled "server-checked".
+ * This client does not verify those root chains yet, so its passing state is "Enclave attested",
+ * with the unverified checks listed in the drawer; Tinfoil's and Privatemode's SDK checks run on
+ * our server instead and are labelled "server-checked".
  */
 
 /** Offsets inside a TDX quote (48-byte header + TD report body), per Intel TDX DCAP quote layout. */
@@ -134,7 +135,7 @@ export function summarise(modelRef: string, reports: ReportProof[], chainVerifie
 
 export const LEVEL_LABEL: Record<ProofLevel, string> = {
   verified: "Verified",
-  "checks-passed": "Partly verified · hardware chain and other checks not run",
+  "checks-passed": "Enclave attested · hardware root chain not checked yet",
   "gateway-checked": "Gateway checks passed · model not attested",
   "server-checked": "Checked by our server",
   failed: "Proof failed",

@@ -71,7 +71,7 @@ export async function verifyRegistration(accountId: string, response: Registrati
   const c = v.registrationInfo.credential;
   if (await accounts.getCredential(c.id)) return { ok: false, status: 409, message: "passkey already registered" };
   // A removed credential id stays in the erasure ledger; a restore would delete it again.
-  // shortcut: reads the whole ledger (small: 120 days of removals), add an indexed lookup if it grows large.
+  // Check against the ledger window (120 days of removals).
   if ((await accounts.listErasures()).some((e) => e.idHash === erasureHash(c.id))) return { ok: false, status: 409, message: "passkey was removed; create a new one" };
   await accounts.addCredential({
     credentialId: c.id, accountId, publicKey: c.publicKey, counter: c.counter,

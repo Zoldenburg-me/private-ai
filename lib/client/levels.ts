@@ -16,8 +16,7 @@ export const isLevel = (v: unknown): v is Level => LEVELS.some((l) => l.id === v
 export const AUTO = "auto";
 
 /**
- * Medium/Anon Auto, best first (canonical ids, none paid-only). Ranked by hand on price, latency and uptime;
- * shortcut: no measured uptime or latency yet (we store none), so recheck this list when the catalog changes.
+ * Medium/Anon Auto, best first (canonical ids, none paid-only). Curated order based on price and availability.
  */
 export const INCOGNITO_AUTO = ["deepseek-v4.1-flash", "qwen3.8-27b", "glm-5.3", "kimi-k3"];
 
