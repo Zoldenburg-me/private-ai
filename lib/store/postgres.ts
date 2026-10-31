@@ -1,6 +1,6 @@
 import postgres, { type Sql, type TransactionSql } from "postgres";
 import type { TierId } from "../tiers";
-import type { AccountStore, CreditBalance, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
+import type { AccountStore, CreditBalance, CreditSplit, AuditEntry, Device, Entitlement, EntitlementSource, InviteInfo, NewAuditEntry, PasskeyCredential, ProviderKeyInfo, ProviderKeyStatus, Subscription } from "./types";
 import { dayKey, AUDIT_LOG_DAYS, ENTITLED_STATUSES, ERASURE_LEDGER_DAYS, erasureHash } from "./types";
 import { migrate } from "./migrate";
 
@@ -96,6 +96,28 @@ export class PgAccountStore implements AccountStore {
         WHERE account_id = ${id} RETURNING purchased_micros, included_spent_micros, included_month`;
       return credit(r);
     });
+  }
+  async reserveCredits(id: string, micros: number, month: string, allowance: number): Promise<CreditSplit | null> {
+    const sql = await this.db();
+    return sql.begin(async (tx) => {
+      await tx`INSERT INTO credits (account_id, included_month) VALUES (${id}, ${month})
+        ON CONFLICT (account_id) DO UPDATE SET included_spent_micros = 0, included_month = ${month} WHERE credits.included_month < ${month}`;
+      // The row lock makes the check and the debit one step: a concurrent reservation waits and then sees this one.
+      const [r] = await tx<CreditRow[]>`SELECT purchased_micros, included_spent_micros, included_month FROM credits WHERE account_id = ${id} FOR UPDATE`;
+      const c = credit(r);
+      const included = Math.min(Math.max(allowance - c.includedSpent, 0), micros);
+      if (included + c.purchased < micros) return null;
+      await tx`UPDATE credits SET included_spent_micros = included_spent_micros + ${included}::bigint,
+        purchased_micros = purchased_micros - ${micros - included}::bigint, updated_at = now() WHERE account_id = ${id}`;
+      return { included, purchased: micros - included };
+    });
+  }
+  async refundCredits(id: string, taken: CreditSplit, month: string) {
+    const sql = await this.db();
+    await sql`UPDATE credits SET
+      included_spent_micros = CASE WHEN included_month = ${month} THEN GREATEST(included_spent_micros - ${taken.included}::bigint, 0) ELSE included_spent_micros END,
+      purchased_micros = purchased_micros + ${taken.purchased}::bigint, updated_at = now()
+      WHERE account_id = ${id}`;
   }
   async addCredits(id: string, micros: number, stripeSessionId: string) {
     const sql = await this.db();

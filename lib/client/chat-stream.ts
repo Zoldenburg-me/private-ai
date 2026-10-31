@@ -101,6 +101,8 @@ export interface StreamOpts {
   fetchImpl?: typeof fetch;
   /** Agent mode: /api/agent with web search; tool steps arrive in `tools`. */
   agent?: boolean;
+  /** The user asked for a video clip with this message: agent mode with the video tool (and web search only if `agent`). */
+  video?: boolean;
 }
 
 /** Newest event per tool call id, in first-seen order. */
@@ -108,8 +110,9 @@ const mergeTools = (prev: ToolEvent[], next: ToolEvent[]) =>
   next.reduce((acc, e) => (acc.some((t) => t.id === e.id) ? acc.map((t) => (t.id === e.id ? e : t)) : [...acc, e]), prev);
 
 /** Streams /api/chat (or /api/agent in agent mode). Yields the accumulated text; the last update carries the receipt. */
-export async function* streamChat({ model, messages, persona, signal, fetchImpl = fetch, agent = false }: StreamOpts): AsyncGenerator<StreamUpdate> {
-  const opts = { ...(persona ? { persona } : {}), ...(agent ? { web_search: true } : {}) };
+export async function* streamChat({ model, messages, persona, signal, fetchImpl = fetch, agent: agentMode = false, video = false }: StreamOpts): AsyncGenerator<StreamUpdate> {
+  const agent = agentMode || video;
+  const opts = { ...(persona ? { persona } : {}), ...(agentMode ? { web_search: true } : {}), ...(video ? { video: true } : {}) };
   const res = await fetchImpl(agent ? "/api/agent" : "/api/chat", {
     method: "POST", signal,
     headers: { "Content-Type": "application/json" },

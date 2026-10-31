@@ -2,13 +2,14 @@
  * Our own OpenAI-compatible extension object: `pai_options`.
  *  - persona: { name, system_prompt }  -> prepended as system message (sent by client; personas are stored locally)
  *  - web_search: boolean (default false; only /api/agent accepts true, elsewhere -> 400)
+ *  - video: boolean (default false; only /api/agent accepts true): the user asked for a video clip in this message
  */
-export interface PaiOptions { persona?: { name?: string; system_prompt: string }; web_search?: boolean }
+export interface PaiOptions { persona?: { name?: string; system_prompt: string }; web_search?: boolean; video?: boolean }
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export interface ForwardedMessage { role: string; content: string | Part[]; tool_calls?: ToolCall[]; tool_call_id?: string }
-export interface ParsedRequest { body: Record<string, unknown>; messages: ForwardedMessage[]; error?: string }
+export interface ParsedRequest { body: Record<string, unknown>; messages: ForwardedMessage[]; webSearch?: boolean; video?: boolean; error?: string }
 
 // No n (one completion per request). max_tokens is clamped per tier in handler.ts.
 const ALLOWED_PASSTHROUGH = ["model", "messages", "temperature", "top_p", "max_tokens", "max_completion_tokens", "stream", "stop", "seed", "presence_penalty", "frequency_penalty", "response_format"];
@@ -62,6 +63,7 @@ export function applyExtensions(input: Record<string, unknown>, allow: { webSear
   if (!isObject(input)) return fail("body must be a JSON object");
   const opts = (isObject(input.pai_options) ? input.pai_options : {}) as PaiOptions;
   if (opts.web_search === true && !allow.webSearch) return fail("web_search is only available in agent mode (/api/agent)");
+  if (opts.video === true && !allow.webSearch) return fail("video is only available in agent mode (/api/agent)");
   if (input.tools !== undefined || input.tool_choice !== undefined) return fail("tools are not supported");
   if (!validStop(input.stop)) return fail(`stop must be up to ${MAX_STOP} strings of at most ${MAX_STOP_CHARS} characters`);
   if (!Array.isArray(input.messages) || !input.messages.length) return fail("messages required");
@@ -76,5 +78,5 @@ export function applyExtensions(input: Record<string, unknown>, allow: { webSear
   const body: Record<string, unknown> = {};
   for (const k of ALLOWED_PASSTHROUGH) if (input[k] !== undefined) body[k] = input[k];
   body.messages = forwarded;
-  return { body, messages: forwarded };
+  return { body, messages: forwarded, webSearch: opts.web_search === true, video: opts.video === true };
 }

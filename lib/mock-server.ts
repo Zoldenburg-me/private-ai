@@ -94,6 +94,19 @@ export function mockImage() {
   return Response.json({ data: [{ b64_json: png.toString("base64") }] });
 }
 
+/**
+ * BFL-shaped FLUX 3 Video for agent mode in dev/e2e, one route for all three calls: POST submits, `?id` polls (Ready at
+ * once), `?file` serves the clip, a bare ISO BMFF header that passes the MP4 check (it does not play).
+ */
+export function mockVideo(req: Request) {
+  if (!mockEnabled()) return off();
+  const u = new URL(req.url); const self = `${u.origin}${u.pathname}`;
+  if (req.method === "POST") return Response.json({ id: "mock", polling_url: `${self}?id=mock` });
+  if (u.searchParams.has("id")) return Response.json({ id: "mock", status: "Ready", result: { sample: `${self}?file=1` } });
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2")]);
+  return new Response(mp4, { headers: { "Content-Type": "video/mp4" } });
+}
+
 export function mockAttestation(req: Request) {
   if (!mockEnabled()) return off();
   const u = new URL(req.url);

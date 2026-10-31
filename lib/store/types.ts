@@ -39,6 +39,8 @@ export type NewAuditEntry = { adminId: string; action: string; accountId?: strin
 /** Invite code row: only the SHA-256 of the code is stored. */
 /** Credit in micro-euros: bought credit left, and included credit spent in `includedMonth` (UTC, "2026-10"). */
 export interface CreditBalance { purchased: number; includedSpent: number; includedMonth: string }
+/** What a reservation took from this month's included allowance and from purchased credit. */
+export interface CreditSplit { included: number; purchased: number }
 
 export interface InviteInfo { id: string; maxUses: number; uses: number; createdAt: number; revokedAt: number | null }
 
@@ -121,6 +123,13 @@ export interface AccountStore {
    * Never creates the account: a deleted account makes it throw, so a late charge cannot bring it back.
    */
   spendCredits(accountId: string, micros: number, month: string, allowance: number): Promise<CreditBalance>;
+  /**
+   * Atomically spend `micros` like spendCredits, but only if what is left of `allowance` plus purchased covers it all;
+   * null (nothing spent) otherwise. For a cost known before a slow call: concurrent reservations never overdraw.
+   */
+  reserveCredits(accountId: string, micros: number, month: string, allowance: number): Promise<CreditSplit | null>;
+  /** Give back a reservation: its purchased part, and its included part while `month` is still the stored month. */
+  refundCredits(accountId: string, taken: CreditSplit, month: string): Promise<void>;
   /** Add bought credits once per Stripe session (atomic). False if that session was already credited. */
   addCredits(accountId: string, micros: number, stripeSessionId: string): Promise<boolean>;
   /** The account's credited top-ups, newest first (for the data export). */

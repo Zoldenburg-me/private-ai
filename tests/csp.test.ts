@@ -19,6 +19,7 @@ describe("Content-Security-Policy", () => {
     expect(d["default-src"]).toEqual(["'self'"]);
     expect(d["script-src"]).toEqual(["'self'", "'nonce-abc123'", "'strict-dynamic'"]);
     expect(d["img-src"]).toEqual(["'self'", "data:", "blob:"]);
+    expect(d["media-src"]).toEqual(["'self'", "data:"]);
     expect(d["connect-src"]).toEqual(["'self'"]);
     expect(d["frame-ancestors"]).toEqual(["'none'"]);
     expect(d["object-src"]).toEqual(["'none'"]);

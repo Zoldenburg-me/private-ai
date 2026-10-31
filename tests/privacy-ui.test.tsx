@@ -29,6 +29,12 @@ describe("tools menu", () => {
     expect(renderToStaticMarkup(<ToolsMenu available webSearch onWebSearch={noop} />)).toContain("Tools: web search enabled");
     expect(renderToStaticMarkup(<ToolsMenu available webSearch={false} onWebSearch={noop} />)).toContain("Tools: web search off");
     expect(renderToStaticMarkup(<ToolsMenu available={false} webSearch onWebSearch={noop} />)).toContain("Tools: web search off");
+    const src = readFileSync("components/app/ToolsMenu.tsx", "utf8"); // the video item: per message, and only where the server offers it
+    expect(src).toContain('data-testid="tool-video"');
+    expect(src).toMatch(/\{video && \(/);
+    const page = readFileSync("app/chat/page.tsx", "utf8"); // offered only where the server would offer the tool: paid plan, Anon route
+    expect(page).toMatch(/const videoOffered = videoAvailable && !!tier && tier\.id !== "free" && .*=== sendRef\)\?\.privacy === "anonymized"/);
+    expect(readFileSync("components/app/ChatThread.tsx", "utf8")).toMatch(/if \(video\) p\.onVideoSent\?\.\(\)/);
   });
   it("hints \"Web search enabled\" on hover and focus only while search is on", () => {
     expect(renderToStaticMarkup(<ToolsMenu available webSearch onWebSearch={noop} />)).toContain('data-tip="Web search enabled"');

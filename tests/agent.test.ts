@@ -173,10 +173,11 @@ describe("agent loop", () => {
     expect(u.model).toHaveLength(0);
   });
 
-  it("the plain chat route still refuses web_search", async () => {
+  it("the plain chat route still refuses web_search, and video", async () => {
     const { token } = issueToken();
     const u = upstream(() => answerStream("c"));
     expect((await handleChat(req(token, ask), "/api/chat", { catalog, env, fetchImpl: u.fetchImpl })).status).toBe(400);
+    expect((await handleChat(req(token, { ...ask, pai_options: { video: true } }), "/api/chat", { catalog, env, fetchImpl: u.fetchImpl })).status).toBe(400);
   });
 });
 
@@ -348,9 +349,11 @@ describe("agent limits, receipts and timeouts", () => {
     expect(res.status).toBe(401);
     expect((await res.json()).error.code).toBe("signup_required");
     const s = await (await sessionGET(new Request("http://app/api/session"))).json();
-    expect(s.features).toEqual({ webSearch: false });
+    expect(s.features).toEqual({ webSearch: false, video: false });
     vi.stubEnv("INVITE_ONLY", "");
-    expect((await (await sessionGET(new Request("http://app/api/session"))).json()).features).toEqual({ webSearch: true });
+    expect((await (await sessionGET(new Request("http://app/api/session"))).json()).features).toEqual({ webSearch: true, video: false });
+    vi.stubEnv("BFL_API_KEY", "b");
+    expect((await (await sessionGET(new Request("http://app/api/session"))).json()).features).toEqual({ webSearch: true, video: true });
   });
 });
 

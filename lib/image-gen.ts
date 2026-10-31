@@ -58,7 +58,7 @@ export async function generateImage(prompt: string, near: ProviderConfig | undef
   });
   if (!res.ok) { res.body?.cancel().catch(() => {}); throw Object.assign(new Error(`image provider error ${res.status}`), { status: res.status }); }
   // base64 is 4/3 the bytes: capping the body bounds memory before anything is parsed.
-  const text = await textCapped(res, (MAX_IMAGE_BYTES * 4) / 3 + 4_096);
+  const text = (await bytesCapped(res, (MAX_IMAGE_BYTES * 4) / 3 + 4_096))?.toString("utf8") ?? null;
   let b64: unknown;
   try { b64 = text === null ? undefined : (JSON.parse(text) as { data?: { b64_json?: unknown }[] }).data?.[0]?.b64_json; } catch { /* not JSON */ }
   if (typeof b64 !== "string") throw Object.assign(new Error("unusable image"), { status: 422 });
@@ -68,14 +68,14 @@ export async function generateImage(prompt: string, near: ProviderConfig | undef
   return `data:image/${type};base64,${bytes.toString("base64")}`;
 }
 
-/** The body as text, or null once it passes `max` bytes (the rest is never read). */
-async function textCapped(res: Response, max: number): Promise<string | null> {
+/** The body, or null once it passes `max` bytes (the rest is never read). */
+export async function bytesCapped(res: Response, max: number): Promise<Buffer | null> {
   if (Number(res.headers.get("content-length") ?? 0) > max) { res.body?.cancel().catch(() => {}); return null; }
-  if (!res.body) return "";
+  if (!res.body) return Buffer.alloc(0);
   const reader = res.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) return Buffer.concat(chunks).toString("utf8");
+    if (done) return Buffer.concat(chunks);
     size += value.length;
     if (size > max) { reader.cancel().catch(() => {}); return null; }
     chunks.push(value);

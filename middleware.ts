@@ -12,6 +12,7 @@ export function buildCsp(nonce: string, dev: boolean): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    "media-src 'self' data:", // generated video clips arrive as inline data URLs (lib/video-gen.ts)
     "font-src 'self'",
     `connect-src 'self'${dev ? " ws:" : ""}`,
     "object-src 'none'",
