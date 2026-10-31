@@ -42,6 +42,17 @@ export async function chargeCredits(accountId: string, tier: TierId, micros: num
 }
 
 /**
+ * Takes `micros` now if the credit left covers it, for a cost known before a slow call (a video clip): concurrent calls
+ * never spend the same credit twice. Returns the refund for a call that then fails, or null (too little credit, nothing taken).
+ */
+export async function reserveCredits(accountId: string, tier: TierId, micros: number, now = Date.now()): Promise<(() => Promise<void>) | null> {
+  const month = monthKey(now);
+  const { accounts } = await stores();
+  const taken = await accounts.reserveCredits(accountId, micros, month, allowanceOf(tier));
+  return taken && (() => accounts.refundCredits(accountId, taken, month));
+}
+
+/**
  * Token counts of the last OpenAI-style `usage` object in raw response text, or null. Model text cannot fake one:
  * inside a JSON string every quote is escaped, so `"prompt_tokens":` never matches there.
  */

@@ -7,6 +7,7 @@ import { FIRST_BYTE_TIMEOUT_MS, IDLE_TIMEOUT_MS, TOTAL_TIMEOUT_MS } from "./rela
 import { WEB_SEARCH_TOOL, queryOf, searchConfigured, webSearch } from "./web-search";
 import { isUnavailable } from "./store";
 import { IMAGE_TOOL, generateImage, imageConfigured, promptOf } from "./image-gen";
+import { VIDEO_COST_MICROS, VIDEO_TOOL, generateVideo, videoConfigured } from "./video-gen";
 import type { TierId } from "./tiers";
 import { NEAR_SEARCH_TIMEOUT_MS, NEAR_SEARCH_TOOL, NearSearchSteps, searchesInEnclave } from "./near-search";
 
@@ -27,6 +28,9 @@ export const MAX_SEARCHES_PER_RUN = 6;
 /** Images per run, and the messages each one counts against the user's limits: one costs far more than a search. */
 export const MAX_IMAGES_PER_RUN = 2;
 export const IMAGE_COST_MESSAGES = 5;
+/** One clip per run: it is paid from credits, at about a euro each (VIDEO_COST_MICROS). */
+export const MAX_VIDEOS_PER_RUN = 1;
+export const TOOL_HEARTBEAT_MS = 20_000;
 /** Chunks buffered for a slow reader before the loop stops reading upstream, and how often it re-checks. */
 const STREAM_HIGH_WATER = 64;
 const BACKPRESSURE_POLL_MS = 20;
@@ -40,12 +44,12 @@ interface Call { id: string; name: string; args: string }
 interface Step { text: string; calls: Call[]; chatId: string; reqSha256: string; respSha256: string; usage: { prompt: number; completion: number } | null }
 
 /** `imageProvider`: NEAR, resolved with stored keys, for the image tool (whatever provider the chat uses). */
-interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig }
+interface ToolCtx { provider: ProviderConfig; env: Env; tier?: TierId; imageProvider?: ProviderConfig; webSearch?: boolean; video?: boolean }
 /**
  * `charge` counts one more message against the user's limits, like a step, and returns the refusal reason or null;
  * `remaining` is the user's daily messages left at the last check (undefined when unknown).
  */
-interface RunCtx { env: Env; imageProvider?: ProviderConfig; fetchImpl: typeof fetch; signal: AbortSignal; charge: () => Promise<string | null>; remaining: () => number | undefined }
+interface RunCtx { env: Env; imageProvider?: ProviderConfig; credits?: AgentOpts["credits"]; fetchImpl: typeof fetch; signal: AbortSignal; charge: () => Promise<string | null>; remaining: () => number | undefined }
 interface ToolBase { def: object; maxPerRun: number; available: (ctx: ToolCtx) => boolean }
 /** A tool the provider runs inside its enclave (NEAR): we only offer it, and count and show its calls (callStep's NearHooks). */
 interface EnclaveTool extends ToolBase { inEnclave: true }
@@ -55,7 +59,7 @@ interface LocalTool extends ToolBase {
   def: { type: "function"; function: { name: string; description: string; parameters: object } };
   /** What every event of a call shows (its query), or null when the arguments are invalid. */
   shown: (args: string) => { query?: string } | null;
-  run: (args: string, ctx: RunCtx) => Promise<{ forModel: string; event?: Pick<ToolEvent, "results" | "image"> }>;
+  run: (args: string, ctx: RunCtx) => Promise<{ forModel: string; event?: Pick<ToolEvent, "results" | "image" | "video"> }>;
   /** Fixed texts fed back to the model for bad arguments, the run's cap reached, or a failed run. */
   errors: { args: string; cap: string; failed: string };
 }
@@ -65,7 +69,7 @@ export type AgentTool = EnclaveTool | LocalTool;
 export const TOOLS = new Map<string, AgentTool>([
   ["web_search", {
     def: WEB_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN,
-    available: ({ provider, env }) => !searchesInEnclave(provider) && searchConfigured(env),
+    available: ({ provider, env, webSearch }) => webSearch !== false && !searchesInEnclave(provider) && searchConfigured(env),
     shown: (args) => { const query = queryOf(args); return query ? { query } : null; },
     run: async (args, ctx) => {
       const results = await webSearch(queryOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal);
@@ -91,7 +95,25 @@ export const TOOLS = new Map<string, AgentTool>([
     errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: image limit for this answer reached",
       failed: "error: no image: generation failed, was refused, or the user's plan has too few messages left today; tell the user" },
   }],
-  ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider }) => searchesInEnclave(provider), inEnclave: true }],
+  ["generate_video", {
+    def: VIDEO_TOOL, maxPerRun: MAX_VIDEOS_PER_RUN,
+    // Anon mode only: BFL is reached under our account like the anonymized gateways, not in an enclave. And only when the
+    // user asked for a clip in this message: the model alone must never send chat content to another provider.
+    available: ({ provider, env, tier, video }) => !!video && provider.privacy === "anon-gateway" && videoConfigured(env) && !!tier && tier !== "free",
+    shown: (args) => { const query = promptOf(args); return query ? { query } : null; },
+    run: async (args, ctx) => {
+      // Reserved before the call, atomically, so parallel chats cannot spend the same credit twice; a failed or refused clip is refunded.
+      const refund = await ctx.credits?.reserve(VIDEO_COST_MICROS);
+      if (!refund) throw Object.assign(new Error("not enough credits"), { status: 402 });
+      let video: string;
+      // No refund for a job BFL already has when the user leaves: there is no cancel, so it still renders and is billed.
+      try { video = await generateVideo(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal); } catch (e) { if (!(e as { billed?: boolean }).billed) await refund(); throw e; }
+      return { forModel: "video generated and already shown to the user above your reply; do not add a link for it", event: { video } };
+    },
+    errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: video limit for this answer reached",
+      failed: "error: no video: generation failed, was refused, or the user has too little credit (about 1.25 EUR per clip); tell the user" },
+  }],
+  ["web_context_search", { def: NEAR_SEARCH_TOOL, maxPerRun: MAX_SEARCHES_PER_RUN, available: ({ provider, webSearch }) => webSearch !== false && searchesInEnclave(provider), inEnclave: true }],
 ]);
 
 /** The tools a run offers: those available for its provider, env and tier. */
@@ -109,6 +131,12 @@ export interface AgentOpts {
   tier?: TierId;
   /** NEAR with stored keys applied, for the image tool. */
   imageProvider?: ProviderConfig;
+  /** For the video tool: takes micro-euros from the user's credit if it covers them; returns their refund, or null. */
+  credits?: { reserve: (micros: number) => Promise<(() => Promise<void>) | null> };
+  /** The user switched on video for this message (`pai_options.video`): only then is the video tool offered. */
+  video?: boolean;
+  /** false: the user has web search off and sent only for a video clip (`pai_options.web_search` unset). */
+  webSearch?: boolean;
   /** Rate-limit check before every step after the first; returns the refusal reason or null. */
   beforeStep: (body: Record<string, unknown>) => Promise<string | null>;
   /** Daily messages left after the last check, sent as `pai_usage` before [DONE]: the response headers only know the first step. */
@@ -132,7 +160,7 @@ export function runAgent(o: AgentOpts): Response {
   const enc = new TextEncoder();
   const started = Date.now();
   const model = String(o.body.model ?? "");
-  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier, imageProvider: o.imageProvider });
+  const tools = availableTools({ provider: o.provider, env: o.env, tier: o.tier, imageProvider: o.imageProvider, webSearch: o.webSearch, video: o.video });
   const defs = [...tools.values()].map((t) => t.def);
   const enclave = [...tools].find(([, t]) => t.inEnclave)?.[0];
   const inEnclave = enclave !== undefined;
@@ -252,8 +280,10 @@ async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fet
   if (left.get(c.name)! <= 0) { emit({ id: c.id, name: c.name, status: "error", ...shown }); return local.errors.cap; }
   left.set(c.name, left.get(c.name)! - 1);
   const t = Date.now();
+  // A clip renders for minutes: resend "running" so proxies (Cloudflare closes after 100 s of silence) keep the stream open.
+  const beat = setInterval(() => { try { emit({ id: c.id, name: c.name, status: "running", ...shown }); } catch { /* stream already closed */ } }, TOOL_HEARTBEAT_MS);
   try {
-    const r = await local.run(c.args, { env: o.env, imageProvider: o.imageProvider, fetchImpl, signal, ...limits });
+    const r = await local.run(c.args, { env: o.env, imageProvider: o.imageProvider, credits: o.credits, fetchImpl, signal, ...limits });
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: 200, ms: Date.now() - t });
     emit({ id: c.id, name: c.name, status: "done", ...shown, ...r.event });
     return r.forModel;
@@ -263,7 +293,7 @@ async function runTool(c: Call, tools: Map<string, AgentTool>, o: AgentOpts, fet
     o.log({ route: o.route, event: "tool_call", tool: c.name, status: (e as { status?: number }).status ?? 504, ms: Date.now() - t });
     emit({ id: c.id, name: c.name, status: "error", ...shown });
     return local.errors.failed;
-  }
+  } finally { clearInterval(beat); }
 }
 
 /** Rejects with "provider timeout" (and aborts the run) if `p` does not settle within `ms`. */

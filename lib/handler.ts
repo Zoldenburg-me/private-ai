@@ -9,11 +9,12 @@ import { LIMITS, overLimit, refundLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
 import { liveProviders, markKeyUsed } from "./provider-keys";
 import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, modelGroup, TIERS, type TierId } from "./tiers";
-import { chargeCredits, costMicros, creditsAvailable, priceFor } from "./credits";
+import { chargeCredits, costMicros, creditsAvailable, priceFor, reserveCredits } from "./credits";
 import type { QuotaScope } from "./store/types";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
+import { videoConfigured } from "./video-gen";
 import { metaLogger, type Logger } from "./log";
 import { isUnavailable, unavailableResponse } from "./store";
 
@@ -41,10 +42,10 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
 /** Agent mode for the web app (/api/agent): the same checks, then the tool loop in lib/agent.ts. */
 export async function handleAgent(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
   const env = deps.env ?? process.env;
-  if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
+  if (!searchConfigured(env) && !videoConfigured(env)) return err(503, "web search and video are not configured on this server");
   return failClosed(route, deps, async () => {
     const imageProvider = (await liveProviders(env)).find((x) => x.id === "near"); // the image tool's provider, stored keys applied
-    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env, tier, imageProvider }));
+    const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider, opts) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env, tier, imageProvider, ...opts }));
     if (p instanceof Response) return p;
     let remaining = p.headers["x-usage-remaining-daily"];
     const beforeStep = async (body: Record<string, unknown>) => {
@@ -56,7 +57,8 @@ export async function handleAgent(req: Request, route: string, deps: HandlerDeps
       return g.allowed ? null : g.reason!;
     };
     const onStep = p.price ? (u: { prompt: number; completion: number } | null, body: Record<string, unknown>, streamed: number) => charge(p, u, streamed, body) : undefined;
-    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
+    const credits = { reserve: (micros: number) => reserveCredits(p.id, p.tier, micros, p.now) };
+    return runAgent({ provider: p.provider, body: p.body, tier: p.tier, imageProvider, credits, webSearch: p.webSearch, video: p.video, maxSteps: TIERS[p.tier].agentMaxSteps, beforeStep, onStep, remaining: () => remaining, onFailure: () => recordFailure(p.id),
       env, log: p.log, route, fetchImpl: deps.fetchImpl, headers: p.headers });
   });
 }
@@ -76,6 +78,8 @@ async function failClosed(route: string, deps: HandlerDeps, run: () => Promise<R
 interface Prepared {
   id: string; scope?: QuotaScope; tier: TierId; provider: ProviderConfig; body: Record<string, unknown>; headers: Record<string, string>; log: Logger;
   price?: { in: number; out: number }; tokens: number; outCap: number;
+  /** The user asked for web search / a video clip in this message (pai_options.web_search / .video, agent mode only). */
+  webSearch: boolean; video: boolean;
   /** When the balance was checked: the charge goes to that month's allowance, even if the reply ends after midnight. */
   now: number;
 }
@@ -94,7 +98,7 @@ async function charge(p: Prepared, u: { prompt: number; completion: number } | n
  * `sent` maps the prompt to the body the first upstream call really carries, for the context estimate.
  */
 async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow: { webSearch?: boolean },
-  sent: (prompt: Record<string, unknown>, tier: TierId, provider: ProviderConfig) => unknown = (prompt) => prompt): Promise<Prepared | Response> {
+  sent: (prompt: Record<string, unknown>, tier: TierId, provider: ProviderConfig, opts: { webSearch: boolean; video: boolean }) => unknown = (prompt) => prompt): Promise<Prepared | Response> {
   const log = deps.log ?? metaLogger;
   const me = await resolveIdentity(req);
   if (!me) return err(401, "missing or invalid session token");
@@ -148,7 +152,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
   const prompt = { ...rest, model: entry.id, [field]: outCap };
   // Liquid: only offers that promise not to retain the prompt compete, and no prompt-cache breakpoints are sent upstream.
   const exchange = provider.id === "liquid" ? { exchange: { retention_policy: "none", cache: "off" } } : {};
-  const tokens = estimateBodyTokens(sent(prompt, tier, provider)); // the cache secret uses no model context
+  const tokens = estimateBodyTokens(sent(prompt, tier, provider, { webSearch: parsed.webSearch === true, video: parsed.video === true })); // the cache secret uses no model context
   const now = Date.now(); // one clock: the refund must hit the cap's window, and usage() and gate() the same day
   // The whole-instance cap goes before the daily quota, so a message it refuses costs the session nothing. Rejected
   // requests must not use up everyone's budget: one too long for the tier or from a session out of daily messages skips
@@ -174,7 +178,7 @@ async function prepareChat(req: Request, route: string, deps: HandlerDeps, allow
 
   // Metadata only (when an admin-stored key was last used); a failed write must not block the chat.
   if (provider.keyId) markKeyUsed(provider.keyId).catch(() => log({ route, event: "key_used_write_failed" }));
-  return { id, scope, tier, provider, body, headers: g.headers, log, price: metered, tokens, outCap, now };
+  return { id, scope, tier, provider, body, headers: g.headers, log, price: metered, tokens, outCap, now, webSearch: parsed.webSearch === true, video: parsed.video === true };
 }
 
 /** Reads the body as text, or an error response: too large (Content-Length or streamed bytes), too slow, or aborted. */

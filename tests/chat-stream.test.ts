@@ -101,6 +101,15 @@ describe("client chat stream", () => {
     expect(body.pai_options).toEqual({ persona: { name: "T", system_prompt: "be nice" } });
   });
 
+  it("a video clip goes to /api/agent with pai_options.video, and with web_search only when search is on", async () => {
+    const bodies: Record<string, unknown>[] = []; const urls: string[] = [];
+    const fetchImpl = (async (u: string, init: RequestInit) => { urls.push(u); bodies.push(JSON.parse(String(init.body))); return sse(["data: [DONE]\n\n"]); }) as unknown as typeof fetch;
+    for await (const _ of streamChat({ model: "near:m", messages: [{ role: "user", content: "x" }], video: true, fetchImpl })) { /* drain */ }
+    for await (const _ of streamChat({ model: "near:m", messages: [{ role: "user", content: "x" }], agent: true, video: true, fetchImpl })) { /* drain */ }
+    expect(urls).toEqual(["/api/agent", "/api/agent"]);
+    expect(bodies.map((b) => b.pai_options)).toEqual([{ video: true }, { web_search: true, video: true }]);
+  });
+
   it("agent mode posts to /api/agent with web_search and keeps the newest state of each tool step", async () => {
     let url = ""; let body: Record<string, unknown> = {};
     const tool = (status: string, extra = {}) => `event: agent_tool\ndata: ${JSON.stringify({ id: "t1", name: "web_search", status, query: "q", ...extra })}\n\n`;

@@ -63,6 +63,24 @@ describe.each(backends)("account store contract (%s)", (_name, make) => {
     expect(await s.getCredits("acct_credit_1")).toBeNull();
   });
 
+  it("credits: a reservation takes the whole cost or nothing, never overdraws when concurrent, and refunds what it took", async () => {
+    await s.touchSession("acct_credit_2");
+    await s.addCredits("acct_credit_2", 1_000_000, "cs_c2");
+    const spent = await Promise.all([1, 2, 3].map(() => s.reserveCredits("acct_credit_2", 1_200_000, "2026-10", 500_000)));
+    expect(spent.filter(Boolean)).toEqual([{ included: 500_000, purchased: 700_000 }]); // 1.5M spendable: one of three
+    expect(await s.getCredits("acct_credit_2")).toEqual({ purchased: 300_000, includedSpent: 500_000, includedMonth: "2026-10" });
+    await s.refundCredits("acct_credit_2", { included: 500_000, purchased: 700_000 }, "2026-10");
+    expect(await s.getCredits("acct_credit_2")).toEqual({ purchased: 1_000_000, includedSpent: 0, includedMonth: "2026-10" });
+    const taken = (await s.reserveCredits("acct_credit_2", 600_000, "2026-10", 500_000))!;
+    await s.spendCredits("acct_credit_2", 1, "2026-11", 500_000); // a new month started meanwhile: its allowance is not topped up
+    await s.refundCredits("acct_credit_2", taken, "2026-10");
+    expect(await s.getCredits("acct_credit_2")).toEqual({ purchased: 1_000_000, includedSpent: 1, includedMonth: "2026-11" });
+    await s.deleteAccount("acct_credit_2");
+    await expect(s.reserveCredits("acct_credit_2", 1, "2026-11", 0)).rejects.toThrow();
+    await s.refundCredits("acct_credit_2", taken, "2026-11");
+    expect(await s.getCredits("acct_credit_2")).toBeNull();
+  });
+
   it("sessions: touch creates, exists", async () => {
     expect(await s.sessionExists("acct_aaaaaaaaaa")).toBe(false);
     await s.touchSession("acct_aaaaaaaaaa"); await s.touchSession("acct_aaaaaaaaaa");

@@ -57,6 +57,9 @@ export interface ThreadProps {
   incognito?: Incognito;
   /** Send through /api/agent: the model may search the web. A standing line under the composer says so. */
   webSearch?: boolean;
+  /** The user switched on a video clip for the next message (ToolsMenu); used once, then `onVideoSent` switches it off. */
+  video?: boolean;
+  onVideoSent?: () => void;
   /** The selected model reads images (its input modalities include image); otherwise only documents can be attached. */
   images?: boolean;
   /** The selected privacy level: picks the narwhal on the welcome screen. */
@@ -99,16 +102,21 @@ function ToolSteps({ tools }: { tools: ToolEvent[] }) {
   );
 }
 
-/** Generated images above a reply. They are shown live only: history keeps the answer text, so the caption offers a download. */
+/** Generated images and videos above a reply. They are shown live only: history keeps the answer text, so the caption offers a download. */
 function GeneratedImages({ tools }: { tools: ToolEvent[] }) {
   return (
     <div className="gen-images" data-testid="gen-images">
       {tools.map((t) => (
         <figure key={t.id} data-status={t.status}>
-          {t.image
+          {t.video
+            ? <video src={t.video} controls playsInline aria-label={t.query ? `Generated video: ${t.query.slice(0, 120)}` : "Generated video"} />
+            : t.image
             // eslint-disable-next-line @next/next/no-img-element -- an inline data URL: nothing for next/image to fetch or optimise
             ? <img src={t.image} alt={t.query ? `Generated image: ${t.query.slice(0, 120)}` : "Generated image"} />
+            : t.name === "generate_video"
+            ? <p role="status" className={t.status === "running" ? "writing" : "gen-failed"}>{t.status === "running" ? "Generating video… this takes a minute or two" : "No video: generation failed or you have too little credit"}</p>
             : <p role="status" className={t.status === "running" ? "writing" : "gen-failed"}>{t.status === "running" ? "Generating image…" : "No image: generation failed or your plan's limit was reached"}</p>}
+          {t.video && <figcaption><a href={t.video} download="hiddensee-video.mp4">Download</a> · not saved in your chat history</figcaption>}
           {t.image && <figcaption><a href={t.image} download={`hiddensee-image.${t.image.slice(11, t.image.indexOf(";")).replace("jpeg", "jpg")}`}>Download</a> · not saved in your chat history</figcaption>}
         </figure>
       ))}
@@ -184,8 +192,9 @@ function Message({ role, content, signed, tools, running, isLast, onOpenProof, i
   const view = replyView(content, running, isLast);
   // A reloaded chat has no attachments, only their names and text inside the stored message.
   const shown = role === "user" && !files?.length ? storedView(content) : { files: files ?? [], text: content };
-  const images = tools?.filter((t) => t.name === "generate_image") ?? [];
-  const searches = tools?.filter((t) => t.name !== "generate_image") ?? [];
+  const isMedia = (t: ToolEvent) => t.name === "generate_image" || t.name === "generate_video";
+  const images = tools?.filter(isMedia) ?? [];
+  const searches = tools?.filter((t) => !isMedia(t)) ?? [];
   const replyLevel = replyLevelOf(incognito, signed);
   return (
     <div className={`msg msg-${role}`} data-testid={`msg-${role}`}>
@@ -238,7 +247,9 @@ export function ChatThread(props: ThreadProps) {
       const history = toChatMessages(messages as never, { images: !!p.images });
       const stored = toStoredMessages(messages as never);
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
-      const agent = !!p.webSearch; // the model decides per message whether to search
+      const video = !!p.video; // this message only: the server offers the video tool only when it is set
+      if (video) p.onVideoSent?.();
+      const agent = !!p.webSearch; // the model decides per message whether to search; streamChat adds agent mode for a clip
       const incognito = p.incognito; // the route this turn is sent to, kept with the reply
       // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];
@@ -258,7 +269,7 @@ export function ChatThread(props: ThreadProps) {
           return;
         }
         try {
-          for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent })) {
+          for await (const u of streamChat({ model: p.modelRef, messages: history, persona, signal, agent, video })) {
             text = u.text; tools = u.tools; if (u.receipt) receipt = u.receipt; if (u.remaining !== undefined) p.onUsage(u.remaining, u.limit, u.quota);
             yield { content: [{ type: "text", text }], metadata: { custom: { tools, incognito } } };
           }

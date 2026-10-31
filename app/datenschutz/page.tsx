@@ -53,6 +53,11 @@ export default function Datenschutz() {
         <h3>Image generation</h3>
         <p>Image generation (Pro and Max, only with web search on, not for models on NEAR AI Cloud): when you ask for an image, the model writes an image description that our server sends to an attested enclave image model on NEAR AI Cloud, even when you picked another provider for the chat.
           Only the description is sent, not your chat history, account id, IP address or session token; the description can still repeat parts of your message. Neither our server nor your browser’s chat history stores the description or the image. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
+        <h3>Video generation</h3>
+        <p>Video generation (paid plans, Anon level only; paid from your credit, about €1.25 per clip, also when you leave before a clip that has started is ready): only when you switch on “Video clip” for a message in the composer’s “+” menu may the model write a video description.
+          Our server sends that description to Black Forest Labs’ FLUX 3 Video API (EU endpoint) under our own account; this runs outside an enclave, like the other Anon models.
+          Only the description is sent, not your chat history, account id, IP address or session token; the description can still repeat parts of your message. The clip reaches you through our server;
+          we neither store nor log the description or the clip, and your browser does not keep the clip in your chat history either. <Todo>Black Forest Labs: company, location, DPA, retention of prompts and outputs, any third-country transfer (Art. 44 ff. GDPR)</Todo></p>
         <h3>Attachments</h3>
         <p>Attaching files (optional): images, PDFs and text files you attach are processed in your browser (images scaled down without EXIF metadata, PDFs converted to text) and sent to the selected provider as part of your message.
           With web search on, the model may also put content from attached files into search queries. We neither store nor log attachments on our server; your browser’s local history and encrypted backups keep document text and file names.
@@ -155,6 +160,11 @@ export default function Datenschutz() {
         <h3>Bilderzeugung</h3>
         <p>Bilderzeugung (Pro und Max, nur bei eingeschalteter Websuche, nicht bei Modellen auf NEAR AI Cloud): Bitten Sie um ein Bild, formuliert das Modell eine Bildbeschreibung, die unser Server an ein Bildmodell von NEAR AI Cloud in einer attestierten Enklave sendet, auch wenn Sie für den Chat einen anderen Anbieter gewählt haben.
           Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token; die Beschreibung kann aber Inhalte Ihrer Nachricht wiedergeben. Weder unser Server noch Ihr Chatverlauf im Browser speichert Beschreibung oder Bild. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
+        <h3>Videoerzeugung</h3>
+        <p>Videoerzeugung (bezahlte Tarife, nur in der Stufe Anon; bezahlt aus Ihrem Guthaben, etwa 1,25 € pro Clip, auch wenn Sie einen begonnenen Clip vor seiner Fertigstellung verlassen): Nur wenn Sie im „+“-Menü des Eingabefelds „Videoclip“ für eine Nachricht einschalten, darf das Modell eine Videobeschreibung formulieren.
+          Unser Server sendet diese Beschreibung unter unserem eigenen Konto an die FLUX-3-Video-API von Black Forest Labs (EU-Endpunkt); das läuft wie die übrigen Anon-Modelle außerhalb einer Enklave.
+          Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token; die Beschreibung kann aber Inhalte Ihrer Nachricht wiedergeben. Der Clip kommt durch unseren Server zu Ihnen;
+          wir speichern und protokollieren weder Beschreibung noch Clip, und auch Ihr Browser speichert den Clip nicht im Chatverlauf. <Todo>Black Forest Labs: Firma, Sitz, AVV, Speicherdauer von Prompts und Ergebnissen, ggf. Drittlandtransfer (Art. 44 ff. DSGVO)</Todo></p>
         <h3>Dateianhänge</h3>
         <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien werden in Ihrem Browser verarbeitet (Bilder ohne EXIF-Metadaten verkleinert, PDFs in Text umgewandelt) und als Teil Ihrer Nachricht an den gewählten Anbieter gesendet.
           Ist die Websuche an, kann das Modell auch Inhalte angehängter Dateien in Suchanfragen übernehmen. Wir speichern und protokollieren Anhänge nicht auf unserem Server; Ihr lokaler Verlauf und verschlüsselte Backups enthalten Dokumententext und Dateinamen.
