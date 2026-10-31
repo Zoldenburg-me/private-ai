@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { mockChat, mockAttestation } from "../lib/mock-server";
 import { MOCK_ROOT_CA, mockEd25519Pub } from "../lib/mock-tee";
-import { verifyTdxQuote, DcapError } from "../lib/client/e2e/dcap";
+import { verifyTdxQuote } from "../lib/client/e2e/dcap";
 import { parseTdxQuote, newNonce } from "../lib/attestation";
 import { sealRequest, openReply, sealField } from "../lib/client/e2e/near";
 
-const prev = process.env.MOCK_PROVIDER;
-beforeAll(() => { process.env.MOCK_PROVIDER = "1"; });
-afterAll(() => { process.env.MOCK_PROVIDER = prev; });
+beforeAll(() => { vi.stubEnv("MOCK_PROVIDER", "1"); });
+afterAll(() => { vi.unstubAllEnvs(); });
 
 const post = (body: unknown, headers: Record<string, string>) =>
   mockChat(new Request("http://mock/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(body) }));
@@ -24,8 +24,11 @@ describe("mock enclave speaks NEAR E2EE v2", () => {
     expect(att).toMatchObject({ signing_algo: "ed25519", signing_public_key: mockEd25519Pub(), request_nonce: nonce });
     expect(bytesToHex(parseTdxQuote(att.intel_quote).reportData)).toBe(mockEd25519Pub() + nonce);
     const quote = hexToBytes(att.intel_quote);
-    expect(() => verifyTdxQuote(quote, { root: MOCK_ROOT_CA })).not.toThrow();
-    expect(() => verifyTdxQuote(quote)).toThrow(DcapError); // the pinned Intel root never accepts it
+    // The mock serves no collateral: with the test root, quote and PCK chain pass and the check stops only at
+    // Intel's genuine collateral, which the mock root did not sign. The pinned Intel root rejects the chain itself.
+    const intel = JSON.parse(readFileSync("tests/fixtures/dcap/tdx-quote-v4-collateral.json", "utf8"));
+    expect(() => verifyTdxQuote(quote, intel, { root: MOCK_ROOT_CA })).toThrow("root CA CRL is from another issuer");
+    expect(() => verifyTdxQuote(quote, intel)).toThrow("PCK chain names do not link");
   });
 
   it("refuses an Ed25519 report without a 32-byte nonce", async () => {
