@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { mockChat, mockAttestation } from "../lib/mock-server";
@@ -8,9 +8,8 @@ import { verifyTdxQuote } from "../lib/client/e2e/dcap";
 import { parseTdxQuote, newNonce } from "../lib/attestation";
 import { sealRequest, openReply, sealField } from "../lib/client/e2e/near";
 
-const prev = process.env.MOCK_PROVIDER;
-beforeAll(() => { process.env.MOCK_PROVIDER = "1"; });
-afterAll(() => { process.env.MOCK_PROVIDER = prev; });
+beforeAll(() => { vi.stubEnv("MOCK_PROVIDER", "1"); });
+afterAll(() => { vi.unstubAllEnvs(); });
 
 const post = (body: unknown, headers: Record<string, string>) =>
   mockChat(new Request("http://mock/v1/chat/completions", { method: "POST", headers, body: JSON.stringify(body) }));
