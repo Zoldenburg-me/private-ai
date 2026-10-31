@@ -38,14 +38,14 @@ export const isMp4 = (b: Uint8Array) => b.length > 12 && String.fromCharCode(...
 
 /**
  * URLs from the response are fetched only on BFL's own hosts (or the configured mock). The API key goes only to an API
- * host (api.bfl.ai, api.<region>.bfl.ai): any other bfl.ai host (delivery, docs, a vendor's) gets the signed sample only.
+ * host in the EU (api.eu.bfl.ai, api.eu<n>.bfl.ai), as /datenschutz promises: any other bfl.ai host gets the signed sample only.
  */
 const trusted = (url: string, base: string, withKey = false) => {
   try {
     const u = new URL(url);
     if (u.origin === new URL(base).origin) return true;
     if (u.protocol !== "https:" || u.port) return false;
-    return withKey ? /^api(\.[a-z0-9-]+)?\.bfl\.ai$/.test(u.hostname) : u.hostname === "bfl.ai" || u.hostname.endsWith(".bfl.ai");
+    return withKey ? /^api\.eu\d*\.bfl\.ai$/.test(u.hostname) : u.hostname === "bfl.ai" || u.hostname.endsWith(".bfl.ai");
   } catch { return false; }
 };
 
@@ -69,24 +69,30 @@ export async function generateVideo(prompt: string, env: Env, fetchImpl: typeof 
   }));
   const poll = submitted.polling_url;
   if (typeof poll !== "string" || !trusted(poll, base, true)) throw fail("untrusted polling url", 502);
-  for (;;) {
-    sig.throwIfAborted();
-    await new Promise<void>((r, j) => {
-      const stop = () => { clearTimeout(t); j(fail("video timed out", 504)); };
-      const t = setTimeout(() => { sig.removeEventListener("abort", stop); r(); }, POLL_MS);
-      sig.addEventListener("abort", stop, { once: true });
-    });
-    const r = await json(await fetchImpl(poll, { headers, redirect: "error", signal: sig }));
-    const status = String(r.status ?? "");
-    // "Task not found": BFL lost the job; anything else unknown counts as still rendering until the timeout.
-    if (/moderated|error|failed|not found/i.test(status)) throw fail(`video ${status}`, 422);
-    if (status !== "Ready") continue;
-    const sample = (r.result as { sample?: unknown } | undefined)?.sample;
-    if (typeof sample !== "string" || !trusted(sample, base)) throw fail("untrusted video url", 502);
-    const res = await fetchImpl(sample, { redirect: "error", signal: sig }); // signed URL: no key needed
-    if (!res.ok) { res.body?.cancel().catch(() => {}); throw fail(`video download error ${res.status}`, res.status); }
-    const bytes = await bytesCapped(res, MAX_VIDEO_BYTES);
-    if (!bytes || !isMp4(bytes)) throw fail("unusable video", 422);
-    return `data:video/mp4;base64,${bytes.toString("base64")}`;
+  // From here BFL has the job: it renders and bills it even if the user leaves, so that abort is marked billed.
+  try {
+    for (;;) {
+      sig.throwIfAborted();
+      await new Promise<void>((r, j) => {
+        const stop = () => { clearTimeout(t); j(fail("video timed out", 504)); };
+        const t = setTimeout(() => { sig.removeEventListener("abort", stop); r(); }, POLL_MS);
+        sig.addEventListener("abort", stop, { once: true });
+      });
+      const r = await json(await fetchImpl(poll, { headers, redirect: "error", signal: sig }));
+      const status = String(r.status ?? "");
+      // "Task not found": BFL lost the job; anything else unknown counts as still rendering until the timeout.
+      if (/moderated|error|failed|not found/i.test(status)) throw fail(`video ${status}`, 422);
+      if (status !== "Ready") continue;
+      const sample = (r.result as { sample?: unknown } | undefined)?.sample;
+      if (typeof sample !== "string" || !trusted(sample, base)) throw fail("untrusted video url", 502);
+      const res = await fetchImpl(sample, { redirect: "error", signal: sig }); // signed URL: no key needed
+      if (!res.ok) { res.body?.cancel().catch(() => {}); throw fail(`video download error ${res.status}`, res.status); }
+      const bytes = await bytesCapped(res, MAX_VIDEO_BYTES);
+      if (!bytes || !isMp4(bytes)) throw fail("unusable video", 422);
+      return `data:video/mp4;base64,${bytes.toString("base64")}`;
+    }
+  } catch (e) {
+    if (signal?.aborted) throw Object.assign(fail("video abandoned by the user", 499), { billed: true });
+    throw e;
   }
 }

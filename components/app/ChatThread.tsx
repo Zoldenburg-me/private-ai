@@ -249,7 +249,7 @@ export function ChatThread(props: ThreadProps) {
       const persona = p.persona ? { name: p.persona.name, system_prompt: p.persona.systemPrompt } : undefined;
       const video = !!p.video; // this message only: the server offers the video tool only when it is set
       if (video) p.onVideoSent?.();
-      const agent = !!p.webSearch || video; // the model decides per message whether to search
+      const agent = !!p.webSearch; // the model decides per message whether to search; streamChat adds agent mode for a clip
       const incognito = p.incognito; // the route this turn is sent to, kept with the reply
       // Tool steps are shown live only; history keeps the answer text, not the queries (nothing new in storage).
       let text = ""; let receipt: Receipt | undefined; let tools: ToolEvent[] = [];

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { TOOL_HEARTBEAT_MS, runAgent } from "../lib/agent";
+import { TOOLS, TOOL_HEARTBEAT_MS, runAgent } from "../lib/agent";
 import { VIDEO_COST_MICROS, generateVideo, isMp4 } from "../lib/video-gen";
 import { parseSseChunk } from "../lib/sse";
 import { TIERS, type TierId } from "../lib/tiers";
@@ -162,12 +162,36 @@ describe("generateVideo", () => {
     expect((await gen({ sample: "http://169.254.169.254/latest" })).result).toBe(502);
   });
 
+  it("keeps the reservation when the user disconnects mid-render: BFL has no cancel and still bills the clip", async () => {
+    const credits = ledger(10_000_000); const ac = new AbortController(); const b = bfl();
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const r = await b.fetchImpl(url, init); if (url.endsWith("/flux-3-video")) ac.abort(); return r;
+    }) as unknown as typeof fetch;
+    const ctx = { env: BFL_ENV, credits, fetchImpl, signal: ac.signal, charge: async () => null, remaining: () => undefined };
+    const tool = TOOLS.get("generate_video")!;
+    if (!("run" in tool)) throw new Error("generate_video runs on our server");
+    await expect(tool.run(`{"prompt":"a cat"}`, ctx)).rejects.toBeTruthy();
+    expect(10_000_000 - credits.balance).toBe(VIDEO_COST_MICROS);
+    expect(credits.refunds).toBe(0);
+  });
+
+  it("refunds a clip the user left before BFL accepted it", async () => {
+    const credits = ledger(10_000_000); const ac = new AbortController(); ac.abort();
+    const fetchImpl = (async (_url: string, init?: RequestInit) => { init?.signal?.throwIfAborted(); throw new Error("unreachable"); }) as unknown as typeof fetch;
+    const tool = TOOLS.get("generate_video")!;
+    if (!("run" in tool)) throw new Error("generate_video runs on our server");
+    await expect(tool.run(`{"prompt":"a cat"}`, { env: BFL_ENV, credits, fetchImpl, signal: ac.signal, charge: async () => null, remaining: () => undefined })).rejects.toBeTruthy();
+    expect(credits.balance).toBe(10_000_000);
+    expect(credits.refunds).toBe(1);
+  });
+
   it("sends the API key only to a BFL API host, never to another bfl.ai host", async () => {
     const leak = await gen({ poll: "https://cdn.bfl.ai/v1/get_result?id=j1" });
     expect(leak.result).toBe(502);
     expect(leak.calls.filter((c) => c.key).map((c) => c.url)).toEqual(["https://api.eu.bfl.ai/v1/flux-3-video"]);
     const regional = await gen({ poll: "https://api.eu1.bfl.ai/v1/get_result?id=j1" });
     expect(String(regional.result)).toMatch(/^data:video\/mp4;base64,/);
+    expect((await gen({ poll: "https://api.us1.bfl.ai/v1/get_result?id=j1" })).result).toBe(502); // outside the EU endpoint
   });
 
   it("treats moderation and non-MP4 bodies as refusals", async () => {

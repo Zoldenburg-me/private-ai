@@ -106,7 +106,8 @@ export const TOOLS = new Map<string, AgentTool>([
       const refund = await ctx.credits?.reserve(VIDEO_COST_MICROS);
       if (!refund) throw Object.assign(new Error("not enough credits"), { status: 402 });
       let video: string;
-      try { video = await generateVideo(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal); } catch (e) { await refund(); throw e; }
+      // No refund for a job BFL already has when the user leaves: there is no cancel, so it still renders and is billed.
+      try { video = await generateVideo(promptOf(args)!, ctx.env, ctx.fetchImpl, ctx.signal); } catch (e) { if (!(e as { billed?: boolean }).billed) await refund(); throw e; }
       return { forModel: "video generated and already shown to the user above your reply; do not add a link for it", event: { video } };
     },
     errors: { args: "error: arguments must be {\"prompt\": string}", cap: "error: video limit for this answer reached",

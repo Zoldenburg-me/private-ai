@@ -14,6 +14,7 @@ import type { QuotaScope } from "./store/types";
 import { relay } from "./relay";
 import { firstStepBody, runAgent } from "./agent";
 import { searchConfigured } from "./web-search";
+import { videoConfigured } from "./video-gen";
 import { metaLogger, type Logger } from "./log";
 import { isUnavailable, unavailableResponse } from "./store";
 
@@ -41,7 +42,7 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
 /** Agent mode for the web app (/api/agent): the same checks, then the tool loop in lib/agent.ts. */
 export async function handleAgent(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
   const env = deps.env ?? process.env;
-  if (!searchConfigured(env)) return err(503, "web search is not configured on this server");
+  if (!searchConfigured(env) && !videoConfigured(env)) return err(503, "web search and video are not configured on this server");
   return failClosed(route, deps, async () => {
     const imageProvider = (await liveProviders(env)).find((x) => x.id === "near"); // the image tool's provider, stored keys applied
     const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider, opts) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env, tier, imageProvider, ...opts }));
