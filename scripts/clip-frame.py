@@ -54,7 +54,7 @@ def talk(a, b, f):
     if pa.shape != pb.shape or min(pa.shape) < 16:
         return 0.0
     (dx, dy), _ = cv2.phaseCorrelate(pa, pb)
-    pb = cv2.warpAffine(pb, np.float32([[1, 0, -dx], [0, 1, -dy]]), (w, h), borderMode=cv2.BORDER_REPLICATE)
+    pb = cv2.warpAffine(pb, np.float32([[1, 0, -dx], [0, 1, -dy]]), (pa.shape[1], pa.shape[0]), borderMode=cv2.BORDER_REPLICATE)
     diff = cv2.absdiff(pa, pb)
     mouth = diff[int(h * 0.65): int(h * 0.92), int(w * 0.25): int(w * 0.75)]
     eyes = diff[int(h * 0.25): int(h * 0.5), int(w * 0.2): int(w * 0.8)]
@@ -73,9 +73,12 @@ def box(f, W, H, zoom, aspect):
     return [round(bx / W, 4), round(by / H, 4), round(cw / W, 4), round(ch / H, 4)]
 
 cap = cv2.VideoCapture(src)
+if not cap.isOpened():
+    sys.exit("clip-frame: cannot open video")
 cap.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
 fps = cap.get(cv2.CAP_PROP_FPS) or 25
 step = max(3, round(fps / SAMPLE_FPS))
+rate = fps / step  # real samples per second
 gap = max(1, round(fps * 0.1))  # frames between the two compared for mouth motion
 samples, i, pending = [], 0, None
 while True:
@@ -83,6 +86,8 @@ while True:
     t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000
     if not ok or t > end:
         break
+    if t < start - 0.5 / fps:  # the seek landed on an earlier keyframe
+        continue
     if i % step == 0 or (pending and i % step == gap):
         color = cv2.resize(frame, (640, round(640 * frame.shape[0] / frame.shape[1])))
         small = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
@@ -106,10 +111,12 @@ while True:
     i += 1
 
 # Two people: whoever moved their mouth clearly more over the window is the speaker; otherwise show both.
-for j, (ts, key, b) in enumerate(samples):
+# Read from an unchanged copy, so the window stays centred while samples are replaced.
+orig = list(samples)
+for j, (ts, key, b) in enumerate(orig):
     if key[0] != "pair":
         continue
-    near = [k[1] for _, k, _ in samples[max(0, j - TALK_WIN // 2): j + TALK_WIN // 2 + 1] if k[0] == "pair"]
+    near = [k[1] for _, k, _ in orig[max(0, j - TALK_WIN // 2): j + TALK_WIN // 2 + 1] if k[0] == "pair"]
     m = [sum(v[p] for v in near) / len(near) for p in (0, 1)]
     hi = int(m[1] > m[0])
     if m[hi] > TALK_MIN and m[hi] > TALK_RATIO * max(m[1 - hi], 0.05):
@@ -117,28 +124,32 @@ for j, (ts, key, b) in enumerate(samples):
     else:
         samples[j] = (ts, ("split",), b["split"])
 
-# Majority vote over a sliding window, then runs of equal layouts with their median boxes.
+# Majority vote over a sliding window (ties keep the sample's own layout), with the boxes of the nearest sample
+# that has the winning layout; then runs of equal layouts with their median boxes.
 runs = []
-for j, (ts, key, _) in enumerate(samples):
-    win = [k for _, k, _ in samples[max(0, j - SMOOTH // 2): j + SMOOTH // 2 + 1]]
-    key = max(set(win), key=win.count)
+for j, (ts, own, _) in enumerate(samples):
+    lo = max(0, j - SMOOTH // 2)
+    win = [k for _, k, _ in samples[lo: j + SMOOTH // 2 + 1]]
+    key = max(win, key=lambda k: (win.count(k), k == own))
+    src_j = min((lo + n for n, k in enumerate(win) if k == key), key=lambda n: abs(n - j))
     if runs and runs[-1]["key"] == key:
-        runs[-1]["idx"].append(j)
+        runs[-1]["boxes"].append(samples[src_j][2])
     else:
-        runs.append({"t": ts, "key": key, "idx": [j]})
+        runs.append({"t": ts, "key": key, "boxes": [samples[src_j][2]]})
 merged = []
 for r in runs:
-    if merged and (r["key"] == merged[-1]["key"] or len(r["idx"]) / SAMPLE_FPS < MIN_SEG):
-        merged[-1]["idx"] += r["idx"]
+    if merged and (r["key"] == merged[-1]["key"] or len(r["boxes"]) / rate < MIN_SEG):
+        if r["key"] == merged[-1]["key"]:
+            merged[-1]["boxes"] += r["boxes"]
     else:
         merged.append(r)
 
-out = []
-for r in merged:
-    layout = r["key"][0]
-    boxes = [samples[j][2] for j in r["idx"] if samples[j][1] == r["key"]]
-    med = [[round(statistics.median(b[n][c] for b in boxes), 4) for c in range(4)] for n in range(len(boxes[0]))] if boxes and layout != "fit" else []
-    out.append({"t": round(r["t"], 2), "layout": layout if med or layout == "fit" else "fit", "boxes": med})
+def median_box(boxes, n):
+    x, y, w, h = (statistics.median(b[n][c] for b in boxes) for c in range(4))
+    return [round(min(x, 1 - w), 4), round(min(y, 1 - h), 4), round(w, 4), round(h, 4)]
+
+out = [{"t": round(r["t"], 2), "layout": r["key"][0],
+        "boxes": [median_box(r["boxes"], n) for n in range(len(r["boxes"][0]))]} for r in merged]
 if out:
     out[0]["t"] = 0
 print(json.dumps(out or [{"t": 0, "layout": "fit", "boxes": []}]))
