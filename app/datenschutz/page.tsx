@@ -49,13 +49,13 @@ export default function Datenschutz() {
         <p>Web search (on by default, can be switched off): when a question needs current information, the model may write search queries.
           For models on NEAR AI Cloud, NEAR runs the search inside the model’s enclave and sends only the query to the Brave Search API<Todo>Brave as NEAR’s sub-processor: confirm in the DPA with NEAR</Todo>.
           For all other models (including enclave models), our server sends the query to the Brave Search API<Todo>Brave Software, Inc.: location, DPA and third-country transfer (Art. 44 ff. GDPR)</Todo>, so the search query leaves the enclave.
-          Only the query text is sent, not your chat history, account id, IP address or session token, though the query may repeat parts of your message. We neither store nor log queries or results, and keep your web-search preference only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
+          Only the query text is sent, not your chat history, account id, IP address or session token, though the query may repeat parts of your message. We neither store nor log queries or results. Switch web search off under Settings → Account → “Privacy &amp; tools” or in the chat bar’s “+” menu; in ghost chat it is off until you turn it on there. We keep this setting only in your browser. <Todo>Confirm the legal basis for web search being on by default (proposal: Art. 6(1)(b) GDPR)</Todo></p>
         <h3>Image generation</h3>
         <p>Image generation (Pro and Max, only with web search on, not for models on NEAR AI Cloud): when you ask for an image, the model writes an image description that our server sends to an attested enclave image model on NEAR AI Cloud, even when you picked another provider for the chat.
-          Only the description is sent, not your chat history, account id, IP address or session token. Neither our server nor your browser’s chat history stores the description or the image. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
+          Only the description is sent, not your chat history, account id, IP address or session token; the description can still repeat parts of your message. Neither our server nor your browser’s chat history stores the description or the image. <Todo>DPA with NEAR: does it cover image generation?</Todo></p>
         <h3>Attachments</h3>
         <p>Attaching files (optional): images, PDFs and text files you attach are processed in your browser (images scaled down without EXIF metadata, PDFs converted to text) and sent to the selected provider as part of your message.
-          We neither store nor log attachments on our server; your browser’s local history and encrypted backups keep document text and file names.
+          With web search on, the model may also put content from attached files into search queries. We neither store nor log attachments on our server; your browser’s local history and encrypted backups keep document text and file names.
           <Todo>Confirm the legal basis for attachments, including special categories (Art. 9 GDPR) and third parties&apos; data in images and documents</Todo></p>
         <p>We do not use your messages, replies or attachments to train or improve AI models, and we do not allow the providers above to do so. <Todo>confirm no-training commitments in each provider&apos;s DPA</Todo></p>
 
@@ -83,7 +83,7 @@ export default function Datenschutz() {
           We use no analytics, tracking, advertising or third-party cookies, so there is no cookie banner. Fonts and scripts are served from our own domain.</p>
 
         <h2>9. Recipients and transfers outside the EU</h2>
-        <p>We do not sell or rent personal data and share it only with the recipients named in this policy, as far as needed for the purpose described: the AI providers and search provider you use (section 4), Stripe and Zold (section 6) and Cloudflare (section 7), and authorities where the law requires it.
+        <p>We do not sell or rent personal data and share it only with the recipients named in this policy, as far as needed for the purpose described: the AI providers and search provider you use (section 4), Stripe<Draft> and Zold</Draft> (section 6) and Cloudflare (section 7), and authorities where the law requires it.
           Where a recipient is outside the EU/EEA (in particular in the US), the transfer relies on an adequacy decision such as the EU-U.S. Data Privacy Framework (Art. 45 GDPR) or on standard contractual clauses (Art. 46 GDPR), as stated for each recipient above.</p>
 
         <h2>10. Retention</h2>
@@ -151,13 +151,13 @@ export default function Datenschutz() {
         <p>Websuche (standardmäßig an, abschaltbar): Braucht eine Frage aktuelle Informationen, darf das Modell Suchanfragen formulieren.
           Bei Modellen auf NEAR AI Cloud führt NEAR die Suche in der Enklave des Modells aus und sendet nur die Suchanfrage an die Brave Search API<Todo>Brave als Unterauftragsverarbeiter von NEAR: in der AVV mit NEAR prüfen</Todo>.
           Bei allen anderen Modellen (auch Modellen in einer Enklave) sendet unser Server die Suchanfrage an die Brave Search API<Todo>Brave Software, Inc.: Sitz, AVV und Drittlandtransfer (Art. 44 ff. DSGVO) ergänzen</Todo>; die Suchanfrage verlässt dann die Enklave.
-          Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token, wobei die Suchanfrage Inhalte Ihrer Nachricht wiedergeben kann. Wir speichern und protokollieren weder Suchanfragen noch Treffer und halten Ihre Einstellung nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
+          Übermittelt wird nur der Text der Suchanfrage, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token, wobei die Suchanfrage Inhalte Ihrer Nachricht wiedergeben kann. Wir speichern und protokollieren weder Suchanfragen noch Treffer. Sie schalten die Websuche unter Einstellungen → Account → „Privacy &amp; tools“ oder im „+“-Menü der Chatleiste aus; im Ghost-Chat ist sie aus, bis Sie sie dort einschalten. Diese Einstellung speichern wir nur in Ihrem Browser. <Todo>Rechtsgrundlage der standardmäßig aktiven Websuche prüfen (Vorschlag: Art. 6 Abs. 1 lit. b DSGVO)</Todo></p>
         <h3>Bilderzeugung</h3>
         <p>Bilderzeugung (Pro und Max, nur bei eingeschalteter Websuche, nicht bei Modellen auf NEAR AI Cloud): Bitten Sie um ein Bild, formuliert das Modell eine Bildbeschreibung, die unser Server an ein Bildmodell von NEAR AI Cloud in einer attestierten Enklave sendet, auch wenn Sie für den Chat einen anderen Anbieter gewählt haben.
-          Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token. Weder unser Server noch Ihr Chatverlauf im Browser speichert Beschreibung oder Bild. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
+          Übermittelt wird nur die Beschreibung, nicht Ihr Chatverlauf, Ihre Konto-ID, Ihre IP-Adresse oder Ihr Session-Token; die Beschreibung kann aber Inhalte Ihrer Nachricht wiedergeben. Weder unser Server noch Ihr Chatverlauf im Browser speichert Beschreibung oder Bild. <Todo>AVV mit NEAR: Bilderzeugung abgedeckt?</Todo></p>
         <h3>Dateianhänge</h3>
         <p>Dateien anhängen (optional): Bilder, PDFs und Textdateien werden in Ihrem Browser verarbeitet (Bilder ohne EXIF-Metadaten verkleinert, PDFs in Text umgewandelt) und als Teil Ihrer Nachricht an den gewählten Anbieter gesendet.
-          Wir speichern und protokollieren Anhänge nicht auf unserem Server; Ihr lokaler Verlauf und verschlüsselte Backups enthalten Dokumententext und Dateinamen.
+          Ist die Websuche an, kann das Modell auch Inhalte angehängter Dateien in Suchanfragen übernehmen. Wir speichern und protokollieren Anhänge nicht auf unserem Server; Ihr lokaler Verlauf und verschlüsselte Backups enthalten Dokumententext und Dateinamen.
           <Todo>Rechtsgrundlage für Anhänge prüfen, auch für besondere Kategorien (Art. 9 DSGVO) und Daten Dritter in Bildern und Dokumenten</Todo></p>
         <p>Wir nutzen Ihre Nachrichten, Antworten und Anhänge nicht, um KI-Modelle zu trainieren oder zu verbessern, und gestatten dies auch den oben genannten Anbietern nicht. <Todo>Trainingsverzicht in den AVV der Anbieter bestätigen</Todo></p>
 
@@ -187,7 +187,7 @@ export default function Datenschutz() {
           Wir verwenden keine Analyse-, Tracking-, Werbe- oder Drittanbieter-Cookies, daher gibt es kein Cookie-Banner. Schriften und Skripte liefern wir von unserer eigenen Domain aus.</p>
 
         <h2>9. Empfänger und Übermittlung in Drittländer</h2>
-        <p>Wir verkaufen oder vermieten keine personenbezogenen Daten und geben sie nur an die in dieser Erklärung genannten Empfänger weiter, soweit der beschriebene Zweck es erfordert: die von Ihnen genutzten KI- und Suchanbieter (Abschnitt 4), Stripe und Zold (Abschnitt 6) und Cloudflare (Abschnitt 7) sowie Behörden, wenn das Gesetz es verlangt.
+        <p>Wir verkaufen oder vermieten keine personenbezogenen Daten und geben sie nur an die in dieser Erklärung genannten Empfänger weiter, soweit der beschriebene Zweck es erfordert: die von Ihnen genutzten KI- und Suchanbieter (Abschnitt 4), Stripe<Draft> und Zold</Draft> (Abschnitt 6) und Cloudflare (Abschnitt 7) sowie Behörden, wenn das Gesetz es verlangt.
           Sitzt ein Empfänger außerhalb der EU/des EWR (insbesondere in den USA), stützt sich die Übermittlung auf einen Angemessenheitsbeschluss wie das EU-U.S. Data Privacy Framework (Art. 45 DSGVO) oder auf Standardvertragsklauseln (Art. 46 DSGVO), wie oben je Empfänger angegeben.</p>
 
         <h2>10. Speicherdauer</h2>

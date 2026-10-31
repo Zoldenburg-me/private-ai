@@ -79,7 +79,7 @@ export default function Agb() {
         </Draft>
 
         <h2>9. Contract, term, cancellation</h2>
-        <p>A paid plan starts when payment completes, at Stripe or, for crypto payments, at Zold and renews for the chosen period until cancelled. You can cancel at any time, effective at the end of the period, via “Manage subscription” (Stripe customer portal).
+        <p>A paid plan starts when payment completes, at Stripe<Draft> or, for crypto payments, at Zold</Draft> and renews for the chosen period until cancelled. You can cancel at any time, effective at the end of the period, via “Manage subscription” (Stripe customer portal).
           If a payment fails, we may move your account to the free plan until it is paid. <Todo>cancellation button under § 312k BGB</Todo></p>
 
         <h2>10. Right of withdrawal (consumers)</h2>
@@ -163,7 +163,7 @@ export default function Agb() {
         </Draft>
 
         <h2>§ 9 Vertragsschluss, Laufzeit, Kündigung</h2>
-        <p>Der Vertrag über einen bezahlten Tarif kommt mit Abschluss des Bezahlvorgangs bei Stripe oder, bei Kryptozahlungen, bei Zold zustande. Abos verlängern sich um die gewählte Laufzeit, bis sie gekündigt werden.
+        <p>Der Vertrag über einen bezahlten Tarif kommt mit Abschluss des Bezahlvorgangs bei Stripe<Draft> oder, bei Kryptozahlungen, bei Zold</Draft> zustande. Abos verlängern sich um die gewählte Laufzeit, bis sie gekündigt werden.
           Kündigung jederzeit zum Ende der Laufzeit über „Abo verwalten“ (Stripe-Kundenportal). Schlägt eine Zahlung fehl, können wir Ihr Konto bis zur Zahlung auf den kostenlosen Tarif umstellen. <Todo>Kündigungsbutton nach § 312k BGB prüfen</Todo></p>
 
         <h2>§ 10 Widerrufsrecht für Verbraucher</h2>
