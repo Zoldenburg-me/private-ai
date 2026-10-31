@@ -35,8 +35,8 @@
       ]
     },
     {
-      "title": "Design Docs & Research Specs",
-      "purpose": "Summarize docs/: spec-from-observation, venice/lumo studies, code-study-summary, e2e-enclave-encryption, backup-restore runbook.",
+      "title": "Design Docs",
+      "purpose": "Summarize docs/: e2e-enclave-encryption design and the backup-restore runbook.",
       "parent": "Overview",
       "page_notes": [
         {
