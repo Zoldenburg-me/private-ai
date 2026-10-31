@@ -65,7 +65,7 @@ const [ROOT_KEY, CA_KEY, PCK_KEY, ATT_KEY] = ["root", "ca", "pck", "attestation"
 
 /**
  * TEST-ONLY trust root: stands in for the Intel SGX Root CA when tests verify a mock quote with
- * `verifyTdxQuote(quote, { root: MOCK_ROOT_CA })`. It must never reach the browser bundle
+ * `verifyTdxQuote(quote, collateral, { root: MOCK_ROOT_CA })`. It must never reach the browser bundle
  * (`npm run build` fails if it does), or a mock enclave could pass the client's checks.
  */
 export const MOCK_ROOT_CA = cert("Mock TEE Test Root CA", "Mock TEE Test Root CA", ROOT_KEY, ROOT_KEY, true);
