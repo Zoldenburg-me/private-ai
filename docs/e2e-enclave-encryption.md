@@ -94,7 +94,12 @@ Checks, in order. A failure on any of them means no E2E chat (fail closed, no pl
    protected too. Not needed for the key binding, but without it a host could run the model on a GPU outside
    confidential-computing mode and read the GPU's memory, so the claim must say so until it is checked. Today we
    compare only the nonce in the GPU evidence, which does not tie that GPU to this CVM; the check must also bind
-   the GPU evidence to the CVM's quote **[inferred]: how NEAR binds them is an N0 question**. NVIDIA's NRAS answers no CORS preflight
+   the GPU evidence to the CVM's quote. **[confirmed, N0]** NEAR binds them by the nonce alone: `nvidia_payload` (8 Hopper
+   GPUs on the CVM probed) carries our request nonce, top level and on every GPU entry, while the CVM's `report_data` holds only the
+   signing key and that nonce, and the quote does not contain sha256 of the payload (the measurement registers were
+   not checked for a binding). So, as far as N0 shows, a host could pair a genuine CVM quote with evidence from other
+   GPUs that answered the same nonce; checking the GPU tokens proves those GPUs are
+   in confidential-computing mode, not that they are this CVM's. NVIDIA's NRAS answers no CORS preflight
    **[confirmed]**, but its JWKS does, so the relay can submit the evidence to NRAS and the browser checks the
    returned token's signature (NVIDIA JWKS), nonce and evidence hash itself **[inferred]: needs a test**. Stage N2
    ships without it and says so; N3 adds it.
@@ -103,7 +108,14 @@ Checks 2, 3 and 5 are the work. DCAP verification in the browser needs ECDSA-P25
 Web Crypto does P-256, and `@noble/curves` (already a dependency) does too. NEAR's verifier uses Phala's
 `dcap-qvl` (Rust, with a Node binding) **[confirmed]**. N1a chose our own TypeScript parser over a Wasm build:
 `lib/client/e2e/dcap.ts` (quote and QE report signatures, PCK chain to the pinned root, on `@noble/curves`), so no
-`'wasm-unsafe-eval'` in the CSP; it is tested against dcap-qvl's sample quotes and not wired into the chat yet. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
+`'wasm-unsafe-eval'` in the CSP; it is tested against dcap-qvl's sample quotes and not wired into the chat yet.
+**N0 keeps that choice [confirmed]:** the parser verified live NEAR quotes (model CVM, FMSPC `90C06F000000`, and the
+gateway CVM, `70A06D070000` or `B0C06F000000` from run to run, so the gateway has several instances) against
+Intel PCS collateral with TCB `UpToDate`, in 34–86 ms in Node. Reasons: it already passes on the real quotes, so
+Wasm buys no coverage; it needs no `'wasm-unsafe-eval'` and no ~1 MB Wasm download on the first E2E message (§4); it is
+small enough to review line by line, while a Wasm build adds a Rust toolchain to the release and a second binding
+nobody here audits. The cost is that Intel format changes (a new quote or TCB-info version) are ours to follow;
+dcap-qvl's sample quotes stay in the tests to catch drift. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
 either way it is Intel-signed, so the relay may also fetch and cache it. N1b's relay route
 `/api/attestation/collateral?fmspc=…&ca=…` (`lib/collateral.ts`) fetches it from Intel PCS server-side, so no new
 CSP origin. Tested against dcap-qvl's sample quotes and collateral, plus re-signed fixtures for revoked and old collateral.
@@ -154,15 +166,18 @@ decrypts is theirs and already attested.
 
 The first message decides whether a new user stays, so verification must not feel like waiting.
 
-What it costs (estimates; N0 measures them against NEAR's real reports):
+What it costs (N0 measured the report and the DCAP check against live NEAR; the rest are estimates):
 
-- Verification runs once per model per tab, not per message. The checks themselves are a few signature
-  verifications, estimated at tens of milliseconds.
+- Verification runs once per model per tab, not per message. The DCAP check took 34–86 ms per quote in Node
+  **[measured, N0]**; in a phone browser expect a few times that.
+- NEAR's Ed25519 report is about 300 KB of JSON and took about 350–400 ms to fetch **[measured, N0]**: the NVIDIA
+  payload (98 KB), the gateway's own attestation (76 KB), the model CVM's `tcb_info` (27 KB)
+  and app certificate (11 KB). N2f checks that the relay serves it compressed.
 - Intel's collateral is cached on the relay (it is Intel-signed, so the cache cannot fake it). The relay fills the
   cache at startup and refreshes it before it expires, so the first user after a restart does not wait for PCCS.
-- The verifier code (about 1 MB if `dcap-qvl` Wasm, [inferred]) is a content-hashed, `immutable` static asset,
-  prefetched on the landing and sign-up pages and compiled with `WebAssembly.compileStreaming`, so it is usually in the
-  HTTP cache before the chat page opens. No service worker: stale security code is the wrong risk to take for speed.
+- The verifier code (our TypeScript parser, §3, not Wasm) is a content-hashed, `immutable` static asset, prefetched
+  on the landing and sign-up pages, so it is usually in the HTTP cache before the chat page opens. No service worker:
+  stale security code is the wrong risk to take for speed.
 - Only the first E2E message to a model in a new tab can wait: fetching NEAR's report plus the checks, estimated at a
   few hundred milliseconds. Every later message reuses the key from memory.
 
@@ -200,7 +215,8 @@ browser or trace), also passes.
 
 Sources read: nearai/cloud-api@85f8600, nearai/inference-proxy@5faff1b, nearai/nearai-cloud-verifier@9455472,
 tinfoilsh/tinfoil-js@9082953, tinfoilsh/encrypted-http-body-protocol@036e4a3, npm `privatemode-ai@1.60.0`, and the
-provider docs linked below. Live checks were limited to CORS and auth (no encrypted chat was sent).
+provider docs linked below. For NEAR, the N0 probe (`scripts/near-e2ee-probe.ts`) then sent sealed chats live; its
+results are below. For the other providers, live checks were limited to CORS and auth.
 
 ### NEAR AI Cloud (`near`): field-level E2EE, v2
 
@@ -227,8 +243,10 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
   only the reply signature (§7) shows that the relay changed them: the browser compares the signed request hash
   with the hash of the exact bytes it sent, so any change to a plaintext field fails the check.
   `X-Client-Pub-Key` is outside the seal too: a relay can swap it for its own key, read the reply and re-seal it to
-  the browser's key. The signature check catches that only after the relay has read the reply **[inferred]: N0 to
-  check whether NEAR's signed text binds the client key**.
+  the browser's key. The signature check catches that only after the relay has read the reply: **[confirmed, N0]** the
+  signed text is `model:req:resp` and does not contain the client key, and the key travels as a header, outside the
+  signed request hash. The same holds for forged fields: anyone holding `X-Client-Pub-Key` can seal reply fields that
+  open with the client's key, so a field that decrypts proves nothing about who sealed it.
 - **Where it is decrypted [confirmed]:** in the model's CVM (inference-proxy). NEAR's cloud-api gateway, itself a TDX
   enclave, forwards ciphertext and sees what our relay sees.
 - **Web search [confirmed]:** `web_context_search` runs in the model CVM; only the query leaves it, to Brave, over
@@ -241,6 +259,39 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
 - **Attestation [confirmed]:** `/v1/attestation/report?model=&signing_algo=ed25519&nonce=` needs our API key (live:
   401 without), so the relay fetches it (as `lib/evidence.ts` does today) and the browser verifies it. CORS on
   cloud-api allows any origin, so a later direct path is possible, but it would need a key in the browser.
+- **N0 live probe [confirmed]** (2026-10-31, `npx vite-node scripts/near-e2ee-probe.ts`, content-free prompts, sealed
+  with `lib/client/e2e/near.ts`; 41 checks pass). Results that §3, §6 and N2b–N2d rely on:
+  - Text (`deepseek-ai/DeepSeek-V4.1-Flash-1017`), image (`Qwen/Qwen3.8-27B`, a red and a blue 16×16 PNG) and
+    in-enclave search all work under v2. The image content-parts array goes as one sealed string, and the enclave read
+    the image (it named each colour correctly, never the other). Every
+    sealed-kind field present in the replies (`content`, reasoning, tool-call arguments, `nearai_tool_result.output`)
+    was sealed, none in plaintext, and opened with our client key.
+  - `usage` stays plaintext numbers in the last chunk, also with images and search (search: ~7,900 prompt tokens for
+    one query, since the results count as prompt).
+  - Every stream kept one `id` and `model` throughout, including the search loop (`finish_reason` `tool_calls`, then
+    `stop`, in the same stream), and ended with `finish_reason`, `usage`, `[DONE]` and nothing after: the §3 in-stream
+    checks hold as written.
+  - Ed25519 signature: `/v1/signature/{id}?signing_algo=ed25519` signs `model:sha256(req):sha256(resp)` over our
+    exact sealed request bytes and the raw SSE bytes received, and verifies with `@noble/curves` against the report's
+    `signing_public_key` (on every NEAR-format entry it equals `signing_address`). The ECDSA path signs the same 3-part
+    form, and `verifySignedResponse` accepts a live one (#93).
+  - Key binding: `report_data` = Ed25519 key ‖ our nonce, TD debug off. GPU binding: by the nonce only (§3 check 7).
+  - **Not every attested model is a NEAR CVM.** Of the 17 models `/model/list` marks attested, 12 return a NEAR-format
+    entry (`model_name`, Ed25519 `signing_public_key`, TDX quote, NVIDIA payload). Three are served by Chutes
+    (`deepseek/deepseek-v3.2`, `moonshotai/kimi-k2.6`, `qwen/qwen3.5-397b-a17b`: `provider: "chutes"`, no Ed25519
+    signing key), one by Tinfoil (`z-ai/glm-5.3`: `provider: "tinfoil"`, `trust: "router_attested"`),
+    and `moonshotai/kimi-k3` answers 503 ("all candidate Chutes instances failed attestation"). Our v2 sealing and
+    §3 checks cover only the NEAR-format entries, so the bundle's E2E list (N2a, N2d) must list models one by one
+    and never take "attested" as "E2E-capable".
+  - Backends: each NEAR-format model returned one entry and the same signing key over four reports, so we saw no
+    model on several backends today (the report may show only one). The gateway does run on several instances: its
+    quote came from FMSPC `70A06D070000` in one run and `B0C06F000000` in the next. A request pinned with an unknown
+    `X-Model-Pub-Key` is refused with 421 ("The encryption key is no longer valid. Please refresh your attestation
+    report and retry."), not routed elsewhere, so the pin holds, and the client's one re-attest on failure (§3) is
+    the right answer to it. (Seen outside the probe: Node's `fetch` reported this request as a dropped connection,
+    so the probe reads it with `node:https`.)
+  - Availability, seen outside the probe: a plain request to `Qwen/Qwen3-VL-30B-A3B-Instruct` hung for 300 s while
+    its attestation report answered at once, so the E2E UI needs §4's fast inline failure, not a long spinner.
 - **Alternative, not chosen [confirmed]:** NEAR's gateway also speaks OHTTP (`/.well-known/ohttp-gateway`,
   `POST /ohttp`, chunked for streams) and can inject an outer `Authorization`. That hides even `model` and usage from
   us, but the gateway enclave then sees plaintext, and we would lose billing data. Field encryption to the model CVM
@@ -275,7 +326,7 @@ provider docs linked below. Live checks were limited to CORS and auth (no encryp
   T1 claim. Tinfoil signs no replies, so a truncated or reordered stream is caught only if EHBP's framing marks the
   end; to be read in T1.
 - **Fit:** the smallest build of all providers. Tinfoil does in-enclave search too (`web_search_options`, Exa) per
-  the #92 research notes, not yet checked under EHBP.
+  earlier research (#92), not yet checked under EHBP.
 
 ### Privatemode (`privatemode`)
 
@@ -345,8 +396,8 @@ Forwarding byte for byte is new work: `relay()` takes the body as an object and 
   `/api/signature` against **its own** hashes (the signed request hash must equal the hash of the bytes it sent, so a
   relay that changed any field fails) and the attested key (Ed25519 for the E2E report). Stronger than today:
   the relay can no longer feed matching hashes. This check is mandatory for the E2E badge, since it is the only thing
-  that catches dropped, reordered or truncated fields (§2). The 3-part `model:req:resp` form is accepted by
-  `verifySignedResponse` once PR #76 merges (open at the time of writing); the E2E step adds the Ed25519 path.
+  that catches dropped, reordered or truncated fields (§2). `verifySignedResponse` accepts the 3-part
+  `model:req:resp` form, checked against a live reply in N0; the E2E step adds the Ed25519 path (N0 verified one live).
   Tinfoil and Privatemode sign no replies; nothing changes there.
 - **Usage counting**: see §6. For flat-quota models nothing changes in practice; for credit models the estimate is
   coarser only where a provider seals `usage`.
@@ -360,8 +411,8 @@ Forwarding byte for byte is new work: `relay()` takes the body as an object and 
 - **Proof panel**: the badge reads "Encrypted to verified enclave" only when every §3 check ran in this browser and
   the chat was sealed; otherwise it shows today's levels. The DCAP/TCB/measurement items move from "not checked yet"
   to real results.
-- **CSP**: no new origin while all traffic goes through the relay. Wasm (a `dcap-qvl` build, Privatemode's SDK) needs
-  `'wasm-unsafe-eval'` in `script-src` of `buildCsp()`, with a case in `tests/csp.test.ts`. A direct fetch from a
+- **CSP**: no new origin while all traffic goes through the relay. Wasm (Privatemode's SDK; DCAP is plain
+  TypeScript, §3) needs `'wasm-unsafe-eval'` in `script-src` of `buildCsp()`, with a case in `tests/csp.test.ts`. A direct fetch from a
   provider would add its origin the same way.
 
 ## 8. The hole this does not close: we serve the code
@@ -399,7 +450,7 @@ after N2 (N2's claim states the GPU gap).
 | N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), declared-count quota (`lib/tiers.ts`); `/api/agent` for an E2E NEAR chat no longer needs Brave configured (`handleAgent` returns 503 without it today), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
 | N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt moved to the browser, per-chat random `user_cache_secret` (`lib/extensions.ts`) | tests for both |
 | N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; verify ahead (page open, model pick, composer focus) and the optimistic "not sent yet" message; fast inline failure with retry (§4); in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
-| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
+| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset; the relay serves the ~300 KB NEAR report compressed | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
 | N2e | small | Behind a flag, then on for NEAR; `/datenschutz`, `/privacy/metadata`, `app/agb` and the homepage get the §10 N2 claim | flag on in prod; pages match the claim |
 | N3 | medium, optional | NVIDIA evidence: relay submits to NRAS, browser checks the token (NVIDIA JWKS), nonce, evidence hash and binding to the CVM quote | "GPU evidence" passes for real; claim drops the GPU sentence |
 | T1 | medium | Tinfoil in the browser: `SecureClient` with `baseURL`/`attestationBundleURL` = relay; relay as the documented proxy (enclave-URL allowlist, `Ehbp-*` passthrough, `/attestation`, KDS and Sigstore data); pinned minimum release; usage from `X-Tinfoil-Usage-Metrics`; per-model SEV-SNP check; router-hop question answered | Tinfoil chats sealed; `lib/tinfoil.ts` server SDK only for the API route |
