@@ -19,7 +19,13 @@ const BASE = "https://cloud-api.near.ai/v1";
 const KEY = process.env.NEAR_AI_API_KEY ?? "";
 if (!KEY) throw new Error("NEAR_AI_API_KEY is not set");
 const AUTH = { Authorization: `Bearer ${KEY}` };
-const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
+const arg = (name: string) => {
+  const i = process.argv.indexOf(`--${name}`);
+  if (i < 0) return undefined;
+  const v = process.argv[i + 1];
+  if (!v || v.startsWith("--")) throw new Error(`--${name} needs a value`);
+  return v;
+};
 const TEXT_PREFS = ["deepseek-ai/DeepSeek-V4.1-Flash-1017", "Qwen/Qwen3.8-27B", "z-ai/glm-5.3"];
 const VISION = arg("vision") ?? "Qwen/Qwen3.8-27B";
 const REPORTS = Number(arg("reports") ?? 4);
@@ -29,18 +35,22 @@ type Row = { check: string; ok: boolean | null; detail: string };
 const rows: Row[] = [];
 /** ok null = observation, not a pass/fail. Never pass reply text or the key in `detail`. */
 const mask = (s: string) => (KEY ? s.split(KEY).join("***") : s);
+/** Mask before cutting, so a key that straddles the cut is not printed in part. */
+const clip = (s: string, n: number) => mask(s).slice(0, n);
 const note = (check: string, ok: boolean | null, detail = "") => {
   detail = mask(detail);
   rows.push({ check, ok, detail });
   if (ok === false) process.exitCode = 1;
   console.log(`${ok === null ? "  ·" : ok ? "  ✓" : "  ✗"} ${check}${detail ? ` — ${detail}` : ""}`);
 };
+/** Hex without 0x, lowercase, so keys and addresses compare whatever form NEAR sends. */
+const bare = (s: string) => s.replace(/^0x/i, "").toLowerCase();
 const HEXF = /^(?:[0-9a-f]{2}){72,}$/i; // at least ephemeral_pub ‖ nonce ‖ tag
 
 async function get(path: string): Promise<{ status: number; json: Record<string, unknown> }> {
   const r = await fetch(BASE + path, { headers: AUTH, signal: AbortSignal.timeout(60_000) });
   const text = await r.text();
-  try { return { status: r.status, json: JSON.parse(text) }; } catch { return { status: r.status, json: { raw: mask(text.slice(0, 200)) } }; }
+  try { return { status: r.status, json: JSON.parse(text) }; } catch { return { status: r.status, json: { raw: clip(text, 200) } }; }
 }
 
 type Report = { provider?: string; trust?: string; signing_public_key?: string; signing_address: string; intel_quote: string; nvidia_payload?: string; request_nonce?: string; model_name?: string };
@@ -131,7 +141,7 @@ async function sealedChat(model: string, body: Record<string, unknown>, enclaveK
 
 /** Checks the stream invariants §3 relies on; returns the chat id. Opened text stays in memory. */
 function streamChecks(label: string, s: Sealed): string | undefined {
-  if (s.status !== 200) { note(`${label}: HTTP 200`, false, `HTTP ${s.status}: ${s.respBytes.slice(0, 200)}`); return; }
+  if (s.status !== 200) { note(`${label}: HTTP 200`, false, `HTTP ${s.status}: ${clip(s.respBytes, 200)}`); return; }
   const ids = new Set(s.chunks.map((c) => c.id)), models = new Set(s.chunks.map((c) => c.model));
   const id = [...ids][0];
   note(`${label}: one chunk id and model for the whole stream`, ids.size === 1 && typeof id === "string" && models.size === 1 && s.badLines === 0, `${s.chunks.length} chunks, ${ids.size} id(s), ${models.size} model(s), ${s.badLines} unparsable data lines`);
@@ -170,7 +180,7 @@ async function signature(label: string, model: string, chatId: string, algo: "ed
   if (algo === "ed25519") {
     let ok = false;
     try { ok = ed25519.verify(hexToBytes(String(sig.signature).replace(/^0x/, "")), utf8ToBytes(text), hexToBytes(signer)); } catch { /* ok stays false */ }
-    note(`${label}: Ed25519 signature verifies against the attested signing_public_key`, ok, `signing_algo ${sig.signing_algo}, signer matches report: ${String(sig.signing_address).toLowerCase() === signer.toLowerCase()}`);
+    note(`${label}: Ed25519 signature verifies against the attested signing_public_key`, ok, `signing_algo ${sig.signing_algo}, signer matches report: ${bare(String(sig.signing_address)) === bare(signer)}`);
   } else {
     const v = verifySignedResponse({ text, signature: String(sig.signature) }, signer, { reqSha256: reqSha, respSha256: respSha, model });
     note(`${label}: verifySignedResponse accepts the live 3-part ECDSA signature (#93)`, v.ok, v.checks.filter((c) => !c.ok).map((c) => c.name).join(", ") || "all checks pass");
@@ -205,9 +215,9 @@ async function main() {
   const rep = await report(model, "ed25519");
   const e = rep.entry;
   if (rep.status !== 200 || !e?.signing_public_key) return note("ed25519 report", false, `HTTP ${rep.status}; remaining checks skipped`);
-  const pub = e.signing_public_key;
+  const pub = bare(e.signing_public_key);
   const q = parseTdxQuote(e.intel_quote);
-  note("report_data[0..32] = signing_public_key, [32..64] = our nonce", bytesToHex(q.reportData) === pub.toLowerCase() + rep.nonce, `signing_address ${e.signing_address === pub ? "equals" : "differs from"} signing_public_key`);
+  note("report_data[0..32] = signing_public_key, [32..64] = our nonce", bytesToHex(q.reportData) === pub + rep.nonce, `signing_address ${bare(e.signing_address) === pub ? "equals" : "differs from"} signing_public_key`);
   note("TD debug off", !q.debug);
   await dcap("model CVM", e.intel_quote);
   const gw = rep.json.gateway_attestation as Report | undefined;
@@ -231,18 +241,18 @@ async function main() {
     for (let i = 0; i < REPORTS; i++) {
       const r = await report(m, "ed25519");
       statuses.add(r.status);
-      if (r.status !== 200) { err ||= JSON.stringify((r.json.error as { message?: string })?.message ?? r.json).slice(0, 200); continue; }
+      if (r.status !== 200) { err ||= clip(JSON.stringify((r.json.error as { message?: string })?.message ?? r.json), 200); continue; }
       ok++;
       maxEntries = Math.max(maxEntries, r.all.length);
       // NEAR-format entries carry model_name + signing_public_key; others (Chutes, Tinfoil) name their provider instead.
       for (const a of r.all) formats.add(a.provider ? `${a.provider}${a.trust ? ` (${a.trust})` : ""}` : a.signing_public_key ? "near ed25519" : "unknown");
-      for (const a of r.all) if ((a.model_name === m || (r.all.length === 1 && !a.model_name)) && a.signing_public_key) { keys.add(a.signing_public_key); same &&= a.signing_public_key === a.signing_address; }
+      for (const a of r.all) if ((a.model_name === m || (r.all.length === 1 && !a.model_name)) && a.signing_public_key) { keys.add(bare(a.signing_public_key)); same &&= bare(a.signing_public_key) === bare(a.signing_address); }
     }
     note(`${m}: distinct signing keys`, null, `${keys.size} key(s) over ${ok}/${REPORTS} good reports, up to ${maxEntries} entr${maxEntries === 1 ? "y" : "ies"} per report, format ${[...formats].join("+") || "none"}, key = signing_address: ${keys.size ? same : "n/a"}, HTTP ${[...statuses].join(",")}${err ? `, error: ${err}` : ""}`);
   }
   const sw = sealRequest({ model, max_tokens: 10, messages: [{ role: "user", content: "Reply with the single word: ok" }] }, pub);
   const wrong = await postStatus("/chat/completions", JSON.stringify(sw.body), { ...sw.headers, "X-Model-Pub-Key": nearKey().publicHex });
-  note("X-Model-Pub-Key for an unknown backend is refused as a key error, not served", wrong.status === 421 && /encryption key/i.test(wrong.body), `HTTP ${wrong.status}: ${wrong.body.slice(0, 160)}`);
+  note("X-Model-Pub-Key for an unknown backend is refused as a key error, not served", wrong.status === 421 && /encryption key/i.test(wrong.body), `HTTP ${wrong.status}: ${clip(wrong.body, 160)}`);
 
   console.log("\n— Sealed text chat —");
   const t = await sealedChat(model, { messages: [{ role: "user", content: "Reply with the single word: ok" }] }, pub);
@@ -251,7 +261,7 @@ async function main() {
 
   console.log("\n— Sealed image chat —");
   const vrep = await report(VISION, "ed25519");
-  const vpub = vrep.entry?.signing_public_key;
+  const vpub = vrep.entry?.signing_public_key && bare(vrep.entry.signing_public_key);
   if (vpub) {
     for (const [name, rgb, other] of [["red", [255, 0, 0], "blue"], ["blue", [0, 0, 255], "red"]] as const) {
       const img = await sealedChat(VISION, { messages: [{ role: "user", content: [{ type: "text", text: "What colour is this image? One word." }, { type: "image_url", image_url: { url: png([...rgb]) } }] }], max_tokens: 1500 }, vpub);

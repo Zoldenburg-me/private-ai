@@ -112,7 +112,7 @@ Web Crypto does P-256, and `@noble/curves` (already a dependency) does too. NEAR
 **N0 keeps that choice [confirmed]:** the parser verified live NEAR quotes (model CVM, FMSPC `90C06F000000`, and the
 gateway CVM, `70A06D070000` or `B0C06F000000` from run to run, so the gateway has several instances) against
 Intel PCS collateral with TCB `UpToDate`, in 34–86 ms in Node. Reasons: it already passes on the real quotes, so
-Wasm buys no coverage; it needs no `'wasm-unsafe-eval'` and no ~1 MB asset (§4); it is
+Wasm buys no coverage; it needs no `'wasm-unsafe-eval'` and no ~1 MB Wasm download on the first E2E message (§4); it is
 small enough to review line by line, while a Wasm build adds a Rust toolchain to the release and a second binding
 nobody here audits. The cost is that Intel format changes (a new quote or TCB-info version) are ours to follow;
 dcap-qvl's sample quotes stay in the tests to catch drift. Collateral: Intel PCS sends no CORS headers, Phala's PCCS does **[confirmed]**;
@@ -326,7 +326,7 @@ results are below. For the other providers, live checks were limited to CORS and
   T1 claim. Tinfoil signs no replies, so a truncated or reordered stream is caught only if EHBP's framing marks the
   end; to be read in T1.
 - **Fit:** the smallest build of all providers. Tinfoil does in-enclave search too (`web_search_options`, Exa) per
-  the #92 research notes, not yet checked under EHBP.
+  earlier research (#92), not yet checked under EHBP.
 
 ### Privatemode (`privatemode`)
 
@@ -450,7 +450,7 @@ after N2 (N2's claim states the GPU gap).
 | N2c1 | medium | Relay E2E mode on `/api/chat` and `/api/agent`: raw-body passthrough and unmodified reply stream (`lib/relay.ts`, `lib/handler.ts`), shape check (plaintext → 400), declared-count quota (`lib/tiers.ts`); `/api/agent` for an E2E NEAR chat no longer needs Brave configured (`handleAgent` returns 503 without it today), cap and `include_usage` checked not written, E2E body-cap constant, raw byte count | relay tests: plaintext refused, sealed body forwarded byte for byte, billing from plaintext `usage`, API route still plaintext |
 | N2c2 | small | `GET /api/route` for `auto:` (`lib/routing.ts`, new `app/api/route`); persona prompt moved to the browser, per-chat random `user_cache_secret` (`lib/extensions.ts`) | tests for both |
 | N2d | medium | UI: the bundle's E2E list; chats to listed models are sealed or not sent (error with the failed check, retry); in-memory key cache; verify ahead (page open, model pick, composer focus) and the optimistic "not sent yet" message; fast inline failure with retry (§4); in-enclave search events decrypted in the browser; Brave and image tools off on E2E chats (`lib/agent.ts`, `app/api/agent`); signature checked against the browser's own hashes, badge only if it passes (`lib/client/chat-stream.ts`, `lib/client/proof.ts`, `components/app/ProofDrawer.tsx`) | browser-pane check at phone and desktop width; one sealed chat against the mock end to end |
-| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
+| N2f | small | First-message polish (§4): skeleton with step names; background re-check before expiry; verifier prefetched on landing and sign-up as an immutable asset; the relay serves the ~300 KB NEAR report compressed | the §4 speed target met against the mock and against live NEAR; `LIMITS.evidenceAll` sized for launch traffic |
 | N2e | small | Behind a flag, then on for NEAR; `/datenschutz`, `/privacy/metadata`, `app/agb` and the homepage get the §10 N2 claim | flag on in prod; pages match the claim |
 | N3 | medium, optional | NVIDIA evidence: relay submits to NRAS, browser checks the token (NVIDIA JWKS), nonce, evidence hash and binding to the CVM quote | "GPU evidence" passes for real; claim drops the GPU sentence |
 | T1 | medium | Tinfoil in the browser: `SecureClient` with `baseURL`/`attestationBundleURL` = relay; relay as the documented proxy (enclave-URL allowlist, `Ehbp-*` passthrough, `/attestation`, KDS and Sigstore data); pinned minimum release; usage from `X-Tinfoil-Usage-Metrics`; per-model SEV-SNP check; router-hop question answered | Tinfoil chats sealed; `lib/tinfoil.ts` server SDK only for the API route |
