@@ -36,7 +36,7 @@ export default function Agb() {
         <h2>3. The service and its availability</h2>
         <p>We provide an AI chat that relays requests to models running in confidential computing environments or at providers that retain no data. Replies are generated automatically.
           We provide the service with reasonable care but do not promise that it is available without interruption or free of errors. We may change, add or remove models, providers and features if this is reasonable for you, in particular to keep the service secure, lawful or working;
-          we do not reduce the core of a paid plan during its current term. The service is currently in an invite-only test phase. <Todo>availability commitment / maintenance windows</Todo></p>
+          we do not reduce the core of a paid plan during its current term. Registration may require an invite code. <Todo>availability commitment / maintenance windows</Todo></p>
         <p>Third-party providers: we do not run the AI models, the enclaves or the hardware they run on. They are operated by independent providers, which the <a href="/datenschutz">privacy policy</a> names.
           We select the providers and relay your requests, and for providers that run models in an enclave you can check the attestation in the chat, but we have no control over their infrastructure; their availability and performance are outside our control. <Todo>liability for providers as vicarious agents (§ 278 BGB): lawyer to confirm</Todo></p>
 
@@ -71,13 +71,15 @@ export default function Agb() {
         <p>Paid plans differ only in their limits; daily numbers are fair-use limits. Selected top models are paid from credit: every plan includes a monthly credit that lapses at the end of the month; bought credit does not expire. Credit is not transferable and is not paid out. <Todo>credit terms (expiry, refund on cancellation, price per model)</Todo></p>
         <p>All prices include statutory VAT. <Todo>VAT treatment (incl./excl., OSS)</Todo> We announce price changes for subscriptions at least 30 days before they take effect; you can cancel before then. <Todo>price change clause</Todo></p>
 
-        <h3>Crypto payments</h3>
-        <p>Crypto payments are not available yet. Once offered, you can also pay with crypto assets (such as stablecoins) through Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), a service of {C.name}. Prices stay in euros; the amount due in the crypto asset is fixed when you pay.
-          Crypto payments are final once confirmed on the blockchain: check the network, address and amount before sending, as we cannot reverse a payment sent to a wrong address or on a wrong network. Refunds, where owed, are paid to a wallet you name, in the same asset or in euros.
-          We may add further assets and networks, possibly including Monero for additional privacy. <Todo>crypto terms: assets/networks, exchange-rate fixing, refunds, Monerium/e-money role, MiCA/AML</Todo></p>
+        <Draft>
+          <h3>Crypto payments</h3>
+          <p>You can also pay with crypto assets (such as stablecoins) through Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>), a service of {C.name}. Prices stay in euros; the amount due in the crypto asset is fixed when you pay.
+            Crypto payments are final once confirmed on the blockchain: check the network, address and amount before sending, as we cannot reverse a payment sent to a wrong address or on a wrong network. Refunds, where owed, are paid to a wallet you name, in the same asset or in euros.
+            <Todo>crypto terms: assets/networks, exchange-rate fixing, refunds, Monerium/e-money role, MiCA/AML</Todo></p>
+        </Draft>
 
         <h2>9. Contract, term, cancellation</h2>
-        <p>A paid plan starts when payment completes, at Stripe or, for crypto payments, at Zold and renews for the chosen period until cancelled. You can cancel at any time, effective at the end of the period, via “Manage subscription” (Stripe customer portal).
+        <p>A paid plan starts when payment completes, at Stripe<Draft> or, for crypto payments, at Zold</Draft> and renews for the chosen period until cancelled. You can cancel at any time, effective at the end of the period, via “Manage subscription” (Stripe customer portal).
           If a payment fails, we may move your account to the free plan until it is paid. <Todo>cancellation button under § 312k BGB</Todo></p>
 
         <h2>10. Right of withdrawal (consumers)</h2>
@@ -118,7 +120,7 @@ export default function Agb() {
         <h2>§ 3 Leistungen und Verfügbarkeit</h2>
         <p>Wir stellen einen KI-Chat bereit, der Anfragen an Modelle in vertraulichen Rechenumgebungen oder an Anbieter ohne Datenaufbewahrung weiterleitet. Antworten werden automatisiert erzeugt.
           Wir erbringen den Dienst mit angemessener Sorgfalt, schulden aber keine unterbrechungs- oder fehlerfreie Verfügbarkeit. Wir dürfen Modelle, Anbieter und Funktionen ändern, ergänzen oder entfernen, wenn dies für Sie zumutbar ist, insbesondere um den Dienst sicher, rechtmäßig oder funktionsfähig zu halten;
-          den Kern eines bezahlten Tarifs schränken wir während der laufenden Laufzeit nicht ein. Der Dienst befindet sich derzeit in einer Testphase nur mit Einladung. <Todo>Verfügbarkeitszusage / Wartungsfenster festlegen</Todo></p>
+          den Kern eines bezahlten Tarifs schränken wir während der laufenden Laufzeit nicht ein. Die Registrierung kann einen Einladungscode erfordern. <Todo>Verfügbarkeitszusage / Wartungsfenster festlegen</Todo></p>
         <p>Drittanbieter: Wir betreiben weder die KI-Modelle noch die Enklaven oder die Hardware, auf der sie laufen. Diese werden von unabhängigen Anbietern betrieben, die in der <a href="/datenschutz">Datenschutzerklärung</a> genannt sind.
           Wir wählen die Anbieter aus und leiten Ihre Anfragen weiter, und bei Anbietern, die Modelle in einer Enklave betreiben, können Sie die Attestierung im Chat prüfen; auf ihre Infrastruktur haben wir jedoch keinen Einfluss, ihre Verfügbarkeit und Leistung liegen außerhalb unserer Kontrolle. <Todo>Haftung für Anbieter als Erfüllungsgehilfen (§ 278 BGB) anwaltlich prüfen</Todo></p>
 
@@ -153,13 +155,15 @@ export default function Agb() {
         <p>Die bezahlten Tarife unterscheiden sich nur in ihren Limits; die Tageszahlen sind Fair-Use-Grenzen. Ausgewählte Spitzenmodelle werden über Guthaben abgerechnet: Jeder Tarif enthält ein monatliches Inklusiv-Guthaben, das am Monatsende verfällt; gekauftes Guthaben verfällt nicht. Guthaben ist nicht übertragbar und wird nicht ausgezahlt. <Todo>Guthabenbedingungen (Verfall, Erstattung bei Kündigung, Preisangabe je Modell) prüfen</Todo></p>
         <p>Alle Preise inkl. gesetzlicher USt. <Todo>USt-Behandlung (inkl./zzgl., OSS) prüfen</Todo> Preisänderungen für Abos kündigen wir mindestens 30 Tage vor Inkrafttreten an; Sie können bis dahin kündigen. <Todo>Preisänderungsklausel prüfen</Todo></p>
 
-        <h3>Kryptozahlungen</h3>
-        <p>Kryptozahlungen sind noch nicht verfügbar. Sobald sie angeboten werden, können Sie auch mit Kryptowerten (etwa Stablecoins) über Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>) bezahlen, einen Dienst der {C.name}. Die Preise bleiben in Euro; der Betrag im Kryptowert wird beim Bezahlen festgelegt.
-          Kryptozahlungen sind mit der Bestätigung auf der Blockchain endgültig: Prüfen Sie Netzwerk, Adresse und Betrag vor dem Senden, denn eine Zahlung an eine falsche Adresse oder über ein falsches Netzwerk können wir nicht rückgängig machen. Geschuldete Erstattungen zahlen wir an eine von Ihnen genannte Wallet, im selben Kryptowert oder in Euro.
-          Wir können weitere Kryptowerte und Netzwerke ergänzen, möglicherweise auch Monero für zusätzliche Privatsphäre. <Todo>Kryptobedingungen: Kryptowerte/Netzwerke, Kursfestlegung, Erstattung, Rolle von Monerium/E-Geld, MiCA/GwG</Todo></p>
+        <Draft>
+          <h3>Kryptozahlungen</h3>
+          <p>Sie können auch mit Kryptowerten (etwa Stablecoins) über Zold (<a href="https://zoldhq.com" rel="noopener noreferrer">zoldhq.com</a>) bezahlen, einen Dienst der {C.name}. Die Preise bleiben in Euro; der Betrag im Kryptowert wird beim Bezahlen festgelegt.
+            Kryptozahlungen sind mit der Bestätigung auf der Blockchain endgültig: Prüfen Sie Netzwerk, Adresse und Betrag vor dem Senden, denn eine Zahlung an eine falsche Adresse oder über ein falsches Netzwerk können wir nicht rückgängig machen. Geschuldete Erstattungen zahlen wir an eine von Ihnen genannte Wallet, im selben Kryptowert oder in Euro.
+            <Todo>Kryptobedingungen: Kryptowerte/Netzwerke, Kursfestlegung, Erstattung, Rolle von Monerium/E-Geld, MiCA/GwG</Todo></p>
+        </Draft>
 
         <h2>§ 9 Vertragsschluss, Laufzeit, Kündigung</h2>
-        <p>Der Vertrag über einen bezahlten Tarif kommt mit Abschluss des Bezahlvorgangs bei Stripe oder, bei Kryptozahlungen, bei Zold zustande. Abos verlängern sich um die gewählte Laufzeit, bis sie gekündigt werden.
+        <p>Der Vertrag über einen bezahlten Tarif kommt mit Abschluss des Bezahlvorgangs bei Stripe<Draft> oder, bei Kryptozahlungen, bei Zold</Draft> zustande. Abos verlängern sich um die gewählte Laufzeit, bis sie gekündigt werden.
           Kündigung jederzeit zum Ende der Laufzeit über „Abo verwalten“ (Stripe-Kundenportal). Schlägt eine Zahlung fehl, können wir Ihr Konto bis zur Zahlung auf den kostenlosen Tarif umstellen. <Todo>Kündigungsbutton nach § 312k BGB prüfen</Todo></p>
 
         <h2>§ 10 Widerrufsrecht für Verbraucher</h2>

@@ -17,7 +17,7 @@ export interface Tier {
   agentMaxSteps: number;
 }
 
-/** PROPOSAL - not final pricing. Paid plans differ only in limits; daily numbers are fair use. */
+/** Plan definitions. Paid plans differ only in limits; daily numbers are fair use. */
 export const TIERS: Record<TierId, Tier> = {
   free: { id: "free", name: "Free", priceEurMonth: 0, dailyMessages: 20, topDailyMessages: 0, incognitoDailyMessages: 50, includedCreditsEur: 0, maxContextTokens: 8_000, maxOutputTokens: 4_096, requestsPerMinute: 5, agentMaxSteps: 3 },
   plus: { id: "plus", name: "Plus", priceEurMonth: 8, dailyMessages: 300, topDailyMessages: 10, incognitoDailyMessages: 300, includedCreditsEur: 1, maxContextTokens: 32_000, maxOutputTokens: 8_192, requestsPerMinute: 15, agentMaxSteps: 5 },
