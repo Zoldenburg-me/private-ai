@@ -14,7 +14,9 @@ const BFL_BASE = "https://api.eu.bfl.ai/v1";
 export const VIDEO_TIMEOUT_MS = 240_000;
 const POLL_MS = 2_000;
 const DURATION_S = 5;
-export const MAX_VIDEO_BYTES = 20_000_000;
+// The clip travels base64 in one SSE event (a third larger) and is buffered by server and browser, so keep it near clip size.
+// shortcut: 10 MB is from bitrate (5 s HD with sound is about 2-6 MB), not a measured clip; raise it if real clips are refused as too big.
+export const MAX_VIDEO_BYTES = 10_000_000;
 /** What one clip costs the user in credit: BFL's HD price ($0.17/s, checked 2026-10-27) with the usual markup. */
 export const VIDEO_COST_MICROS = Math.round(0.17 * DURATION_S * USD_EUR * CREDIT_MARKUP * MICROS_PER_EUR);
 
@@ -34,11 +36,16 @@ export const VIDEO_TOOL = {
 /** An MP4 (ISO BMFF) by its first bytes, so a provider's label is never trusted for the data URL. */
 export const isMp4 = (b: Uint8Array) => b.length > 12 && String.fromCharCode(...b.slice(4, 8)) === "ftyp";
 
-/** Only BFL's own hosts (or the configured mock) get the API key or are fetched from: their URLs come from the response. */
-const trusted = (url: string, base: string) => {
+/**
+ * URLs from the response are fetched only on BFL's own hosts (or the configured mock). The API key goes only to an API
+ * host (api.bfl.ai, api.<region>.bfl.ai): any other bfl.ai host (delivery, docs, a vendor's) gets the signed sample only.
+ */
+const trusted = (url: string, base: string, withKey = false) => {
   try {
     const u = new URL(url);
-    return u.origin === new URL(base).origin || (u.protocol === "https:" && (u.hostname === "bfl.ai" || u.hostname.endsWith(".bfl.ai")));
+    if (u.origin === new URL(base).origin) return true;
+    if (u.protocol !== "https:" || u.port) return false;
+    return withKey ? /^api(\.[a-z0-9-]+)?\.bfl\.ai$/.test(u.hostname) : u.hostname === "bfl.ai" || u.hostname.endsWith(".bfl.ai");
   } catch { return false; }
 };
 
@@ -61,7 +68,7 @@ export async function generateVideo(prompt: string, env: Env, fetchImpl: typeof 
     body: JSON.stringify({ mode: "t2v", prompt, duration: DURATION_S, resolution: "hd", aspect_ratio: "16:9", generate_audio: true }),
   }));
   const poll = submitted.polling_url;
-  if (typeof poll !== "string" || !trusted(poll, base)) throw fail("untrusted polling url", 502);
+  if (typeof poll !== "string" || !trusted(poll, base, true)) throw fail("untrusted polling url", 502);
   for (;;) {
     sig.throwIfAborted();
     await new Promise<void>((r, j) => {

@@ -162,6 +162,14 @@ describe("generateVideo", () => {
     expect((await gen({ sample: "http://169.254.169.254/latest" })).result).toBe(502);
   });
 
+  it("sends the API key only to a BFL API host, never to another bfl.ai host", async () => {
+    const leak = await gen({ poll: "https://cdn.bfl.ai/v1/get_result?id=j1" });
+    expect(leak.result).toBe(502);
+    expect(leak.calls.filter((c) => c.key).map((c) => c.url)).toEqual(["https://api.eu.bfl.ai/v1/flux-3-video"]);
+    const regional = await gen({ poll: "https://api.eu1.bfl.ai/v1/get_result?id=j1" });
+    expect(String(regional.result)).toMatch(/^data:video\/mp4;base64,/);
+  });
+
   it("treats moderation and non-MP4 bodies as refusals", async () => {
     expect((await gen({ status: "Content Moderated" })).result).toBe(422);
     expect((await gen({ status: "Task not found" })).result).toBe(422);
