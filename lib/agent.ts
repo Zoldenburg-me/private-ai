@@ -83,7 +83,7 @@ export const TOOLS = new Map<string, AgentTool>([
       const left = ctx.remaining();
       if (left !== undefined && left < IMAGE_COST_MESSAGES) throw Object.assign(new Error("not enough messages left"), { status: 429 });
       const image = await generateImage(promptOf(args)!, ctx.imageProvider, ctx.env, ctx.fetchImpl, ctx.signal);
-      // Charge each message weight towards the quota; stop if rate limit is reached.
+      // shortcut: a limit hit while charging stops the count, so an image can cost less than its weight; needs a counted gate call to fix.
       for (let i = 0; i < IMAGE_COST_MESSAGES && !ctx.signal.aborted; i++) if (await ctx.charge()) break;
       // The image goes to the browser only; the model learns that it was shown, never its bytes.
       return { forModel: "image generated and already shown to the user above your reply; do not add a link or a Markdown image for it", event: { image } };

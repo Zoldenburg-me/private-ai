@@ -81,6 +81,7 @@ export class NearSearchSteps {
 
 /**
  * NEAR formats each source as "[n] title\nurl\nsnippets", numbered from 1; keeps the public http(s) links.
+ * shortcut: page text could still forge a "[n]" header with the right next number; upgrade if NEAR adds structured sources.
  */
 export function sourcesOf(output: string): { title: string; url: string }[] {
   let next = 1;

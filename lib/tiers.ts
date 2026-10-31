@@ -50,7 +50,7 @@ export const GROUP_CUTOFF_USD = 2;
  */
 export type ModelGroup = "tee" | "top" | "incognito" | "credits";
 export function modelGroup(m: Pick<ModelEntry, "tee" | "price">): ModelGroup {
-  // Unpriced models (Privatemode, or a gateway without a listed price) default to cheap tier limits.
+  // shortcut: an unpriced model (Privatemode, a Venice model no other gateway lists) counts as cheap; price them before they get busy.
   const cheap = !m.price || blendedPrice(m.price) <= GROUP_CUTOFF_USD;
   return m.tee ? (cheap ? "tee" : "top") : cheap ? "incognito" : "credits";
 }

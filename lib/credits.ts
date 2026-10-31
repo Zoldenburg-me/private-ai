@@ -8,7 +8,7 @@ import { TIERS, type TierId } from "./tiers";
  * Frontier credits (pay as you go). Balances are micro-euros; a call costs the provider's USD list price for its
  * tokens, in euros, times CREDIT_MARKUP. The markup covers 19% VAT and Stripe fees and leaves about 25% margin.
  */
-// Fixed rate; update or switch to env/daily feed if EUR/USD drifts significantly.
+// shortcut: fixed rate, move to env or a daily feed once EUR/USD drifts more than 5% from it.
 export const USD_EUR = 0.92;
 export const CREDIT_MARKUP = 1.6;
 export const MICROS_PER_EUR = 1_000_000;
