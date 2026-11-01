@@ -24,8 +24,11 @@ export const keyGeneration = () => g.__paiKeyGen ?? 0;
 export const invalidateKeys = () => { g.__paiKeys = undefined; g.__paiKeyGen = keyGeneration() + 1; };
 export const _resetKeyCache = () => { invalidateKeys(); g.__paiKeyUsed = undefined; };
 
-/** Providers an admin can store keys for: all but the dev-only mock. A new provider in DEFS (e.g. Venice) shows up here. */
-export const keyProviders = () => DEFS.filter((d) => d.id !== "mock").map(({ id, name, prefix }) => ({ id, name, prefix }));
+/** Keys for services that are not chat providers: the agent's video tool (lib/video-gen.ts) reads BFL_API_KEY. */
+const TOOL_KEYS = [{ id: "bfl", name: "Black Forest Labs (FLUX 3 Video, Anon mode)", prefix: "BFL" }];
+
+/** Providers an admin can store keys for: all but the dev-only mock, plus TOOL_KEYS. A new provider in DEFS (e.g. Venice) shows up here. */
+export const keyProviders = () => [...DEFS.filter((d) => d.id !== "mock").map(({ id, name, prefix }) => ({ id, name, prefix })), ...TOOL_KEYS];
 
 const aad = (provider: string, id: string) => `${provider}:${id}`;
 
@@ -49,13 +52,19 @@ async function storedKeys(): Promise<Resolved> {
   return keys;
 }
 
+/** `env` with stored keys as <PREFIX>_API_KEY; an undecryptable one blanks it. Throws StoreUnavailableError when Postgres is down (fail closed). */
+export async function liveEnv(env: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
+  const keys = await storedKeys();
+  if (keys.size === 0) return env;
+  const merged = { ...env };
+  for (const d of keyProviders()) if (keys.has(d.id)) merged[`${d.prefix}_API_KEY`] = keys.get(d.id)?.key ?? "";
+  return merged;
+}
+
 /** loadProviders with stored keys applied. Throws StoreUnavailableError when Postgres is down (fail closed). */
 export async function liveProviders(env: Record<string, string | undefined> = process.env): Promise<ProviderConfig[]> {
   const keys = await storedKeys();
-  if (keys.size === 0) return loadProviders(env);
-  const merged = { ...env };
-  for (const d of DEFS) if (keys.has(d.id)) merged[`${d.prefix}_API_KEY`] = keys.get(d.id)?.key ?? "";
-  return loadProviders(merged).map((p) => { const k = keys.get(p.id); return k ? { ...p, keyId: k.id } : p; });
+  return loadProviders(await liveEnv(env)).map((p) => { const k = keys.get(p.id); return k ? { ...p, keyId: k.id } : p; });
 }
 
 /** Record that a stored key was used (throttled). */

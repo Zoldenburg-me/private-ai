@@ -2,7 +2,7 @@
  * Video generation for the agent (lib/agent.ts) in Anon mode, via Black Forest Labs' FLUX 3 Video API (EU endpoint).
  * Like the anonymized gateways, BFL gets the request under our account: only the model's prompt leaves the server, no
  * account id, session, IP or user agent. The clip goes to the browser in the tool event and is never stored or logged
- * here. Off unless BFL_API_KEY is set (or, in dev/e2e only, MOCK_PROVIDER=1, which uses the mock endpoint).
+ * here. Off unless BFL_API_KEY is set, in env or in /admin (or, in dev/e2e only, MOCK_PROVIDER=1, which uses the mock endpoint).
  */
 import { bytesCapped } from "./image-gen";
 import { CREDIT_MARKUP, MICROS_PER_EUR, USD_EUR } from "./credits";

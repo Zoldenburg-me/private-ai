@@ -7,7 +7,8 @@ import { erasureHash } from "../lib/store/types";
 import { MemoryAccountStore } from "../lib/store/memory";
 import { createSession, resolveIdentity, setTier, tierOf } from "../lib/session";
 import { issueAdminToken, ADMIN_COOKIE } from "../lib/admin";
-import { liveProviders, _resetKeyCache } from "../lib/provider-keys";
+import { liveEnv, liveProviders, _resetKeyCache } from "../lib/provider-keys";
+import { videoConfigured } from "../lib/video-gen";
 import { sealKey, openKey } from "../lib/keyvault";
 import { POST as regOptions } from "../app/api/auth/passkey/register/options/route";
 import { POST as regVerify } from "../app/api/auth/passkey/register/verify/route";
@@ -384,6 +385,16 @@ describe("admin: provider keys", () => {
     const v = (await liveProviders()).find((p) => p.id === "venice")!;
     expect(v).toMatchObject({ apiKey: "test-venice-provider-key", privacy: "anon-gateway", models: ["claude-sonnet-x"] });
     expect(v.keyId).toBeTruthy();
+  });
+  it("a stored BFL key turns on video like BFL_API_KEY in env", async () => {
+    const list = await (await keysGET(req("/k", "GET", admin))).json();
+    expect(list.providers.map((p: Json) => p.id)).toContain("bfl");
+    expect(videoConfigured(await liveEnv())).toBe(false);
+    await addKey("bfl", "test-bfl-provider-key");
+    const env = await liveEnv();
+    expect(env.BFL_API_KEY).toBe("test-bfl-provider-key");
+    expect(videoConfigured(env)).toBe(true);
+    expect((await liveProviders()).map((p) => p.id)).not.toContain("bfl");
   });
   it("a DB key makes a provider available that has no env key", async () => {
     expect((await liveProviders()).find((p) => p.id === "phala")).toBeUndefined();

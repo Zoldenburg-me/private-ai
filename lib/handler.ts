@@ -7,7 +7,7 @@ import { resolveIdentity, sessionSecret, tierOf } from "./session";
 import { inviteGateOn } from "./invite";
 import { LIMITS, overLimit, refundLimit } from "./limits";
 import { parseModelRef, type ProviderConfig } from "./providers";
-import { liveProviders, markKeyUsed } from "./provider-keys";
+import { liveEnv, liveProviders, markKeyUsed } from "./provider-keys";
 import { ANON_MAX_OUTPUT_TOKENS, anonAllowed, DEFAULT_OUTPUT_TOKENS, estimateBodyTokens, modelGroup, TIERS, type TierId } from "./tiers";
 import { chargeCredits, costMicros, creditsAvailable, priceFor, reserveCredits } from "./credits";
 import type { QuotaScope } from "./store/types";
@@ -41,9 +41,9 @@ export async function handleChat(req: Request, route: string, deps: HandlerDeps)
 
 /** Agent mode for the web app (/api/agent): the same checks, then the tool loop in lib/agent.ts. */
 export async function handleAgent(req: Request, route: string, deps: HandlerDeps): Promise<Response> {
-  const env = deps.env ?? process.env;
-  if (!searchConfigured(env) && !videoConfigured(env)) return err(503, "web search and video are not configured on this server");
   return failClosed(route, deps, async () => {
+    const env = await liveEnv(deps.env ?? process.env); // a BFL key stored in /admin turns on video like one in env
+    if (!searchConfigured(env) && !videoConfigured(env)) return err(503, "web search and video are not configured on this server");
     const imageProvider = (await liveProviders(env)).find((x) => x.id === "near"); // the image tool's provider, stored keys applied
     const p = await prepareChat(req, route, deps, { webSearch: true }, (prompt, tier, provider, opts) => firstStepBody(prompt, TIERS[tier].agentMaxSteps, { provider, env, tier, imageProvider, ...opts }));
     if (p instanceof Response) return p;
